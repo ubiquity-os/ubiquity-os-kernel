@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+# node
+node_modules
+# yarn2
+.yarn
+.pnp.cjs
+.pnp.loader.mjs
+static/dist
+.env
