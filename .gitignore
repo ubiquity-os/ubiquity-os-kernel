@@ -8,3 +8,4 @@ node_modules
 .pnp.loader.mjs
 static/dist
 .env
+.wrangler

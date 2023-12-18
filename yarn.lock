@@ -61,6 +61,11 @@
   resolved "https://registry.yarnpkg.com/@cloudflare/workerd-windows-64/-/workerd-windows-64-1.20231030.0.tgz#d1aba21f13ec65f00d1009e0686a1a8ec6c1f8dd"
   integrity sha512-fb/Jgj8Yqy3PO1jLhk7mTrHMkR8jklpbQFud6rL/aMAn5d6MQbaSrYOCjzkKGp0Zng8D2LIzSl+Fc0C9Sggxjg==
 
+"@cloudflare/workers-types@^4.20231121.0":
+  version "4.20231121.0"
+  resolved "https://registry.yarnpkg.com/@cloudflare/workers-types/-/workers-types-4.20231121.0.tgz#6a1c0bfc93aca4643d43f6439cfb7aca8058f289"
+  integrity sha512-+kWfpCkqiepwAKXyHoE0gnkPgkLhz0/9HOBIGhHRsUvUKvhUtm3mbqqoGRWgF1qcjzrDUBbrrOq4MYHfFtc2RA==
+
 "@commitlint/cli@^18.4.3":
   version "18.4.3"
   resolved "https://registry.yarnpkg.com/@commitlint/cli/-/cli-18.4.3.tgz#5b6112035f2cb17b76244cde5f1587ab853c2365"
@@ -1525,6 +1530,11 @@ cosmiconfig@^8.3.6:
     js-yaml "^4.1.0"
     parse-json "^5.2.0"
     path-type "^4.0.0"
+
+create-cloudflare@^2.8.3:
+  version "2.8.3"
+  resolved "https://registry.yarnpkg.com/create-cloudflare/-/create-cloudflare-2.8.3.tgz#fbe037b27969ebac1ced332075847bd2a1d2154e"
+  integrity sha512-x56aWjt4Ewd1YH1cO/BargprsOraZwqx2PZge0lQdUYtlTfADh3PtbO1gu4HJShbtFozDJUyGBf6L9Ri6R8Eiw==
 
 cross-spawn@^6.0.5:
   version "6.0.5"
