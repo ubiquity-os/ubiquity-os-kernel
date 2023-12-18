@@ -1,5 +1,5 @@
 name = "ubiquibot-worker"
-main = "src/index.ts"
+main = "src/cloudflare-worker/index.ts"
 compatibility_date = "2023-12-06"
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
