@@ -172,3 +172,5 @@ dist
 .wrangler/
 .pnp.loader.mjs
 .pnp.cjs
+.yarn/releases/yarn-4.0.2.cjs
+.yarnrc.yml
