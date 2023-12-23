@@ -170,7 +170,12 @@ dist
 
 .dev.vars
 .wrangler/
-.pnp.loader.mjs
-.pnp.cjs
-.yarn/releases/yarn-4.0.2.cjs
-.yarnrc.yml
+
+# yarn v4
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
