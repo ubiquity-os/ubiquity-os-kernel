@@ -8,7 +8,12 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+import { Webhooks, createNodeMiddleware } from "@octokit/webhooks";
+import { handleEvent } from "./webhooks";
+import { GitHubEvent } from "./types/github-events";
+
 export interface Env {
+	WEBHOOK_SECRET: string;
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
 	//
@@ -26,7 +31,16 @@ export interface Env {
 }
 
 export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		return new Response('Hello World!');
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const webhooks = new Webhooks({
+			secret: env.WEBHOOK_SECRET,
+		});
+
+		webhooks.on(Object.values(GitHubEvent), handleEvent);
+
+		const middleware = createNodeMiddleware(webhooks, { path: "/events" });
+		const response = new Response();
+		const hasResponse: boolean = await middleware(request, response);
+		return hasResponse ? response : new Response("Not found", { status: 404 });
 	},
 };
