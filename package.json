@@ -14,8 +14,8 @@
 		"format:lint": "eslint --fix .",
 		"format:prettier": "prettier --write .",
 		"prepare": "husky install",
-		"deploy": "wrangler deploy src/worker.ts",
-		"dev": "wrangler dev --port 8787 src/worker.ts",
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev --port 8787",
 		"proxy": "tsx src/proxy.ts"
 	},
 	"keywords": [
