@@ -8,12 +8,12 @@ addFormats(ajv);
 ajv.addKeyword("tsAdditionalProperties");
 
 export async function handleEvent(event: EmitterWebhookEvent) {
-	console.log(event.payload);
-	const validateGithubEvent = GithubEventValidationFunc;
-	const isValid = validateGithubEvent(event.payload);
-	if (!isValid) {
-		console.error("Invalid event payload", validateGithubEvent.errors);
-		return;
-	}
-	console.log(event.name);
+  console.log(event.payload);
+  const validateGithubEvent = GithubEventValidationFunc;
+  const isValid = validateGithubEvent(event.payload);
+  if (!isValid) {
+    console.error("Invalid event payload", validateGithubEvent.errors);
+    return;
+  }
+  console.log(event.name);
 }
