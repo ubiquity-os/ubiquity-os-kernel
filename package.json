@@ -10,7 +10,7 @@
     "node": ">=20.10.0"
   },
   "scripts": {
-		"dev": "run-p worker proxy",
+    "dev": "run-p worker proxy",
     "format": "run-s format:prettier format:lint",
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",

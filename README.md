@@ -1,8 +1,9 @@
 # @ubiquity/ubiquibot-kernel
 
 The bot kernel is designed to:
+
 - Interface with plugins (GitHub Actions) for longer running processes.
-- Run on Cloudflare Workers
+- Run on Cloudflare Workers.
 
 ### Quick Start
 
