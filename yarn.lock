@@ -1140,13 +1140,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@octokit/webhooks-schemas@npm:^7.3.1":
-  version: 7.3.1
-  resolution: "@octokit/webhooks-schemas@npm:7.3.1"
-  checksum: 66a0a5349c5ab135e049b2bdf7113c74e4dc3a202b14a3e594056e0366176869d84b09ba913c1b7eb14f059c120d71c4dee029bb769d62c3707fd6283f08ae4c
-  languageName: node
-  linkType: hard
-
 "@octokit/webhooks-types@npm:7.1.0":
   version: 7.1.0
   resolution: "@octokit/webhooks-types@npm:7.1.0"
@@ -1636,20 +1629,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv-formats@npm:^2.1.1":
-  version: 2.1.1
-  resolution: "ajv-formats@npm:2.1.1"
-  dependencies:
-    ajv: "npm:^8.0.0"
-  peerDependencies:
-    ajv: ^8.0.0
-  peerDependenciesMeta:
-    ajv:
-      optional: true
-  checksum: 70c263ded219bf277ffd9127f793b625f10a46113b2e901e150da41931fcfd7f5592da6d66862f4449bb157ffe65867c3294a7df1d661cc232c4163d5a1718ed
-  languageName: node
-  linkType: hard
-
 "ajv@npm:^6.12.4":
   version: 6.12.6
   resolution: "ajv@npm:6.12.6"
@@ -1662,7 +1641,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv@npm:^8.0.0, ajv@npm:^8.11.0, ajv@npm:^8.12.0":
+"ajv@npm:^8.11.0":
   version: 8.12.0
   resolution: "ajv@npm:8.12.0"
   dependencies:
@@ -6438,14 +6417,11 @@ __metadata:
     "@commitlint/cli": "npm:^18.4.3"
     "@commitlint/config-conventional": "npm:^18.4.3"
     "@octokit/webhooks": "npm:^12.0.10"
-    "@octokit/webhooks-schemas": "npm:^7.3.1"
     "@octokit/webhooks-types": "npm:^7.3.1"
     "@sinclair/typebox": "npm:^0.32.5"
     "@types/node": "npm:^20.11.1"
     "@typescript-eslint/eslint-plugin": "npm:^6.13.1"
     "@typescript-eslint/parser": "npm:^6.13.1"
-    ajv: "npm:^8.12.0"
-    ajv-formats: "npm:^2.1.1"
     create-cloudflare: "npm:^2.8.3"
     dotenv: "npm:^16.3.1"
     esbuild: "npm:^0.19.10"

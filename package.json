@@ -17,8 +17,7 @@
     "prepare": "husky install",
     "deploy": "wrangler deploy",
     "worker": "wrangler dev --port 8787",
-    "proxy": "tsx src/proxy.ts",
-    "generate": "node ./generate-ajv-validation-function.js"
+    "proxy": "tsx src/proxy.ts"
   },
   "keywords": [
     "typescript",
@@ -29,11 +28,8 @@
   ],
   "dependencies": {
     "@octokit/webhooks": "^12.0.10",
-    "@octokit/webhooks-schemas": "^7.3.1",
     "@octokit/webhooks-types": "^7.3.1",
     "@sinclair/typebox": "^0.32.5",
-    "ajv": "^8.12.0",
-    "ajv-formats": "^2.1.1",
     "create-cloudflare": "^2.8.3",
     "octokit": "^3.1.2",
     "smee-client": "^2.0.0"
