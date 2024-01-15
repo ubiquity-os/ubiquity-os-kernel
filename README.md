@@ -1,5 +1,14 @@
 # @ubiquity/ubiquibot-kernel
 
-This is a research project to set up the bot without Probot as a dependency. This way we can deploy to Cloudflare Workers, and have it handle instant tasks/responses.
+The bot kernel is designed to:
+- Interface with plugins (GitHub Actions) for longer running processes.
+- Run on Cloudflare Workers
 
-The kernel is designed to interface with plugins (GitHub Actions) for longer running processes.
+### Quick Start
+
+```bash
+git clone https://github.com/ubiquity/ubiquibot-kernel
+cd ubiquibot-kernel
+yarn
+yarn dev
+```
