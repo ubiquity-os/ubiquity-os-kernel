@@ -10,6 +10,7 @@
   "rules": {
     "prefer-arrow-callback": ["warn", { "allowNamedFunctions": true }], // Disallow arrow functions as expressions
     "func-style": ["warn", "declaration", { "allowArrowFunctions": false }], // Disallow the use of function expressions
+    "@typescript-eslint/no-unnecessary-condition": "error",
     "@typescript-eslint/no-floating-promises": "error",
     "@typescript-eslint/naming-convention": [
       "error",
