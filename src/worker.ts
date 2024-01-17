@@ -76,6 +76,13 @@ export default {
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
       console.error(error);
+      // Log the request details when signature verification fails
+      console.log(`Failed request details:
+        URL: ${request.url}
+        Method: ${request.method}
+        Headers: ${JSON.stringify(Array.from(request.headers))}
+        Body: ${await request.text()}
+      `);
       let status = 500;
       let errorMessage = "An Unspecified error occurred";
       if (error instanceof AggregateError) {

@@ -30,7 +30,7 @@ export async function handleGitHubEvent(event: EmitterWebhookEvent) {
 }
 
 function notImplemented(event: EmitterWebhookEvent) {
-  console.log(`Not implemented: ${event.name}`);
+  console.log(`Not implemented: ${event.name}.${event.payload.action}`);
 }
 
 function createTypeGuard<T extends GitHubEventClassName>(eventName: T) {
