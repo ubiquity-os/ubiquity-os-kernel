@@ -14,6 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install dependencies
-        run: yarn install
+        run: bun install
       - name: Run typecheck
-        run: yarn tsc --noEmit
+        run: bun tsc --noEmit
