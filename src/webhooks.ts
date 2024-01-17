@@ -1,7 +1,8 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { makeEventKey } from "./webhooks/make-event-key";
+import handlers from "./handlers/handlers";
 
-export async function handleEvent(event: EmitterWebhookEvent) {
+export async function handleGitHubEvent(event: EmitterWebhookEvent) {
   const eventKey = makeEventKey(event);
 
   console.log(eventKey);
@@ -11,14 +12,8 @@ export async function handleEvent(event: EmitterWebhookEvent) {
   console.log(eventKey);
 
   switch (eventKey) {
-    case "issues.opened":
-      return notImplemented(event);
-    case "issues.closed":
-      return notImplemented(event);
-    case "issues.reopened":
-      return notImplemented(event);
-    case "pull_request.opened":
-      return notImplemented(event);
+    case "issue_comment.created":
+      return handlers.issueCommentCreated(event.payload);
     default:
       return notImplemented(event);
   }
