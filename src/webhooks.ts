@@ -7,15 +7,10 @@ import { handlers } from "./handlers";
 import { GitHubEventClassName } from "./types/github-event-class-names";
 import { makeGitHubEventClassName } from "./webhooks/make-github-event-class-name";
 
-export type Handlers = {
-  [K in GitHubEventClassName]?: (_payload: EmitterWebhookEvent<K>["payload"]) => Promise<void>;
-};
-
 export async function handleGitHubEvent(event: EmitterWebhookEvent) {
   const gitHubEventKey = makeGitHubEventClassName(event);
   const isCorrectType = createTypeGuard(gitHubEventKey);
-
-  const payload = event.payload; // as unknown as EmitterWebhookEvent;
+  const payload = event.payload;
 
   if (isCorrectType(payload)) {
     const handler = handlers[gitHubEventKey];
