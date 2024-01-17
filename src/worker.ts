@@ -2,6 +2,7 @@ import { EmitterWebhookEventName, Webhooks, emitterEventNames } from "@octokit/w
 import { Type as T, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { handleGitHubEvent } from "./webhooks";
+
 const envSchema = T.Object({ WEBHOOK_SECRET: T.String() });
 type Env = Static<typeof envSchema>;
 export default {
@@ -63,7 +64,7 @@ export default {
       });
     }
     const webhooks = new Webhooks({ secret: env.WEBHOOK_SECRET });
-    webhooks.on(Object.values(GitHubEvent), handleGitHubEvent);
+    webhooks.on(Object.values(emitterEventNames), handleGitHubEvent);
     // console.debug(`${eventName} event received (id: ${id})`);
     try {
       await webhooks.verifyAndReceive({
