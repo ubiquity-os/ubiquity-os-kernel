@@ -1,12 +1,12 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
-import handlers from "./handlers/handlers";
-import { makeEventKey } from "./webhooks/make-event-key";
+import { handlers } from "./handlers/handlers";
+import { makeGitHubEventClassName } from "./webhooks/make-github-event-class-name";
 
 export async function handleGitHubEvent(event: EmitterWebhookEvent) {
-  const eventKey = makeEventKey(event);
-  const handler = handlers[eventKey];
+  const gitHubEventKey = makeGitHubEventClassName(event);
+  const handler = handlers[gitHubEventKey];
   if (handler) {
-    return handler(event);
+    return await handler(event.payload);
   } else {
     return notImplemented(event);
   }

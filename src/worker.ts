@@ -1,7 +1,6 @@
 import { EmitterWebhookEventName, Webhooks, emitterEventNames } from "@octokit/webhooks";
 import { Type as T, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { GitHubEvent } from "./types/github-events";
 import { handleGitHubEvent } from "./webhooks";
 const envSchema = T.Object({ WEBHOOK_SECRET: T.String() });
 type Env = Static<typeof envSchema>;
