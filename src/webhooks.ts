@@ -1,8 +1,13 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck
+// disabled type checking in this file because the type that describes every type of github webhook payload is far too complex and slows down vscode.
+
 import { EmitterWebhookEvent } from "@octokit/webhooks";
+import { handlers } from "./handlers";
 import { GitHubEventClassName } from "./types/github-event-class-names";
 import { makeGitHubEventClassName } from "./webhooks/make-github-event-class-name";
 
-type Handlers = {
+export type Handlers = {
   [K in GitHubEventClassName]?: (_payload: EmitterWebhookEvent<K>["payload"]) => Promise<void>;
 };
 
@@ -10,38 +15,26 @@ export async function handleGitHubEvent(event: EmitterWebhookEvent) {
   const gitHubEventKey = makeGitHubEventClassName(event);
   const isCorrectType = createTypeGuard(gitHubEventKey);
 
-  if (isCorrectType(event.payload)) {
+  const payload = event.payload; // as unknown as EmitterWebhookEvent;
+
+  if (isCorrectType(payload)) {
     const handler = handlers[gitHubEventKey];
     if (handler) {
-      return await handler(event.payload);
+      return await handler(payload);
     } else {
       return notImplemented(event);
     }
   } else {
     console.log(`Payload is not of type ${gitHubEventKey}`);
   }
-
-  // const handler = handlers[gitHubEventKey];
-  // if (handler) {
-  //   return await handler(event.payload);
-  // } else {
-  //   return notImplemented(event);
-  // }
 }
-
-export const handlers: Handlers = {
-  "issue_comment.created": async function issueCommentCreated(payload: EmitterWebhookEvent<"issue_comment.created">["payload"]) {
-    console.log(payload.comment.body);
-  },
-  // Add more handlers here
-};
 
 function notImplemented(event: EmitterWebhookEvent) {
   console.log(`Not implemented: ${event.name}`);
 }
 
 function createTypeGuard<T extends GitHubEventClassName>(eventName: T) {
-  return (payload): payload is EmitterWebhookEvent<T>["payload"] => {
+  return (payload: EmitterWebhookEvent["payload"]): payload is EmitterWebhookEvent<T>["payload"] => {
     return payload.action === eventName.split(".")[1];
   };
 }
