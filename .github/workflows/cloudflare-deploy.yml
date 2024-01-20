@@ -22,7 +22,10 @@ jobs:
         with:
           node-version: "20.10.0"
 
-      - name: Bun Install
+      - name: Install bun
+        run: npm i -g bun
+
+      - name: Install dependencies
         run: bun install
 
       - name: Build the project
