@@ -1,8 +1,9 @@
-import { EmitterWebhookEventName, Webhooks, emitterEventNames } from "@octokit/webhooks";
+import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
 import { Type as T, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { GitHubEvent } from "./types/github-events";
-import { handleEvent } from "./webhooks";
+
+import { EventHandler } from "./event-handler";
+import { bindHandlers } from "./handlers";
 const envSchema = T.Object({ WEBHOOK_SECRET: T.String() });
 type Env = Static<typeof envSchema>;
 export default {
@@ -57,19 +58,20 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
-    if (!emitterEventNames.includes(eventName as EmitterWebhookEventName)) {
+    if (!emitterEventNames.includes(eventName as WebhookEventName)) {
       return new Response(JSON.stringify({ error: `Unsupported "x-github-event" header value: ${eventName}` }), {
         status: 400,
         headers: { "content-type": "application/json" },
       });
     }
-    const webhooks = new Webhooks({ secret: env.WEBHOOK_SECRET });
-    webhooks.on(Object.values(GitHubEvent), handleEvent);
-    // console.debug(`${eventName} event received (id: ${id})`);
+
+    const eventHandler = new EventHandler(env.WEBHOOK_SECRET);
+    bindHandlers(eventHandler);
+
     try {
-      await webhooks.verifyAndReceive({
+      await eventHandler.webhooks.verifyAndReceive({
         id,
-        name: eventName as EmitterWebhookEventName,
+        name: eventName as WebhookEventName,
         payload: await request.text(),
         signature: signatureSHA256,
       });
