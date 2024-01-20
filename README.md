@@ -10,6 +10,6 @@ The bot kernel is designed to:
 ```bash
 git clone https://github.com/ubiquity/ubiquibot-kernel
 cd ubiquibot-kernel
-yarn
-yarn dev
+bun install
+bun dev
 ```

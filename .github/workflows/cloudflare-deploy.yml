@@ -22,14 +22,14 @@ jobs:
         with:
           node-version: "20.10.0"
 
-      - name: Yarn Install
-        run: yarn install
+      - name: Bun Install
+        run: bun install
 
       - name: Build the project
-        run: yarn build
+        run: bun build
 
       - name: Wrangler Install
-        run: yarn add wrangler
+        run: bun add wrangler
 
       - name: Publish to Cloudflare
         env:
@@ -41,11 +41,11 @@ jobs:
           IFS='/' read -ra fields <<< "$REPOSITORY"
           projectName="${fields[1]}"
           echo $projectName
-          yarn wrangler pages project list > project_list.txt
+          bun wrangler pages project list > project_list.txt
           if grep -q $projectName project_list.txt; then
             echo "Project found"
           else
             echo "Project not found"
-            yarn wrangler pages project create "$projectName" --production-branch "$PRODUCTION_BRANCH"
+            bun wrangler pages project create "$projectName" --production-branch "$PRODUCTION_BRANCH"
           fi
-          yarn wrangler pages publish "$OUTPUT_DIRECTORY" --project-name "$projectName"
+          bun wrangler pages publish "$OUTPUT_DIRECTORY" --project-name "$projectName"
