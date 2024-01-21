@@ -1,11 +1,9 @@
 import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
-import { Type as T, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
 import { EventHandler } from "./event-handler";
 import { bindHandlers } from "./handlers";
-const envSchema = T.Object({ WEBHOOK_SECRET: T.String() });
-type Env = Static<typeof envSchema>;
+import { envSchema, Env } from "./types/env";
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (!Value.Check(envSchema, env)) {
@@ -16,6 +14,7 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
     let pathname;
     try {
       pathname = new URL(request.url, "http://localhost").pathname;
@@ -25,18 +24,21 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
     if (pathname !== "/events" || request.method !== "POST") {
       return new Response(JSON.stringify({ error: `Unknown route: ${request.method} ${request.url}` }), {
         status: 400,
         headers: { "content-type": "application/json" },
       });
     }
+
     if (!request.headers.get("content-type") || !request.headers.get("content-type")?.startsWith("application/json")) {
       return new Response(JSON.stringify({ error: `Unsupported "Content-Type" header value. Must be "application/json"` }), {
         status: 415,
         headers: { "content-type": "application/json" },
       });
     }
+
     const eventName = request.headers.get("x-github-event");
     if (!eventName) {
       return new Response(JSON.stringify({ error: `Missing "x-github-event" header` }), {
@@ -44,6 +46,7 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
     const signatureSHA256 = request.headers.get("x-hub-signature-256");
     if (!signatureSHA256) {
       return new Response(JSON.stringify({ error: `Missing "x-hub-signature-256" header` }), {
@@ -51,6 +54,7 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
     const id = request.headers.get("x-github-delivery");
     if (!id) {
       return new Response(JSON.stringify({ error: `Missing "x-github-delivery" header` }), {
@@ -58,6 +62,7 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
     if (!emitterEventNames.includes(eventName as WebhookEventName)) {
       return new Response(JSON.stringify({ error: `Unsupported "x-github-event" header value: ${eventName}` }), {
         status: 400,
