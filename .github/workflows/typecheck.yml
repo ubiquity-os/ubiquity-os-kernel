@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install bun
+        run: npm i -g bun
       - name: Install dependencies
-        run: yarn install
+        run: bun install
       - name: Run typecheck
-        run: yarn tsc --noEmit
+        run: bun tsc --noEmit

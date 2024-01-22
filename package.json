@@ -35,7 +35,7 @@
     "smee-client": "^2.0.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20231121.0",
+    "@cloudflare/workers-types": "^4.20240117.0",
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
     "@types/node": "^20.11.1",
@@ -53,7 +53,7 @@
     "prettier": "^3.1.0",
     "tsx": "^4.6.2",
     "typescript": "^5.0.4",
-    "wrangler": "^3.22.3"
+    "wrangler": "^3.23.0"
   },
   "lint-staged": {
     "*.ts": [
@@ -66,5 +66,5 @@
       "@commitlint/config-conventional"
     ]
   },
-  "packageManager": "yarn@4.0.2"
+  "packageManager": "bun@1.0.23"
 }
