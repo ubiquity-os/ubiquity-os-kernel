@@ -21,23 +21,6 @@ export class EventHandler {
   constructor(options: Options) {
     this._privateKey = options.privateKey;
     this._appId = Number(options.appId);
-    /*const key = crypto.subtle
-      .importKey(
-        "pkcs8",
-        new TextEncoder().encode(this.privateKey),
-        {
-          name: "RSASSA-PKCS1-v1_5",
-          hash: "SHA-256",
-        },
-        true,
-        []
-      )
-      .then((key) => {
-        crypto.subtle.exportKey("s", key).then((keydata) => {
-          console.log(keydata);
-        });
-      });*/
-
     this._webhookSecret = options.webhookSecret;
 
     this.webhooks = new Webhooks<SimplifiedContext>({
