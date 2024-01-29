@@ -70,7 +70,7 @@ export default {
       });
     }
 
-    const eventHandler = new EventHandler(env.WEBHOOK_SECRET);
+    const eventHandler = new EventHandler({ webhookSecret: env.WEBHOOK_SECRET, appId: env.APP_ID, privateKey: env.PRIVATE_KEY });
     bindHandlers(eventHandler);
 
     try {
