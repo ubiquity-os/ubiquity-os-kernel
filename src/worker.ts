@@ -3,6 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { EventHandler } from "./event-handler";
 import { bindHandlers } from "./handlers";
 import { envSchema, Env } from "./types/env";
+import { LogLevel } from "ubiquibot-logger/pretty-logs";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -70,7 +71,15 @@ export default {
       });
     }
 
-    const eventHandler = new EventHandler({ webhookSecret: env.WEBHOOK_SECRET, appId: env.APP_ID, privateKey: env.PRIVATE_KEY });
+    const eventHandler = new EventHandler({
+      webhookSecret: env.WEBHOOK_SECRET,
+      appId: env.APP_ID,
+      privateKey: env.PRIVATE_KEY,
+      supabaseUrl: env.SUPABASE_URL,
+      supabaseKey: env.SUPABASE_KEY,
+      logLevel: LogLevel[env.LOG_LEVEL as keyof typeof LogLevel],
+      logRetryLimit: Number(env.LOG_RETRY_LIMIT),
+    });
     bindHandlers(eventHandler);
 
     try {
