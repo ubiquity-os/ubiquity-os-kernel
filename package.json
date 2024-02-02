@@ -1,8 +1,8 @@
 {
-  "name": "ubiquibot-worker",
+  "name": "ubiquibot-kernel",
   "version": "0.0.0",
-  "private": true,
-  "description": "Template repository with TypeScript support.",
+  "private": false,
+  "description": "The kernel for UbiquiBot.",
   "main": "build/index.ts",
   "author": "Ubiquity DAO",
   "license": "MIT",
@@ -11,9 +11,10 @@
   },
   "scripts": {
     "dev": "run-p worker proxy",
-    "format": "run-s format:prettier format:lint",
+    "format": "run-s format:lint format:prettier format:cspell",
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
+    "format:cspell": "cspell **/*",
     "prepare": "husky install",
     "deploy": "wrangler deploy",
     "worker": "wrangler dev --port 8787",
@@ -40,14 +41,19 @@
     "@cloudflare/workers-types": "^4.20240117.0",
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
+    "@cspell/dict-node": "^4.0.3",
+    "@cspell/dict-software-terms": "^3.3.17",
+    "@cspell/dict-typescript": "^3.1.2",
     "@types/node": "^20.11.1",
     "@typescript-eslint/eslint-plugin": "^6.13.1",
     "@typescript-eslint/parser": "^6.13.1",
+    "cspell": "^8.3.2",
     "dotenv": "^16.3.1",
     "esbuild": "^0.19.10",
-    "eslint": "^8.54.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.1",
+    "eslint-plugin-sonarjs": "^0.23.0",
+    "eslint": "^8.54.0",
     "husky": "^8.0.3",
     "knip": "^3.3.0",
     "lint-staged": "^15.1.0",
@@ -61,6 +67,9 @@
     "*.ts": [
       "prettier --write",
       "eslint --fix"
+    ],
+    "src/**.*": [
+      "cspell"
     ]
   },
   "commitlint": {
