@@ -1,6 +1,5 @@
 import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
-import { LogLevel } from "ubiquibot-logger/pretty-logs";
 import { EventHandler } from "./event-handler";
 import { bindHandlers } from "./handlers";
 import { Env, envSchema } from "./types/env";
@@ -17,10 +16,10 @@ export default {
         webhookSecret: env.WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.PRIVATE_KEY,
-        supabaseUrl: env.SUPABASE_URL,
-        supabaseKey: env.SUPABASE_KEY,
-        logLevel: LogLevel[env.LOG_LEVEL as keyof typeof LogLevel],
-        logRetryLimit: Number(env.LOG_RETRY_LIMIT),
+        // supabaseUrl: env.SUPABASE_URL,
+        // supabaseKey: env.SUPABASE_KEY,
+        // logLevel: LogLevel[env.LOG_LEVEL as keyof typeof LogLevel],
+        // logRetryLimit: Number(env.LOG_RETRY_LIMIT),
       });
       bindHandlers(eventHandler);
 
