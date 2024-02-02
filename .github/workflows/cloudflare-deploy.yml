@@ -22,9 +22,6 @@ jobs:
       - name: Install Bun
         run: npm install -g bun
 
-      - name: Build the project
-        run: bun build
-
       - name: Wrangler Install
         run: bun add wrangler
 
