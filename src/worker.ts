@@ -1,5 +1,6 @@
 import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
+import { authenticateApp } from "./authentication";
 import { EventHandler } from "./event-handler";
 import { bindHandlers } from "./handlers";
 import { Env, envSchema } from "./types/env";
@@ -11,15 +12,23 @@ export default {
       const eventName = getEventName(request);
       const signatureSHA256 = getSignature(request);
       const id = getId(request);
+      // Parse the request body to get the webhook event payload
+      const payload = JSON.parse(await request.text());
+
+      // Extract the installationId from the payload
+      const installationId = payload.installation?.id;
+
+      if (!installationId) {
+        throw new Error("Missing installation ID");
+      }
+
+      // Authenticate the app
+      await authenticateApp(env, installationId);
 
       const eventHandler = new EventHandler({
         webhookSecret: env.WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.PRIVATE_KEY,
-        // supabaseUrl: env.SUPABASE_URL,
-        // supabaseKey: env.SUPABASE_KEY,
-        // logLevel: LogLevel[env.LOG_LEVEL as keyof typeof LogLevel],
-        // logRetryLimit: Number(env.LOG_RETRY_LIMIT),
       });
       bindHandlers(eventHandler);
 
