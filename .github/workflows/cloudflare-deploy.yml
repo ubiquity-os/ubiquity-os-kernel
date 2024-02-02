@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v3
@@ -28,21 +28,7 @@ jobs:
       - name: Wrangler Install
         run: bun add wrangler
 
-      - name: Publish to Cloudflare
+      - name: Deploy to Cloudflare
+        run: bun deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          PRODUCTION_BRANCH: "main"
-          OUTPUT_DIRECTORY: "dist"
-        run: |
-          IFS='/' read -ra fields <<< "$REPOSITORY"
-          projectName="${fields[1]}"
-          echo $projectName
-          bun wrangler pages project list > project_list.txt
-          if grep -q $projectName project_list.txt; then
-            echo "Project found"
-          else
-            echo "Project not found"
-            bun wrangler pages project create "$projectName" --production-branch "$PRODUCTION_BRANCH"
-          fi
-          bun wrangler pages publish "$OUTPUT_DIRECTORY" --project-name "$projectName"
