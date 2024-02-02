@@ -1,8 +1,8 @@
 WEBHOOK_PROXY_URL=https://smee.io/new
 WEBHOOK_SECRET=xxxxxx
 
-SUPABASE_URL=
-SUPABASE_KEY=
+SUPABASE_URL="https://xxxxxxxxxxxxxx.supabase.co"
+SUPABASE_KEY=xxxxxx
 
-LOG_RETRY_LIMIT=
-LOG_LEVEL=
+LOG_RETRY_LIMIT=1
+LOG_LEVEL=DEBUG

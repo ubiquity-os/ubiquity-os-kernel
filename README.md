@@ -20,6 +20,16 @@ The bot kernel is designed to:
 - WEBHOOK_PROXY_URL (only for development)
   You need to get a webhook URL at <https://smee.io/> and set it in the Github App settings
 
+- SUPABASE_URL and SUPABASE_KEY
+  Supabase client connection details.
+
+- LOG_LEVEL
+  Log level, possible values are FATAL, ERROR, INFO, VERBOSE, DEBUG.
+
+- LOG_RETRY_LIMIT
+  Maximum number of retries to insert logs to Supabase, set to 0 means no retries will be attempted.
+
+
 ### Quick Start
 
 ```bash
