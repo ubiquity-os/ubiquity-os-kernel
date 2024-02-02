@@ -3,8 +3,8 @@
   "tabWidth": 2,
   "semi": true,
   "singleQuote": false,
+  "printWidth": 160,
   "htmlWhitespaceSensitivity": "strict",
   "plugins": [],
-  "printWidth": 140,
   "useTabs": false
 }

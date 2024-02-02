@@ -1,9 +1,9 @@
 {
-  "name": "ubiquibot-worker",
+  "name": "ubiquibot-kernel",
   "version": "0.0.0",
-  "private": true,
-  "description": "Template repository with TypeScript support.",
-  "main": "build/index.ts",
+  "private": false,
+  "description": "The kernel for UbiquiBot.",
+  "main": "src/worker.ts",
   "author": "Ubiquity DAO",
   "license": "MIT",
   "engines": {
@@ -11,9 +11,10 @@
   },
   "scripts": {
     "dev": "run-p worker proxy",
-    "format": "run-s format:prettier format:lint",
+    "format": "run-s format:lint format:prettier format:cspell",
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
+    "format:cspell": "cspell **/*",
     "prepare": "husky install",
     "deploy": "wrangler deploy",
     "worker": "wrangler dev --port 8787",
@@ -30,22 +31,29 @@
     "@octokit/webhooks": "^12.0.10",
     "@octokit/webhooks-types": "^7.3.1",
     "@sinclair/typebox": "^0.32.5",
+    "@supabase/supabase-js": "^2.4.0",
     "create-cloudflare": "^2.8.3",
     "octokit": "^3.1.2",
-    "smee-client": "^2.0.0"
+    "smee-client": "^2.0.0",
+    "ubiquibot-logger": "^0.3.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20231121.0",
+    "@cloudflare/workers-types": "^4.20240117.0",
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
+    "@cspell/dict-node": "^4.0.3",
+    "@cspell/dict-software-terms": "^3.3.17",
+    "@cspell/dict-typescript": "^3.1.2",
     "@types/node": "^20.11.1",
     "@typescript-eslint/eslint-plugin": "^6.13.1",
     "@typescript-eslint/parser": "^6.13.1",
+    "cspell": "^8.3.2",
     "dotenv": "^16.3.1",
     "esbuild": "^0.19.10",
-    "eslint": "^8.54.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.1",
+    "eslint-plugin-sonarjs": "^0.23.0",
+    "eslint": "^8.54.0",
     "husky": "^8.0.3",
     "knip": "^3.3.0",
     "lint-staged": "^15.1.0",
@@ -53,12 +61,15 @@
     "prettier": "^3.1.0",
     "tsx": "^4.6.2",
     "typescript": "^5.0.4",
-    "wrangler": "^3.22.3"
+    "wrangler": "^3.25.0"
   },
   "lint-staged": {
     "*.ts": [
       "prettier --write",
       "eslint --fix"
+    ],
+    "src/**.*": [
+      "cspell"
     ]
   },
   "commitlint": {
