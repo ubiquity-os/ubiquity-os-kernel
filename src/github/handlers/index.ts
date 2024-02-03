@@ -1,6 +1,6 @@
 import { GitHubEventHandler } from "../github-event-handler";
-import { handleIssueCommentCreated } from "./issue/comment_created";
+import { issueCommentCreated } from "./issue-comment/created";
 
 export function bindHandlers(webhooks: GitHubEventHandler) {
-  webhooks.on("issue_comment.created", handleIssueCommentCreated);
+  webhooks.on("issue_comment.created", issueCommentCreated);
 }
