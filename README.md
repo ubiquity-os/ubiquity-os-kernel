@@ -1,24 +1,28 @@
 # @ubiquity/ubiquibot-kernel
 
-The bot kernel is designed to:
+The kernel is designed to:
 
 - Interface with plugins (GitHub Actions) for longer running processes.
 - Run on Cloudflare Workers.
 
 ## Environment variables
 
-- PRIVATE_KEY
-You need to get a private key from Github App settings and convert it to PKCS#8 using this command:
-`openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in pkcs8.key -out pkcs8.key`
+- `PRIVATE_KEY`
+  You need to obtain a private key from your GitHub App settings and convert it to Public-Key Cryptography Standards #8 (PKCS#8) format. You can use the following command to perform this conversion and append the result to your `.dev.vars` file:
 
-- WEBHOOK_SECRET
-You need to set it in Github App settings and also set it here.
+  ```sh
+	echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+	```
+###### Please replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
-- APP_ID
-You can find this in Github App settings.
+- `WEBHOOK_SECRET`
+  This should be set in your GitHub App settings and also here.
 
-- WEBHOOK_PROXY_URL (only for development)
-You need to get a webhook URL at <https://smee.io/> and set it in the Github App settings
+- `APP_ID`
+  You can find this in your GitHub App settings.
+
+- `WEBHOOK_PROXY_URL` (only for development)
+  You need to obtain a webhook URL at <https://smee.io/> and set it in the GitHub App settings.
 
 ### Quick Start
 

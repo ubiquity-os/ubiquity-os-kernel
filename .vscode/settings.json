@@ -1,5 +1,4 @@
 {
-
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "cSpell.words": ["smee"]
 }
