@@ -11,8 +11,9 @@ The kernel is designed to:
   You need to obtain a private key from your GitHub App settings and convert it to Public-Key Cryptography Standards #8 (PKCS#8) format. You can use the following command to perform this conversion and append the result to your `.dev.vars` file:
 
   ```sh
-	echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
-	```
+  echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+  ```
+
 ###### Please replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
 - `WEBHOOK_SECRET`

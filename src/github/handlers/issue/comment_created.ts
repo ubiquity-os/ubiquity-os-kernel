@@ -1,6 +1,6 @@
-import { Context } from "../../context";
+import { GitHubContext } from "../../github-context";
 
-export async function handleIssueCommentCreated(event: Context<"issue_comment.created">) {
+export async function handleIssueCommentCreated(event: GitHubContext<"issue_comment.created">) {
   if (event.payload.comment.user.type === "Bot") {
     console.log("Skipping bot comment");
     return;

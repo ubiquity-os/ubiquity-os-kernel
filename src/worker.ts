@@ -1,8 +1,8 @@
 import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
-import { EventHandler } from "./event-handler";
-import { bindHandlers } from "./handlers";
-import { Env, envSchema } from "./types/env";
+import { GitHubEventHandler } from "./github/github-event-handler";
+import { bindHandlers } from "./github/handlers";
+import { Env, envSchema } from "./github/types/env";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
@@ -10,23 +10,27 @@ export default {
       const eventName = getEventName(request);
       const signatureSHA256 = getSignature(request);
       const id = getId(request);
-      const eventHandler = new EventHandler({ webhookSecret: env.WEBHOOK_SECRET, appId: env.APP_ID, privateKey: env.PRIVATE_KEY });
+      const eventHandler = new GitHubEventHandler({ webhookSecret: env.WEBHOOK_SECRET, appId: env.APP_ID, privateKey: env.PRIVATE_KEY });
       bindHandlers(eventHandler);
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSHA256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
-      console.error(error);
-      let status = 500;
-      let errorMessage = "An unspecified error occurred";
-      if (error instanceof AggregateError) {
-        const err = error.errors[0];
-        errorMessage = err.message ? `${err.name}: ${err.message}` : "Error: An unspecified error occurred";
-        status = typeof err.status !== "undefined" ? err.status : 500;
-      }
-      return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: { "content-type": "application/json" } });
+      return handleUncaughtError(error);
     }
   },
 };
+function handleUncaughtError(error: unknown) {
+  console.error(error);
+  let status = 500;
+  let errorMessage = "An uncaught error occurred";
+  if (error instanceof AggregateError) {
+    const err = error.errors[0];
+    errorMessage = err.message ? `${err.name}: ${err.message}` : `Error: ${errorMessage}`;
+    status = typeof err.status !== "undefined" ? err.status : 500;
+  }
+  return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: { "content-type": "application/json" } });
+}
+
 function validateEnv(env: Env): void {
   if (!Value.Check(envSchema, env)) {
     const errors = [...Value.Errors(envSchema, env)];

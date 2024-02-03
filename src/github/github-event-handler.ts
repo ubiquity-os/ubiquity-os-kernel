@@ -1,6 +1,6 @@
 import { Webhooks } from "@octokit/webhooks";
-import { Context, SimplifiedContext } from "./context";
-import { customOctokit } from "./octokit";
+import { customOctokit } from "./github-client";
+import { GitHubContext, SimplifiedContext } from "./github-context";
 
 export type Options = {
   webhookSecret: string;
@@ -8,7 +8,7 @@ export type Options = {
   privateKey: string;
 };
 
-export class EventHandler {
+export class GitHubEventHandler {
   public webhooks: Webhooks<SimplifiedContext>;
   public on: Webhooks<SimplifiedContext>["on"];
   public onAny: Webhooks<SimplifiedContext>["onAny"];
@@ -38,7 +38,7 @@ export class EventHandler {
           },
         });
 
-        return new Context(event, octokit);
+        return new GitHubContext(event, octokit);
       },
     });
 

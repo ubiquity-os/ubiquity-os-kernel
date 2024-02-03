@@ -1,7 +1,7 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { customOctokit } from "./octokit";
+import { customOctokit } from "./github-client";
 
-export class Context<T extends WebhookEventName = WebhookEventName> {
+export class GitHubContext<T extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;
   public name: WebhookEventName;
   public id: string;
@@ -21,4 +21,4 @@ export class Context<T extends WebhookEventName = WebhookEventName> {
   }
 }
 
-export type SimplifiedContext = Omit<Context, keyof WebhookEventName>;
+export type SimplifiedContext = Omit<GitHubContext, keyof WebhookEventName>;
