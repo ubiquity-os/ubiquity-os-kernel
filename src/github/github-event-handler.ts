@@ -1,4 +1,4 @@
-import { Webhooks } from "@octokit/webhooks";
+import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 
@@ -25,21 +25,7 @@ export class GitHubEventHandler {
 
     this.webhooks = new Webhooks<SimplifiedContext>({
       secret: this._webhookSecret,
-      transform: (event) => {
-        let installationId: number | undefined = undefined;
-        if ("installation" in event.payload) {
-          installationId = event.payload.installation?.id;
-        }
-        const octokit = new customOctokit({
-          auth: {
-            appId: this._appId,
-            privateKey: this._privateKey,
-            installationId: installationId,
-          },
-        });
-
-        return new GitHubContext(event, octokit);
-      },
+      transform: this.transformEvent,
     });
 
     this.on = this.webhooks.on;
@@ -52,5 +38,21 @@ export class GitHubEventHandler {
     this.onError((error) => {
       console.error(error);
     });
+  }
+
+  transformEvent(event: EmitterWebhookEvent) {
+    let installationId: number | undefined = undefined;
+    if ("installation" in event.payload) {
+      installationId = event.payload.installation?.id;
+    }
+    const octokit = new customOctokit({
+      auth: {
+        appId: this._appId,
+        privateKey: this._privateKey,
+        installationId: installationId,
+      },
+    });
+
+    return new GitHubContext(event, octokit);
   }
 }

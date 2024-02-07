@@ -35,7 +35,8 @@
     "create-cloudflare": "^2.8.3",
     "octokit": "^3.1.2",
     "smee-client": "^2.0.0",
-    "universal-github-app-jwt": "^2.0.5"
+    "universal-github-app-jwt": "^2.0.5",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240117.0",
