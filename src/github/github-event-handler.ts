@@ -25,7 +25,7 @@ export class GitHubEventHandler {
 
     this.webhooks = new Webhooks<SimplifiedContext>({
       secret: this._webhookSecret,
-      transform: this.transformEvent,
+      transform: (event) => this.transformEvent(event), // it is important to use an arrow function here to keep the context of `this`
     });
 
     this.on = this.webhooks.on;
@@ -41,18 +41,32 @@ export class GitHubEventHandler {
   }
 
   transformEvent(event: EmitterWebhookEvent) {
-    let installationId: number | undefined = undefined;
-    if ("installation" in event.payload) {
-      installationId = event.payload.installation?.id;
+    console.log(this);
+    if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
+      const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
+      return new GitHubContext(this, event, octokit);
+    } else {
+      const octokit = this.getUnauthenticatedOctokit();
+      return new GitHubContext(this, event, octokit);
     }
-    const octokit = new customOctokit({
+  }
+
+  getAuthenticatedOctokit(installationId: number) {
+    return new customOctokit({
       auth: {
         appId: this._appId,
         privateKey: this._privateKey,
         installationId: installationId,
       },
     });
+  }
 
-    return new GitHubContext(event, octokit);
+  getUnauthenticatedOctokit() {
+    return new customOctokit({
+      auth: {
+        appId: this._appId,
+        privateKey: this._privateKey,
+      },
+    });
   }
 }

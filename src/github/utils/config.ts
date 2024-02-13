@@ -18,7 +18,7 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
   );
 
   try {
-    return Value.Decode(configSchema, _repoConfig);
+    return Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
     console.error("Error decoding config", error);
     return null;
