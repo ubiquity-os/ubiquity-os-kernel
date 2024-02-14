@@ -3,7 +3,7 @@ import { emitterEventNames, EmitterWebhookEventName as GitHubEventClassName } fr
 type Formatted<T extends string> = T extends `${infer Prefix}.${infer Rest}` ? `${Prefix}_${Formatted<Rest>}` : T;
 
 type GithubEventWebHookEvents = {
-  [K in Formatted<Uppercase<GitHubEventClassName>>]: Formatted<Lowercase<K>>;
+  [K in GitHubEventClassName as Formatted<Uppercase<K>>]: K;
 };
 
 type Prettify<T> = {
