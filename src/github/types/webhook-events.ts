@@ -17,6 +17,6 @@ type Prettify<T> = {
 export const githubWebhookEvents: Prettify<GithubEventWebHookEvents> = emitterEventNames.reduce((acc: GithubEventWebHookEvents, cur) => {
   const formatted = cur.replace(/\./g, "_");
   const upper = formatted.toUpperCase() as Formatted<Uppercase<GitHubEventClassName>>;
-  acc[upper] = formatted.toLowerCase() as Formatted<Extract<GitHubEventClassName, Uppercase<GitHubEventClassName>>>;
+  acc[upper] = cur as Extract<GitHubEventClassName, Uppercase<GitHubEventClassName>>;
   return acc;
 }, {} as GithubEventWebHookEvents);
