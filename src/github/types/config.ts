@@ -1,6 +1,6 @@
 import { Type as T } from "@sinclair/typebox";
 import { StaticDecode } from "@sinclair/typebox";
-import { GitHubEvent } from "./github-events";
+import { githubWebhookEvents } from "./webhook-events";
 
 enum Commands {
   Start = "start",
@@ -24,7 +24,7 @@ export const configSchema = T.Object({
   handlers: T.Object(
     {
       commands: T.Record(T.Enum(Commands), handlerSchema, { default: {} }),
-      events: T.Record(T.Enum(GitHubEvent), handlerSchema, { default: {} }),
+      events: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
     },
     { default: {} }
   ),
