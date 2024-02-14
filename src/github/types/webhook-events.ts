@@ -1,4 +1,4 @@
-import { emitterEventNames } from "@octokit/webhooks";
+import { emitterEventNames, EmitterWebhookEventName as GitHubEventClassName } from "@octokit/webhooks";
 
 type Formatted<T extends string> = T extends `${infer Prefix}.${infer Rest}` ? `${Prefix}_${Formatted<Rest>}` : T;
 
