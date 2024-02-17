@@ -1,14 +1,14 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { customOctokit } from "./github-client";
+import { augmentedOctokit } from "./github-client";
 
 export class GitHubContext<T extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;
   public name: WebhookEventName;
   public id: string;
   public payload: WebhookEvent<T>["payload"];
-  public octokit: InstanceType<typeof customOctokit>;
+  public octokit: InstanceType<typeof augmentedOctokit>;
 
-  constructor(event: WebhookEvent<T>, octokit: InstanceType<typeof customOctokit>) {
+  constructor(event: WebhookEvent<T>, octokit: InstanceType<typeof augmentedOctokit>) {
     this.name = event.name;
     this.id = event.id;
     this.payload = event.payload;

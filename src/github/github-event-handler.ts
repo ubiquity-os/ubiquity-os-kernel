@@ -1,5 +1,5 @@
 import { Webhooks } from "@octokit/webhooks";
-import { customOctokit } from "./github-client";
+import { augmentedOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 
 export type Options = {
@@ -12,7 +12,7 @@ export class GitHubEventHandler {
   public webhooks: Webhooks<SimplifiedContext>;
   public on: Webhooks<SimplifiedContext>["on"];
   public onAny: Webhooks<SimplifiedContext>["onAny"];
-  public onError: Webhooks<SimplifiedContext>["onError"];
+  // public onError: Webhooks<SimplifiedContext>["onError"];
 
   private _webhookSecret: string;
   private _privateKey: string;
@@ -30,7 +30,7 @@ export class GitHubEventHandler {
         if ("installation" in event.payload) {
           installationId = event.payload.installation?.id;
         }
-        const octokit = new customOctokit({
+        const octokit = new augmentedOctokit({
           auth: {
             appId: this._appId,
             privateKey: this._privateKey,
@@ -44,13 +44,6 @@ export class GitHubEventHandler {
 
     this.on = this.webhooks.on;
     this.onAny = this.webhooks.onAny;
-    this.onError = this.webhooks.onError;
-
-    this.onAny((event) => {
-      console.log(`Event ${event.name} received (id: ${event.id})`);
-    });
-    this.onError((error) => {
-      console.error(error);
-    });
+    // this.onError = this.webhooks.onError;
   }
 }

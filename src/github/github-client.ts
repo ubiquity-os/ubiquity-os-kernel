@@ -1,10 +1,10 @@
+import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/core";
-import { RequestOptions } from "@octokit/types";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
 import { legacyRestEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
-import { createAppAuth } from "@octokit/auth-app";
+import { RequestOptions } from "@octokit/types";
 
 const defaultOptions = {
   authStrategy: createAppAuth,
@@ -46,6 +46,6 @@ function requestLogging(octokit: Octokit) {
   });
 }
 
-export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, legacyRestEndpointMethods, requestLogging).defaults((instanceOptions: object) => {
+export const augmentedOctokit = Octokit.plugin(throttling, retry, paginateRest, legacyRestEndpointMethods, requestLogging).defaults((instanceOptions: object) => {
   return Object.assign({}, defaultOptions, instanceOptions);
 });
