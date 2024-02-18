@@ -77,7 +77,7 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
       eventName: this.eventName,
       event: JSON.stringify(this.event),
       settings: JSON.stringify(this.settings),
-      authToken: this.authToken.toString(),
+      authToken: this.authToken,
     };
   }
 }
