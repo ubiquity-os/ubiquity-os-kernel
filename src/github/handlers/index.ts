@@ -1,4 +1,4 @@
-import { EmitterWebhookEvent } from "@octokit/webhooks";
+import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
 import { issueCommentCreated } from "./issue-comment/created";
@@ -41,15 +41,42 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   for (const { workflow, settings } of handler) {
     console.log(`Calling handler for event ${event.name} and workflow ${workflow}`);
 
+    let installationId: string | undefined = undefined;
+    if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
+      installationId = event.payload.installation.id.toString();
+    }
+
+    const inputs = new DelegatedComputeInputs(context.key, event, settings, installationId);
+
     await dispatchWorkflow(context, {
       owner: workflow.owner,
       repository: workflow.repository,
       workflowId: workflow.workflowId,
       ref: workflow.branch,
-      inputs: {
-        event: JSON.stringify(event),
-        settings: JSON.stringify(settings),
-      },
+      inputs: inputs.getInputs(),
     });
+  }
+}
+
+class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
+  public eventName: T;
+  public event: EmitterWebhookEvent<T>;
+  public settings: unknown;
+  public installationId?: string;
+
+  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, installationId?: string) {
+    this.eventName = eventName;
+    this.event = event;
+    this.settings = settings;
+    this.installationId = installationId;
+  }
+
+  public getInputs() {
+    return {
+      eventName: this.eventName,
+      event: JSON.stringify(this.event),
+      settings: JSON.stringify(this.settings),
+      installationId: this.installationId ?? "",
+    };
   }
 }
