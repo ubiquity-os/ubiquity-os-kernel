@@ -31,6 +31,11 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
+  if (!("installation" in event.payload) || event.payload.installation?.id === undefined) {
+    console.log("No installation found");
+    return;
+  }
+
   const handler = config.handlers.events[context.key];
 
   if (handler.length === 0) {
@@ -41,12 +46,8 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   for (const { workflow, settings } of handler) {
     console.log(`Calling handler for event ${event.name} and workflow ${workflow}`);
 
-    let installationId: string | undefined = undefined;
-    if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
-      installationId = event.payload.installation.id.toString();
-    }
-
-    const inputs = new DelegatedComputeInputs(context.key, event, settings, installationId);
+    const token = await eventHandler.getToken(event.payload.installation.id);
+    const inputs = new DelegatedComputeInputs(context.key, event, settings, token);
 
     await dispatchWorkflow(context, {
       owner: workflow.owner,
@@ -62,13 +63,13 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
   public eventName: T;
   public event: EmitterWebhookEvent<T>;
   public settings: unknown;
-  public installationId?: string;
+  public authToken: string;
 
-  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, installationId?: string) {
+  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string) {
     this.eventName = eventName;
     this.event = event;
     this.settings = settings;
-    this.installationId = installationId;
+    this.authToken = authToken;
   }
 
   public getInputs() {
@@ -76,7 +77,7 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
       eventName: this.eventName,
       event: JSON.stringify(this.event),
       settings: JSON.stringify(this.settings),
-      installationId: this.installationId ?? "",
+      authToken: this.authToken.toString(),
     };
   }
 }

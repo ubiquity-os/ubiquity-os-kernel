@@ -1,6 +1,7 @@
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
+import { createAppAuth } from "@octokit/auth-app";
 
 export type Options = {
   webhookSecret: string;
@@ -67,5 +68,14 @@ export class GitHubEventHandler {
         privateKey: this._privateKey,
       },
     });
+  }
+
+  async getToken(installationId: number) {
+    const auth = createAppAuth({
+      appId: this._appId,
+      privateKey: this._privateKey,
+    });
+    const token = await auth({ type: "installation", installationId });
+    return token.token;
   }
 }
