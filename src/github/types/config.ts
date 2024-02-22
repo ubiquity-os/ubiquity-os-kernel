@@ -13,7 +13,7 @@ const handlerSchema = T.Array(
       owner: T.String(),
       repository: T.String(),
       workflowId: T.String(),
-      branch: T.Optional(T.String()),
+      ref: T.Optional(T.String()),
     }),
     settings: T.Optional(T.Unknown()),
   }),

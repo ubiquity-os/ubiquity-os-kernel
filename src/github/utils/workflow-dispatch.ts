@@ -32,7 +32,7 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
   });
 }
 
-async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {
+export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {
   const repo = await context.octokit.repos.get({
     owner: owner,
     repo: repository,

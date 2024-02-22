@@ -3,7 +3,7 @@ import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
 import { issueCommentCreated } from "./issue-comment/created";
 import { repositoryDispatch } from "./repository-dispatch";
-import { dispatchWorkflow } from "../utils/workflow-dispatch";
+import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -46,14 +46,15 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   for (const { workflow, settings } of handler) {
     console.log(`Calling handler for event ${event.name} and workflow ${workflow}`);
 
+    const ref = workflow.ref ?? (await getDefaultBranch(context, workflow.owner, workflow.repository));
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new DelegatedComputeInputs(context.key, event, settings, token);
+    const inputs = new DelegatedComputeInputs(context.key, event, settings, token, ref);
 
     await dispatchWorkflow(context, {
       owner: workflow.owner,
       repository: workflow.repository,
       workflowId: workflow.workflowId,
-      ref: workflow.branch,
+      ref: workflow.ref,
       inputs: inputs.getInputs(),
     });
   }
@@ -64,12 +65,14 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
   public event: EmitterWebhookEvent<T>;
   public settings: unknown;
   public authToken: string;
+  public ref: string;
 
-  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string) {
+  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string, ref: string) {
     this.eventName = eventName;
     this.event = event;
     this.settings = settings;
     this.authToken = authToken;
+    this.ref = ref;
   }
 
   public getInputs() {
@@ -78,6 +81,7 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
       event: JSON.stringify(this.event),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
+      ref: this.ref,
     };
   }
 }
