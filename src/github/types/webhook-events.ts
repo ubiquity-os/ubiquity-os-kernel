@@ -1,9 +1,11 @@
 import { emitterEventNames, EmitterWebhookEventName as GitHubEventClassName } from "@octokit/webhooks";
 
+type EventName = GitHubEventClassName | "*";
+
 type Formatted<T extends string> = T extends `${infer Prefix}.${infer Rest}` ? `${Prefix}_${Formatted<Rest>}` : T;
 
 type GithubEventWebHookEvents = {
-  [K in GitHubEventClassName as Formatted<Uppercase<K>>]: K;
+  [K in EventName as Formatted<Uppercase<K>>]: K;
 };
 
 type Prettify<T> = {
@@ -14,9 +16,12 @@ type Prettify<T> = {
   // eslint-disable-next-line @typescript-eslint/ban-types
 } & {};
 
-export const githubWebhookEvents: Prettify<GithubEventWebHookEvents> = emitterEventNames.reduce((acc: GithubEventWebHookEvents, cur) => {
-  const formatted = cur.replace(/\./g, "_");
-  const upper = formatted.toUpperCase() as Formatted<Uppercase<GitHubEventClassName>>;
-  acc[upper] = cur as Extract<GitHubEventClassName, Uppercase<GitHubEventClassName>>;
-  return acc;
-}, {} as GithubEventWebHookEvents);
+export const githubWebhookEvents: Prettify<GithubEventWebHookEvents> = emitterEventNames.reduce(
+  (acc: GithubEventWebHookEvents, cur) => {
+    const formatted = cur.replace(/\./g, "_");
+    const upper = formatted.toUpperCase() as Formatted<Uppercase<GitHubEventClassName>>;
+    acc[upper] = cur as Extract<GitHubEventClassName, Uppercase<GitHubEventClassName>>;
+    return acc;
+  },
+  { "*": "*" } as GithubEventWebHookEvents
+);

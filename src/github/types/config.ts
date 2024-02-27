@@ -2,32 +2,58 @@ import { Type as T } from "@sinclair/typebox";
 import { StaticDecode } from "@sinclair/typebox";
 import { githubWebhookEvents } from "./webhook-events";
 
-enum Commands {
-  Start = "start",
-  Stop = "stop",
+const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z]+))?$");
+
+type GithubPlugin = {
+  owner: string;
+  repo: string;
+  workflowId: string;
+  ref?: string;
+};
+
+function githubPluginType() {
+  return T.Transform(T.String())
+    .Decode((value) => {
+      const matches = value.match(pluginNameRegex);
+      if (!matches) {
+        throw new Error(`Invalid plugin name: ${value}`);
+      }
+      return {
+        owner: matches[1],
+        repo: matches[2],
+        workflowId: matches[3] || "compute.yml",
+        ref: matches[4] || undefined,
+      } as GithubPlugin;
+    })
+    .Encode((value) => {
+      return `${value.owner}/${value.repo}${value.workflowId ? ":" + value.workflowId : ""}${value.ref ? "@" + value.ref : ""}`;
+    });
 }
+
+const pluginChainSchema = T.Array(
+  T.Object({
+    plugin: githubPluginType(),
+    type: T.Union([T.Literal("github")], { default: "github" }),
+    with: T.Optional(T.Unknown()),
+  }),
+  { minItems: 1 }
+);
+
+export type PluginChain = StaticDecode<typeof pluginChainSchema>;
 
 const handlerSchema = T.Array(
   T.Object({
-    workflow: T.Object({
-      owner: T.String(),
-      repository: T.String(),
-      workflowId: T.String(),
-      ref: T.Optional(T.String()),
-    }),
-    settings: T.Optional(T.Unknown()),
+    name: T.Optional(T.String()),
+    description: T.Optional(T.String()),
+    command: T.Optional(T.String()),
+    example: T.Optional(T.String()),
+    uses: pluginChainSchema,
   }),
   { default: [] }
 );
 
 export const configSchema = T.Object({
-  handlers: T.Object(
-    {
-      commands: T.Record(T.Enum(Commands), handlerSchema, { default: {} }),
-      events: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
-    },
-    { default: {} }
-  ),
+  plugins: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
 });
 
 export type Config = StaticDecode<typeof configSchema>;

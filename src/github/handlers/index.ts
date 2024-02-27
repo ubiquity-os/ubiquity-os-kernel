@@ -36,38 +36,48 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const handler = config.handlers.events[context.key];
+  const pluginChains = config.plugins[context.key];
 
-  if (handler.length === 0) {
+  if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name}`);
     return;
   }
 
-  for (const { workflow, settings } of handler) {
-    console.log(`Calling handler for event ${event.name} and workflow ${workflow}`);
+  for (const pluginChain of pluginChains) {
+    // invoke the first plugin in the chain
+    const { plugin, with: settings } = pluginChain.uses[0];
+    console.log(`Calling handler for event ${event.name}`);
 
-    const ref = workflow.ref ?? (await getDefaultBranch(context, workflow.owner, workflow.repository));
+    const id = crypto.randomUUID();
+    await eventHandler.pluginChainState.put(id, {
+      currentPlugin: 0,
+      pluginChain: pluginChain.uses,
+    });
+
+    const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new DelegatedComputeInputs(context.key, event, settings, token, ref);
+    const inputs = new DelegatedComputeInputs(id, context.key, event, settings, token, ref);
 
     await dispatchWorkflow(context, {
-      owner: workflow.owner,
-      repository: workflow.repository,
-      workflowId: workflow.workflowId,
-      ref: workflow.ref,
+      owner: plugin.owner,
+      repository: plugin.repo,
+      workflowId: plugin.workflowId,
+      ref: plugin.ref,
       inputs: inputs.getInputs(),
     });
   }
 }
 
 class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
+  public id: string;
   public eventName: T;
   public event: EmitterWebhookEvent<T>;
   public settings: unknown;
   public authToken: string;
   public ref: string;
 
-  constructor(eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string, ref: string) {
+  constructor(id: string, eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string, ref: string) {
+    this.id = id;
     this.eventName = eventName;
     this.event = event;
     this.settings = settings;
@@ -77,6 +87,7 @@ class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookE
 
   public getInputs() {
     return {
+      id: this.id,
       eventName: this.eventName,
       event: JSON.stringify(this.event),
       settings: JSON.stringify(this.settings),

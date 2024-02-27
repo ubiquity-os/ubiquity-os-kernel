@@ -3,6 +3,8 @@ import { Value } from "@sinclair/typebox/value";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
+import { CloudflareKV } from "./github/utils/cloudflare-kv";
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
@@ -10,7 +12,12 @@ export default {
       const eventName = getEventName(request);
       const signatureSHA256 = getSignature(request);
       const id = getId(request);
-      const eventHandler = new GitHubEventHandler({ webhookSecret: env.WEBHOOK_SECRET, appId: env.APP_ID, privateKey: env.PRIVATE_KEY });
+      const eventHandler = new GitHubEventHandler({
+        webhookSecret: env.WEBHOOK_SECRET,
+        appId: env.APP_ID,
+        privateKey: env.PRIVATE_KEY,
+        pluginChainState: new CloudflareKV(env.PLUGIN_CHAIN_STATE),
+      });
       bindHandlers(eventHandler);
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSHA256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
@@ -19,6 +26,7 @@ export default {
     }
   },
 };
+
 function handleUncaughtError(error: unknown) {
   console.error(error);
   let status = 500;
@@ -38,6 +46,7 @@ function validateEnv(env: Env): void {
     throw new Error("Invalid environment variables");
   }
 }
+
 function getEventName(request: Request): WebhookEventName {
   const eventName = request.headers.get("x-github-event");
   if (!eventName || !emitterEventNames.includes(eventName as WebhookEventName)) {
@@ -45,6 +54,7 @@ function getEventName(request: Request): WebhookEventName {
   }
   return eventName as WebhookEventName;
 }
+
 function getSignature(request: Request): string {
   const signatureSHA256 = request.headers.get("x-hub-signature-256");
   if (!signatureSHA256) {
@@ -52,6 +62,7 @@ function getSignature(request: Request): string {
   }
   return signatureSHA256;
 }
+
 function getId(request: Request): string {
   const id = request.headers.get("x-github-delivery");
   if (!id) {
