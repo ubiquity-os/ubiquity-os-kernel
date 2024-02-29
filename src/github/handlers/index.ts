@@ -1,9 +1,10 @@
-import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
+import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
 import { issueCommentCreated } from "./issue-comment/created";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { DelegatedComputeInputs } from "../types/plugin";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -36,7 +37,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = config.plugins[context.key];
+  const pluginChains = config.plugins[context.key].concat(config.plugins["*"]);
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name}`);
@@ -48,15 +49,24 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const { plugin, with: settings } = pluginChain.uses[0];
     console.log(`Calling handler for event ${event.name}`);
 
-    const id = crypto.randomUUID();
-    await eventHandler.pluginChainState.put(id, {
+    const stateId = crypto.randomUUID();
+
+    const state = {
+      eventId: context.id,
+      eventName: context.key,
+      event: event,
       currentPlugin: 0,
       pluginChain: pluginChain.uses,
-    });
+      outputs: new Array(pluginChain.uses.length),
+      inputs: new Array(pluginChain.uses.length),
+    };
 
     const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new DelegatedComputeInputs(id, context.key, event, settings, token, ref);
+    const inputs = new DelegatedComputeInputs(stateId, context.key, event, settings, token, ref);
+
+    state.inputs[0] = inputs;
+    await eventHandler.pluginChainState.put(stateId, state);
 
     await dispatchWorkflow(context, {
       owner: plugin.owner,
@@ -65,34 +75,5 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       ref: plugin.ref,
       inputs: inputs.getInputs(),
     });
-  }
-}
-
-class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
-  public id: string;
-  public eventName: T;
-  public event: EmitterWebhookEvent<T>;
-  public settings: unknown;
-  public authToken: string;
-  public ref: string;
-
-  constructor(id: string, eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string, ref: string) {
-    this.id = id;
-    this.eventName = eventName;
-    this.event = event;
-    this.settings = settings;
-    this.authToken = authToken;
-    this.ref = ref;
-  }
-
-  public getInputs() {
-    return {
-      id: this.id,
-      eventName: this.eventName,
-      event: JSON.stringify(this.event),
-      settings: JSON.stringify(this.settings),
-      authToken: this.authToken,
-      ref: this.ref,
-    };
   }
 }

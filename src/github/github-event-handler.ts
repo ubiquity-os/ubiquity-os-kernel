@@ -3,7 +3,7 @@ import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 import { createAppAuth } from "@octokit/auth-app";
 import { CloudflareKV } from "./utils/cloudflare-kv";
-import { PluginChainState } from "./types/plugin-state-chain";
+import { PluginChainState } from "./types/plugin";
 
 export type Options = {
   webhookSecret: string;
