@@ -57,10 +57,10 @@ Organization permissions:
 
 4. To create a KV namespace run `npx wrangler kv:namespace create PLUGIN_CHAIN_STATE`. Copy the ID to `wrangler.toml` under `[env.dev]`.
 
-5. You can add (env) secrets using `npx wrangler secret put <KEY>`. To add private key run: (replace YOUR_PRIVATE_KEY.PEM with the path to your actual PEM file)
+5. You can add (env) secrets using `npx wrangler secret put <KEY> --env dev`. To add private key run: (replace YOUR_PRIVATE_KEY.PEM with the path to your actual PEM file)
 
 ```sh
-echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM) | npx wrangler secret put PRIVATE_KEY
+echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM) | npx wrangler secret put PRIVATE_KEY --env dev
 ```
 
 6. To deploy the kernel run `bun run deploy-dev`.
