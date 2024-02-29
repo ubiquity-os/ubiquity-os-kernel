@@ -4,8 +4,11 @@ compatibility_date = "2023-12-06"
 
 [env.dev]
 kv_namespaces = [
-    { binding = "PLUGIN_CHAIN_STATE", id = "a50ef0a143e449c087b6be613a84e5ba" },
+    { binding = "PLUGIN_CHAIN_STATE", id = "4f7aadc56bef41a7ae2cc8c0582320b3" },
 ]
+
+[env.production]
+kv_namespaces = [{ binding = "PLUGIN_CHAIN_STATE", id = "TO_BE_FILLED" }]
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.

@@ -30,6 +30,37 @@ The kernel is designed to:
 ```bash
 git clone https://github.com/ubiquity/ubiquibot-kernel
 cd ubiquibot-kernel
-bun
+bun install
 bun dev
 ```
+
+### Deploying to Cloudflare Workers
+
+1. Install dependencies using `bun install`.
+
+2. Create a Github App. Under app settings click `Permissions & events` and make sure the app is subscribed to all events and have these permissions:
+
+```md
+Repository permissions:
+
+- Actions: Read & Write
+- Contents: Read & Write
+- Issues: Read & Write
+- Pull Requests: Read & Write
+
+Organization permissions:
+
+- Members: Read only
+```
+
+3. Create a Cloudflare account if you don't have one and run `npx wrangler login`.
+
+4. To create a KV namespace run `npx wrangler kv:namespace create PLUGIN_CHAIN_STATE`. Copy the ID to `wrangler.toml` under `[env.dev]`.
+
+5. You can add (env) secrets using `npx wrangler secret put <KEY>`. To add private key run: (replace YOUR_PRIVATE_KEY.PEM with the path to your actual PEM file)
+
+```sh
+echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM) | npx wrangler secret put PRIVATE_KEY
+```
+
+6. To deploy the kernel run `bun run deploy-dev`.
