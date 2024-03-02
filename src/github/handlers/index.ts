@@ -19,7 +19,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("issue_comment.created", issueCommentCreated);
   eventHandler.on("repository_dispatch", repositoryDispatch);
-  eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler)));
+  eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
@@ -54,7 +54,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const state = {
       eventId: context.id,
       eventName: context.key,
-      event: event,
+      eventPayload: event.payload,
       currentPlugin: 0,
       pluginChain: pluginChain.uses,
       outputs: new Array(pluginChain.uses.length),
@@ -63,7 +63,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new DelegatedComputeInputs(stateId, context.key, event, settings, token, ref);
+    const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, ref);
 
     state.inputs[0] = inputs;
     await eventHandler.pluginChainState.put(stateId, state);

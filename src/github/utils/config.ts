@@ -2,6 +2,8 @@ import { Value } from "@sinclair/typebox/value";
 import { GitHubContext } from "../github-context";
 import YAML from "yaml";
 import { Config, configSchema } from "../types/config";
+import { expressionRegex } from "../types/plugin";
+import { eventNames } from "../types/webhook-events";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/ubiquibot-config.yml";
 
@@ -16,12 +18,65 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
       owner: payload.repository.owner.login,
     })
   );
+  if (!_repoConfig) return null;
 
+  let config: Config;
   try {
-    return Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
+    config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
     console.error("Error decoding config", error);
     return null;
+  }
+
+  checkPluginChains(config);
+
+  return config;
+}
+
+// eslint-disable-next-line sonarjs/cognitive-complexity
+function checkPluginChains(config: Config) {
+  for (const eventName of eventNames) {
+    const plugins = config.plugins[eventName];
+    for (const plugin of plugins) {
+      // make sure ids are unique
+      const allIds = new Set();
+      for (const use of plugin.uses) {
+        if (use.id) {
+          if (allIds.has(use.id)) {
+            throw new Error(`Duplicate id ${use.id} in plugin chain`);
+          }
+          allIds.add(use.id);
+        }
+      }
+      // check expressions
+      const calledIds = new Set();
+      for (const use of plugin.uses) {
+        for (const key in use.with) {
+          const value = use.with[key];
+          if (typeof value === "string" && value.match(expressionRegex)) {
+            const matches = value.match(expressionRegex);
+            if (!matches) {
+              throw new Error(`Invalid expression: ${value}`);
+            }
+            const parts = matches[1].split(".");
+            if (parts.length !== 3) {
+              throw new Error(`Invalid expression: ${value}`);
+            }
+            const id = parts[0];
+            if (!allIds.has(id)) {
+              throw new Error(`Expression ${value} refers to non-existent id ${id}`);
+            }
+            if (!calledIds.has(id)) {
+              throw new Error(`Expression ${value} refers to plugin id ${id} before it is called`);
+            }
+            if (parts[1] !== "output") {
+              throw new Error(`Invalid expression: ${value}`);
+            }
+          }
+        }
+        calledIds.add(use.id);
+      }
+    }
   }
 }
 

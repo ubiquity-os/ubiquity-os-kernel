@@ -2,14 +2,16 @@ import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks"
 import { PluginChain } from "./config";
 import { StaticDecode, Type } from "@sinclair/typebox";
 
+export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
+
 function jsonString() {
   return Type.Transform(Type.String())
-    .Decode((value) => JSON.parse(value) as unknown)
+    .Decode((value) => JSON.parse(value) as Record<string, unknown>)
     .Encode((value) => JSON.stringify(value));
 }
 
 export const pluginOutputSchema = Type.Object({
-  stateId: Type.String(),
+  state_id: Type.String(), // Github forces snake_case
   output: jsonString(),
 });
 
@@ -18,15 +20,15 @@ export type PluginOutput = StaticDecode<typeof pluginOutputSchema>;
 export class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
   public stateId: string;
   public eventName: T;
-  public event: EmitterWebhookEvent<T>;
+  public eventPayload: EmitterWebhookEvent<T>["payload"];
   public settings: unknown;
   public authToken: string;
   public ref: string;
 
-  constructor(stateId: string, eventName: T, event: EmitterWebhookEvent<T>, settings: unknown, authToken: string, ref: string) {
+  constructor(stateId: string, eventName: T, eventPayload: EmitterWebhookEvent<T>["payload"], settings: unknown, authToken: string, ref: string) {
     this.stateId = stateId;
     this.eventName = eventName;
-    this.event = event;
+    this.eventPayload = eventPayload;
     this.settings = settings;
     this.authToken = authToken;
     this.ref = ref;
@@ -36,7 +38,7 @@ export class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterW
     return {
       stateId: this.stateId,
       eventName: this.eventName,
-      event: JSON.stringify(this.event),
+      eventPayload: JSON.stringify(this.eventPayload),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
       ref: this.ref,
@@ -47,7 +49,7 @@ export class DelegatedComputeInputs<T extends EmitterWebhookEventName = EmitterW
 export type PluginChainState<T extends EmitterWebhookEventName = EmitterWebhookEventName> = {
   eventId: string;
   eventName: T;
-  event: EmitterWebhookEvent<T>;
+  eventPayload: EmitterWebhookEvent<T>["payload"];
   currentPlugin: number;
   pluginChain: PluginChain;
   inputs: DelegatedComputeInputs[];

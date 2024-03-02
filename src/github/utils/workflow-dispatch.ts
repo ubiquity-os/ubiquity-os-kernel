@@ -33,7 +33,8 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
 }
 
 export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {
-  const repo = await context.octokit.repos.get({
+  const octokit = await getInstallationOctokitForOrg(context, owner); // we cannot access other repos with the context's octokit
+  const repo = await octokit.repos.get({
     owner: owner,
     repo: repository,
   });

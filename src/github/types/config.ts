@@ -2,7 +2,7 @@ import { Type as T } from "@sinclair/typebox";
 import { StaticDecode } from "@sinclair/typebox";
 import { githubWebhookEvents } from "./webhook-events";
 
-const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z]+))?$");
+const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+))?$");
 
 type GithubPlugin = {
   owner: string;
@@ -32,9 +32,10 @@ function githubPluginType() {
 
 const pluginChainSchema = T.Array(
   T.Object({
+    id: T.Optional(T.String()),
     plugin: githubPluginType(),
     type: T.Union([T.Literal("github")], { default: "github" }),
-    with: T.Optional(T.Unknown()),
+    with: T.Record(T.String(), T.Unknown()),
   }),
   { minItems: 1 }
 );
