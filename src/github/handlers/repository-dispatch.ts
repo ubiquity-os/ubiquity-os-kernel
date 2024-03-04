@@ -49,8 +49,9 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   }
   console.log("Dispatching next plugin", nextPlugin);
 
+  const defaultBranch = await getDefaultBranch(context, nextPlugin.plugin.owner, nextPlugin.plugin.repo);
   const token = await context.eventHandler.getToken(state.eventPayload.installation.id);
-  const ref = nextPlugin.plugin.ref ?? (await getDefaultBranch(context, nextPlugin.plugin.owner, nextPlugin.plugin.repo));
+  const ref = nextPlugin.plugin.ref ?? defaultBranch;
   const settings = findAndReplaceExpressions(nextPlugin, state);
   const inputs = new DelegatedComputeInputs(pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
 
