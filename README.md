@@ -1,3 +1,4 @@
+
 # @ubiquity/ubiquibot-kernel
 
 The kernel is designed to:
@@ -24,6 +25,7 @@ The kernel is designed to:
 
 - **`WEBHOOK_PROXY_URL` (only for development)**
   Obtain a webhook URL at [smee.io](https://smee.io/) and set it in your GitHub App settings.
+
 
 ### Quick Start
 
@@ -92,3 +94,13 @@ The `event_type` must be set to `return_data_to_ubiquibot_kernel`.
 
 - `state_id`: The state ID passed in the inputs must be included here.
 - `output`: A string containing JSON with custom output, defined by the plugin itself.
+
+## Testing
+
+### Jest
+
+To start Jest tests, run
+
+```shell
+bun test
+```

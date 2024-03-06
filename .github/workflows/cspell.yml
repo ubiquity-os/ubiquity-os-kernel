@@ -17,11 +17,8 @@ jobs:
         with:
           node-version: "20.10.0"
 
-      - name: Install bun
-        run: npm i -g bun
-
-      - name: Install cspell
-        run: bun add cspell
+      - name: Install bun & CSpell
+        run: npm i -g bun cspell
 
       - name: Run cspell
         run: bun format:cspell
