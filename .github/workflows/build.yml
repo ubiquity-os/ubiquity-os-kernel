@@ -26,7 +26,7 @@ jobs:
       - name: Build
         run: |
           npm i -g bun
-          bun
+          bun install
           bun build src/worker.ts
         # env: # Set environment variables for the build
           # SUPABASE_URL: "https://wfzpewmlyiozupulbuur.supabase.co"
