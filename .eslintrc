@@ -15,7 +15,7 @@
     "constructor-super": "error",
     "no-invalid-this": "off",
     "@typescript-eslint/no-invalid-this": ["error"],
-    "no-restricted-syntax": ["error", "ForInStatement"],
+    "no-restricted-syntax": ["error"],
     "use-isnan": "error",
     "@typescript-eslint/no-unused-vars": [
       "error",
