@@ -19,7 +19,9 @@ jobs:
           node-version: 20.10.0
 
       - name: Install toolchain
-        run: yarn install
+        run: |
+          npm i -g bun
+          bun install
 
       - name: Report knip results to pull request
         uses: Codex-/knip-reporter@v2

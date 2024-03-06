@@ -20,6 +20,7 @@ jobs:
           fetch-depth: 0
       - name: Build & Run test suite
         run: |
+          npm i -g bun
           bun
           bun test | tee ./coverage.txt && exit ${PIPESTATUS[0]}
       - name: Jest Coverage Comment
