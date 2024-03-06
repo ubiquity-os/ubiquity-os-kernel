@@ -45,6 +45,9 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   }
 
   for (const pluginChain of pluginChains) {
+    if (pluginChain.skipBotEvents && "sender" in event.payload && event.payload.sender?.type === "Bot") {
+      continue;
+    }
     // invoke the first plugin in the chain
     const { plugin, with: settings } = pluginChain.uses[0];
     console.log(`Calling handler for event ${event.name}`);

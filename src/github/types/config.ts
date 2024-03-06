@@ -49,6 +49,7 @@ const handlerSchema = T.Array(
     command: T.Optional(T.String()),
     example: T.Optional(T.String()),
     uses: pluginChainSchema,
+    skipBotEvents: T.Boolean({ default: true }),
   }),
   { default: [] }
 );
