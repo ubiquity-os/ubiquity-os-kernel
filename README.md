@@ -43,5 +43,5 @@ bun dev
 To start Jest tests, run
 
 ```shell
-yarn test
+bun test
 ```

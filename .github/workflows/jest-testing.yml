@@ -20,8 +20,8 @@ jobs:
           fetch-depth: 0
       - name: Build & Run test suite
         run: |
-          yarn
-          yarn test | tee ./coverage.txt && exit ${PIPESTATUS[0]}
+          bun
+          bun test | tee ./coverage.txt && exit ${PIPESTATUS[0]}
       - name: Jest Coverage Comment
         # Ensures this step is run even on previous step failure (e.g. test failed)
         if: always()
