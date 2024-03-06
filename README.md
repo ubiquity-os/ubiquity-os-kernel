@@ -1,3 +1,4 @@
+
 # @ubiquity/ubiquibot-kernel
 
 The kernel is designed to:
@@ -25,6 +26,7 @@ The kernel is designed to:
 - `WEBHOOK_PROXY_URL` (only for development)
   You need to obtain a webhook URL at <https://smee.io/> and set it in the GitHub App settings.
 
+
 ### Quick Start
 
 ```bash
@@ -32,4 +34,26 @@ git clone https://github.com/ubiquity/ubiquibot-kernel
 cd ubiquibot-kernel
 bun
 bun dev
+```
+
+## Testing
+
+### Cypress
+To test with Cypress Studio UI, run
+
+```shell
+yarn cy:open
+```
+Otherwise to simply run the tests through the console, run
+
+```shell
+yarn cy:run
+```
+
+### Jest
+
+To start Jest tests, run
+
+```shell
+yarn test
 ```
