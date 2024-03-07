@@ -1,6 +1,5 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
-jest.mock("@octokit/webhooks", () => ({
-  ...(jest.requireActual("@octokit/webhooks") as object),
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
+mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
@@ -41,13 +40,12 @@ afterEach(() => {
 });
 afterAll(() => {
   server.close();
-  jest.restoreAllMocks();
 });
 
 describe("Worker tests", () => {
   it("Should fail on missing env variables", async () => {
     const req = new Request("http://localhost:8080");
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
+    const consoleSpy = spyOn(console, "error").mockImplementation(() => jest.fn());
     const res = await worker.fetch(req, {
       WEBHOOK_SECRET: "",
       APP_ID: "",

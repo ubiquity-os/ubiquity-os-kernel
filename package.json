@@ -19,8 +19,7 @@
     "prepare": "husky install",
     "deploy": "wrangler deploy",
     "worker": "wrangler dev --port 8787",
-    "proxy": "tsx src/proxy.ts",
-    "test": "jest --setupFiles dotenv/config --coverage"
+    "proxy": "tsx src/proxy.ts"
   },
   "keywords": [
     "typescript",
@@ -46,6 +45,7 @@
     "@cspell/dict-software-terms": "^3.3.17",
     "@cspell/dict-typescript": "^3.1.2",
     "@mswjs/data": "0.16.1",
+    "@types/bun": "1.0.8",
     "@types/jest": "29.5.12",
     "@typescript-eslint/eslint-plugin": "^6.13.1",
     "@typescript-eslint/parser": "^6.13.1",
@@ -82,5 +82,6 @@
     "extends": [
       "@commitlint/config-conventional"
     ]
-  }
+  },
+  "packageManager": "bun@1.0.23"
 }
