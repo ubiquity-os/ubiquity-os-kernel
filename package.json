@@ -22,8 +22,7 @@
     "worker": "wrangler dev --env dev --port 8787",
     "proxy": "tsx src/proxy.ts",
     "knip": "knip --config .github/knip.ts",
-    "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
-    "test": "jest --setupFiles dotenv/config --coverage"
+    "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts"
   },
   "keywords": [
     "typescript",
@@ -50,7 +49,6 @@
     "@cspell/dict-software-terms": "^3.3.18",
     "@cspell/dict-typescript": "^3.1.2",
     "@mswjs/data": "0.16.1",
-    "@types/jest": "29.5.12",
     "@types/node": "^20.11.19",
     "@typescript-eslint/eslint-plugin": "^7.0.1",
     "@typescript-eslint/parser": "^7.0.1",
@@ -65,7 +63,6 @@
     "lint-staged": "^15.2.2",
     "npm-run-all": "^4.1.5",
     "prettier": "^3.2.5",
-    "ts-node": "10.9.2",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
     "wrangler": "^3.23.0"
