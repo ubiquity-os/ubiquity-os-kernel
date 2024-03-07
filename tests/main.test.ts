@@ -50,6 +50,7 @@ describe("Worker tests", () => {
       WEBHOOK_SECRET: "",
       APP_ID: "",
       PRIVATE_KEY: "",
+      PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(500);
     consoleSpy.mockReset();
@@ -67,6 +68,7 @@ describe("Worker tests", () => {
       WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
       APP_ID: process.env.APP_ID,
       PRIVATE_KEY: process.env.PRIVATE_KEY,
+      PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(200);
   });
