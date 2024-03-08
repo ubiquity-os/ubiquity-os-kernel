@@ -11,7 +11,7 @@ function jsonString() {
 }
 
 export const pluginOutputSchema = Type.Object({
-  state_id: Type.String(), // Github forces snake_case
+  state_id: Type.String(), // GitHub forces snake_case
   output: jsonString(),
 });
 
@@ -55,18 +55,3 @@ export type PluginChainState<T extends EmitterWebhookEventName = EmitterWebhookE
   inputs: DelegatedComputeInputs[];
   outputs: PluginOutput[];
 };
-
-// convert top level properties to string
-export function convertToString(obj: Record<string, unknown>): Record<string, string> {
-  const newObj: Record<string, string> = {};
-  for (let i = 0; i < Object.keys(obj).length; i++) {
-    const key = Object.keys(obj)[i];
-    const val = obj[key];
-    if (typeof val === "string") {
-      newObj[key] = val;
-    } else {
-      newObj[key] = JSON.stringify(val);
-    }
-  }
-  return newObj;
-}
