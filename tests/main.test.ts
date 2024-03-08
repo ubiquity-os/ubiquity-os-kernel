@@ -1,28 +1,22 @@
+/* eslint-disable @typescript-eslint/naming-convention */
+
+// @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
 mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
 class WebhooksMocked {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   constructor(_: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   verifyAndReceive(_: unknown) {
     return Promise.resolve();
   }
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   onAny(_: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   on(_: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   onError(_: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   removeListener(_: unknown, __: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   sign(_: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   verify(_: unknown, __: unknown) {}
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   receive(_: unknown) {}
 }
 
