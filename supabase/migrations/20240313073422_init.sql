@@ -2,47 +2,47 @@ create extension if not exists "pg_cron" with schema "public" version '1.4-1';
 
 create type "public"."github_node_type" as enum ('App', 'Bot', 'CheckRun', 'CheckSuite', 'ClosedEvent', 'CodeOfConduct', 'Commit', 'CommitComment', 'CommitContributionsByRepository', 'ContributingGuidelines', 'ConvertToDraftEvent', 'CreatedCommitContribution', 'CreatedIssueContribution', 'CreatedPullRequestContribution', 'CreatedPullRequestReviewContribution', 'CreatedRepositoryContribution', 'CrossReferencedEvent', 'Discussion', 'DiscussionComment', 'Enterprise', 'EnterpriseUserAccount', 'FundingLink', 'Gist', 'Issue', 'IssueComment', 'JoinedGitHubContribution', 'Label', 'License', 'Mannequin', 'MarketplaceCategory', 'MarketplaceListing', 'MergeQueue', 'MergedEvent', 'MigrationSource', 'Milestone', 'Organization', 'PackageFile', 'Project', 'ProjectCard', 'ProjectColumn', 'ProjectV2', 'PullRequest', 'PullRequestCommit', 'PullRequestReview', 'PullRequestReviewComment', 'ReadyForReviewEvent', 'Release', 'ReleaseAsset', 'Repository', 'RepositoryContactLink', 'RepositoryTopic', 'RestrictedContribution', 'ReviewDismissedEvent', 'SecurityAdvisoryReference', 'SocialAccount', 'SponsorsListing', 'Team', 'TeamDiscussion', 'TeamDiscussionComment', 'User', 'Workflow', 'WorkflowRun', 'WorkflowRunFile');
 
-create sequence "public"."access_id_seq";
+create sequence if not exists "public"."access_id_seq";
 
-create sequence "public"."credits_id_seq";
+create sequence if not exists "public"."credits_id_seq";
 
-create sequence "public"."debits_id_seq";
+create sequence if not exists "public"."debits_id_seq";
 
-create sequence "public"."location_id_seq1";
+create sequence if not exists "public"."location_id_seq1";
 
-create sequence "public"."logs_id_seq";
+create sequence if not exists "public"."logs_id_seq";
 
-create sequence "public"."new_access_id_seq";
+create sequence if not exists "public"."new_access_id_seq";
 
-create sequence "public"."new_debits_id_seq";
+create sequence if not exists "public"."new_debits_id_seq";
 
-create sequence "public"."new_logs_id_seq";
+create sequence if not exists "public"."new_logs_id_seq";
 
-create sequence "public"."new_partners_id_seq";
+create sequence if not exists "public"."new_partners_id_seq";
 
-create sequence "public"."new_permits_id_seq";
+create sequence if not exists "public"."new_permits_id_seq";
 
-create sequence "public"."new_tokens_id_seq";
+create sequence if not exists "public"."new_tokens_id_seq";
 
-create sequence "public"."new_tokens_network_seq";
+create sequence if not exists "public"."new_tokens_network_seq";
 
-create sequence "public"."new_users_id_seq";
+create sequence if not exists "public"."new_users_id_seq";
 
-create sequence "public"."new_wallets_id_seq";
+create sequence if not exists "public"."new_wallets_id_seq";
 
-create sequence "public"."partners_id_seq";
+create sequence if not exists "public"."partners_id_seq";
 
-create sequence "public"."permits_id_seq";
+create sequence if not exists "public"."permits_id_seq";
 
-create sequence "public"."settlements_id_seq";
+create sequence if not exists "public"."settlements_id_seq";
 
-create sequence "public"."tokens_id_seq";
+create sequence if not exists "public"."tokens_id_seq";
 
-create sequence "public"."unauthorized_label_changes_id_seq";
+create sequence if not exists "public"."unauthorized_label_changes_id_seq";
 
-create sequence "public"."users_id_seq";
+create sequence if not exists "public"."users_id_seq";
 
-create sequence "public"."wallets_id_seq";
+create sequence if not exists "public"."wallets_id_seq";
 
 create table "public"."access" (
     "id" integer not null default nextval('access_id_seq'::regclass),
@@ -965,6 +965,37 @@ as permissive
 for select
 to public
 using (true);
+
+create policy "Enable read access for all users"
+	on "public"."locations"
+	as permissive
+	for select
+	to public
+	using (true);
+
+
+create policy "Enable read access for all users"
+	on "public"."tokens"
+	as permissive
+	for select
+	to public
+	using (true);
+
+
+create policy "Enable read access for all users"
+	on "public"."users"
+	as permissive
+	for select
+	to public
+	using (true);
+
+
+create policy "Enable read access for all users"
+	on "public"."wallets"
+	as permissive
+	for select
+	to public
+	using (true);
 
 
 CREATE TRIGGER handle_updated_trigger BEFORE UPDATE ON public.access FOR EACH ROW EXECUTE FUNCTION updated();
