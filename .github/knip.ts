@@ -1,11 +1,11 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
-  entry: ["build/index.ts"],
+  entry: ["src/worker.ts"],
   project: ["src/**/*.ts"],
-  ignore: ["src/types/config.ts"],
+  ignoreBinaries: ["build", "i", "format:cspell", "awk", "lsof"],
   ignoreExportsUsedInFile: true,
-  ignoreDependencies: [],
+  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier"],
 };
 
 export default config;
