@@ -52,7 +52,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   const defaultBranch = await getDefaultBranch(context, nextPlugin.plugin.owner, nextPlugin.plugin.repo);
   const token = await context.eventHandler.getToken(state.eventPayload.installation.id);
   const ref = nextPlugin.plugin.ref ?? defaultBranch;
-  const settings = findAndReplaceExpressions(nextPlugin, state);
+  const settings = findAndReplaceExpressions(nextPlugin.with, state);
   const inputs = new DelegatedComputeInputs(pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
 
   state.currentPlugin++;
@@ -68,16 +68,14 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   });
 }
 
-function findAndReplaceExpressions(plugin: PluginChain[0], state: PluginChainState): Record<string, unknown> {
-  const settings: Record<string, unknown> = {};
+function findAndReplaceExpressions(settings: object, state: PluginChainState): Record<string, unknown> {
+  const newSettings: Record<string, unknown> = {};
 
-  for (const key in plugin.with) {
-    const value = plugin.with[key];
-
+  for (const [key, value] of Object.entries(settings)) {
     if (typeof value === "string") {
       const matches = value.match(expressionRegex);
       if (!matches) {
-        settings[key] = value;
+        newSettings[key] = value;
         continue;
       }
       const parts = matches[1].split(".");
@@ -88,16 +86,18 @@ function findAndReplaceExpressions(plugin: PluginChain[0], state: PluginChainSta
 
       if (parts[1] === "output") {
         const outputProperty = parts[2];
-        settings[key] = getPluginOutputValue(state, pluginId, outputProperty);
+        newSettings[key] = getPluginOutputValue(state, pluginId, outputProperty);
       } else {
         throw new Error(`Invalid expression: ${value}`);
       }
+    } else if (typeof value === "object" && value !== null) {
+      newSettings[key] = findAndReplaceExpressions(value, state);
     } else {
-      settings[key] = value;
+      newSettings[key] = value;
     }
   }
 
-  return settings;
+  return newSettings;
 }
 
 function getPluginOutputValue(state: PluginChainState, pluginId: string, outputKey: string): unknown {
