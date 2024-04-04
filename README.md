@@ -74,26 +74,57 @@ bun dev
 6. **Deploy the Kernel:**
    - Execute `bun run deploy-dev` to deploy the kernel.
 
-### Plugin Input and Output
+### Plugin-Kernel Input/Output Interface
 
 #### Input
 
 Inputs are received within the workflow, triggered by the `workflow_dispatch` event. The plugin is designed to handle the following inputs:
 
-- `stateId`: An identifier used to track the state of plugin chain execution in Cloudflare KV. It is crucial to pass this identifier back in the output.
-- `eventName`: The complete name of the event (e.g., `issue_comment.created`).
-- `eventPayload`: The payload associated with the event.
-- `settings`: A string containing JSON with settings specific to your plugin. The plugin itself defines these settings.
-- `authToken`: A JWT token for accessing GitHub's API to the repository where the event occurred.
-- `ref`: A reference (branch, tag, commit SHA) indicating the version of the plugin to be utilized.
+```typescript
+interface PluginInput {
+  stateId: string; // An identifier used to track the state of plugin chain execution in Cloudflare KV
+  eventName: string; // The complete name of the event (e.g., `issue_comment.created`)
+  eventPayload: any; // The payload associated with the event
+  settings: string; // A string containing JSON with settings specific to your plugin
+  authToken: string; // A JWT token for accessing GitHub's API to the repository where the event occurred
+  ref: string; // A reference (branch, tag, commit SHA) indicating the version of the plugin to be utilized
+}
+```
+
+Example usage:
+
+```typescript
+const input: PluginInput = {
+  stateId: "abc123",
+  eventName: "issue_comment.created",
+  eventPayload: { /* ... */ },
+  settings: '{ "key": "value" }',
+  authToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  ref: "refs/heads/main",
+};
+```
 
 #### Output
 
 Data is returned using the `repository_dispatch` event on the plugin's repository, and the output is structured within the `client_payload`.
+
 The `event_type` must be set to `return_data_to_ubiquibot_kernel`.
 
-- `state_id`: The state ID passed in the inputs must be included here.
-- `output`: A string containing JSON with custom output, defined by the plugin itself.
+```typescript
+interface PluginOutput {
+  state_id: string; // The state ID passed in the inputs must be included here
+  output: string; // A string containing JSON with custom output, defined by the plugin itself
+}
+```
+
+Example usage:
+
+```typescript
+const output: PluginOutput = {
+  state_id: "abc123",
+  output: '{ "result": "success", "message": "Plugin executed successfully" }',
+};
+```
 
 ## Testing
 
