@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "run-p worker proxy",
-    "predev": "lsof -i tcp:8787 | grep LISTEN | awk '{print $2}' | (if [ -n \"$(awk '{print $2}')\" ]; then xargs kill -9; fi)",
+    "predev": "tsx predev.ts",
     "format": "run-s format:lint format:prettier format:cspell",
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
@@ -85,5 +85,5 @@
       "@commitlint/config-conventional"
     ]
   },
-  "packageManager": "bun@1.0.23"
+  "packageManager": "bun@1.1.0"
 }
