@@ -101,6 +101,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     });
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
+    console.error(err);
     return null;
   }
 }
