@@ -121,3 +121,5 @@ coverage
 junit.xml
 
 *.pem
+
+*.pem

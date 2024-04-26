@@ -5,6 +5,7 @@ import { issueCommentCreated } from "./issue-comment/created";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { DelegatedComputeInputs } from "../types/plugin";
+import { issuesClosed } from "./issues/closed";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -18,6 +19,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("issue_comment.created", issueCommentCreated);
+  eventHandler.on("issues.closed", issuesClosed);
   eventHandler.on("repository_dispatch", repositoryDispatch);
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
