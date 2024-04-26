@@ -5,7 +5,7 @@ import { Config, configSchema } from "../types/config";
 import { expressionRegex } from "../types/plugin";
 import { eventNames } from "../types/webhook-events";
 
-const UBIQUIBOT_CONFIG_FULL_PATH = ".github/ubiquibot-config.yml";
+const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
 export async function getConfig(context: GitHubContext): Promise<Config | null> {
   const payload = context.payload;
