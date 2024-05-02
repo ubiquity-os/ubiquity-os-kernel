@@ -1,6 +1,6 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
-import { PluginChain } from "./config";
 import { StaticDecode, Type } from "@sinclair/typebox";
+import { PluginChain } from "./plugin-configuration";
 
 export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
 

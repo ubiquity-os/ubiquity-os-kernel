@@ -1,15 +1,21 @@
 import { Value } from "@sinclair/typebox/value";
 import { GitHubContext } from "../github-context";
 import YAML from "yaml";
-import { Config, configSchema } from "../types/config";
 import { expressionRegex } from "../types/plugin";
+import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
+import { generateConfiguration } from "@ubiquibot/configuration";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<Config | null> {
+export async function getConfig(context: GitHubContext): Promise<PluginConfiguration | null> {
   const payload = context.payload;
-  if (!("repository" in payload) || !payload.repository) throw new Error("Repository is not defined");
+  const defaultConfiguration = generateConfiguration();
+  if (!("repository" in payload) || !payload.repository) {
+    console.warn("Repository is not defined");
+    // TODO: 2.0.3 ubiquibot config does not define all the new configuration elements, missing 'plugins'
+    return defaultConfiguration as unknown as PluginConfiguration;
+  }
 
   const _repoConfig = parseYaml(
     await download({
@@ -18,9 +24,9 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
       owner: payload.repository.owner.login,
     })
   );
-  if (!_repoConfig) return null;
+  if (!_repoConfig) return defaultConfiguration as unknown as PluginConfiguration;
 
-  let config: Config;
+  let config: PluginConfiguration;
   try {
     config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
@@ -33,7 +39,7 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
   return config;
 }
 
-function checkPluginChains(config: Config) {
+function checkPluginChains(config: PluginConfiguration) {
   for (const eventName of eventNames) {
     const plugins = config.plugins[eventName];
     for (const plugin of plugins) {
@@ -43,7 +49,7 @@ function checkPluginChains(config: Config) {
   }
 }
 
-function checkPluginChainUniqueIds(plugin: Config["plugins"]["*"][0]) {
+function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"]["*"][0]) {
   const allIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;
@@ -56,7 +62,7 @@ function checkPluginChainUniqueIds(plugin: Config["plugins"]["*"][0]) {
   return allIds;
 }
 
-function checkPluginChainExpressions(plugin: Config["plugins"]["*"][0], allIds: Set<string>) {
+function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"]["*"][0], allIds: Set<string>) {
   const calledIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;

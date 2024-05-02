@@ -58,4 +58,4 @@ export const configSchema = T.Object({
   plugins: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
 });
 
-export type Config = StaticDecode<typeof configSchema>;
+export type PluginConfiguration = StaticDecode<typeof configSchema>;

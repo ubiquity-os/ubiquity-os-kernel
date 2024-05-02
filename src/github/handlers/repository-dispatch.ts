@@ -1,8 +1,8 @@
 import { GitHubContext } from "../github-context";
+import { PluginChain } from "../types/plugin-configuration";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { Value } from "@sinclair/typebox/value";
 import { DelegatedComputeInputs, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
-import { PluginChain } from "../types/config";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
   console.log("Repository dispatch event received", context.payload.client_payload);
