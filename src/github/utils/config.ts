@@ -4,17 +4,16 @@ import YAML from "yaml";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
-import { generateConfiguration } from "@ubiquibot/configuration";
+import { BotConfig, generateConfiguration } from "@ubiquibot/configuration";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<PluginConfiguration | null> {
+export async function getConfig(context: GitHubContext): Promise<BotConfig | null> {
   const payload = context.payload;
   const defaultConfiguration = generateConfiguration();
   if (!("repository" in payload) || !payload.repository) {
     console.warn("Repository is not defined");
-    // TODO: 2.0.3 ubiquibot config does not define all the new configuration elements, missing 'plugins'
-    return defaultConfiguration as unknown as PluginConfiguration;
+    return defaultConfiguration;
   }
 
   const _repoConfig = parseYaml(
@@ -24,7 +23,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
       owner: payload.repository.owner.login,
     })
   );
-  if (!_repoConfig) return defaultConfiguration as unknown as PluginConfiguration;
+  if (!_repoConfig) return defaultConfiguration;
 
   let config: PluginConfiguration;
   try {
@@ -36,7 +35,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(config);
 
-  return config;
+  return generateConfiguration(config as BotConfig);
 }
 
 function checkPluginChains(config: PluginConfiguration) {
