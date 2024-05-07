@@ -2,7 +2,7 @@ import { Type as T } from "@sinclair/typebox";
 import { StaticDecode } from "@sinclair/typebox";
 import { githubWebhookEvents } from "./webhook-events";
 
-const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+))?$");
+const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)?))?$");
 
 type GithubPlugin = {
   owner: string;
@@ -58,4 +58,4 @@ export const configSchema = T.Object({
   plugins: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
 });
 
-export type Config = StaticDecode<typeof configSchema>;
+export type PluginConfiguration = StaticDecode<typeof configSchema>;

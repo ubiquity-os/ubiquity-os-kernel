@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "run-p worker proxy",
-    "predev": "lsof -i tcp:8787 | grep LISTEN | awk '{print $2}' | (if [ -n \"$(awk '{print $2}')\" ]; then xargs kill -9; fi)",
+    "predev": "tsx predev.ts",
     "format": "run-s format:lint format:prettier format:cspell",
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
@@ -41,6 +41,7 @@
     "@octokit/types": "^12.6.0",
     "@octokit/webhooks": "^12.0.10",
     "@sinclair/typebox": "^0.32.5",
+    "@ubiquibot/configuration": "2.1.0",
     "dotenv": "^16.4.4",
     "smee-client": "^2.0.0",
     "yaml": "^2.4.1"
@@ -85,5 +86,5 @@
       "@commitlint/config-conventional"
     ]
   },
-  "packageManager": "bun@1.0.23"
+  "packageManager": "bun@1.1.0"
 }

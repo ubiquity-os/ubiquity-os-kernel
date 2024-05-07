@@ -1,15 +1,20 @@
 import { Value } from "@sinclair/typebox/value";
 import { GitHubContext } from "../github-context";
 import YAML from "yaml";
-import { Config, configSchema } from "../types/config";
 import { expressionRegex } from "../types/plugin";
+import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
+import { BotConfig, generateConfiguration } from "@ubiquibot/configuration";
 
-const UBIQUIBOT_CONFIG_FULL_PATH = ".github/ubiquibot-config.yml";
+const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<Config | null> {
+export async function getConfig(context: GitHubContext): Promise<BotConfig | null> {
   const payload = context.payload;
-  if (!("repository" in payload) || !payload.repository) throw new Error("Repository is not defined");
+  const defaultConfiguration = generateConfiguration();
+  if (!("repository" in payload) || !payload.repository) {
+    console.warn("Repository is not defined");
+    return defaultConfiguration;
+  }
 
   const _repoConfig = parseYaml(
     await download({
@@ -18,9 +23,9 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
       owner: payload.repository.owner.login,
     })
   );
-  if (!_repoConfig) return null;
+  if (!_repoConfig) return defaultConfiguration;
 
-  let config: Config;
+  let config: PluginConfiguration;
   try {
     config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
@@ -30,10 +35,10 @@ export async function getConfig(context: GitHubContext): Promise<Config | null> 
 
   checkPluginChains(config);
 
-  return config;
+  return generateConfiguration(config as BotConfig);
 }
 
-function checkPluginChains(config: Config) {
+function checkPluginChains(config: PluginConfiguration) {
   for (const eventName of eventNames) {
     const plugins = config.plugins[eventName];
     for (const plugin of plugins) {
@@ -43,7 +48,7 @@ function checkPluginChains(config: Config) {
   }
 }
 
-function checkPluginChainUniqueIds(plugin: Config["plugins"]["*"][0]) {
+function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"]["*"][0]) {
   const allIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;
@@ -56,7 +61,7 @@ function checkPluginChainUniqueIds(plugin: Config["plugins"]["*"][0]) {
   return allIds;
 }
 
-function checkPluginChainExpressions(plugin: Config["plugins"]["*"][0], allIds: Set<string>) {
+function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"]["*"][0], allIds: Set<string>) {
   const calledIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;
@@ -101,6 +106,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     });
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
+    console.error(err);
     return null;
   }
 }
