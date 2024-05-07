@@ -1,7 +1,6 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
-import { issueCommentCreated } from "./issue-comment/created";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { DelegatedComputeInputs } from "../types/plugin";
@@ -17,7 +16,6 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
 }
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
-  eventHandler.on("issue_comment.created", issueCommentCreated);
   eventHandler.on("repository_dispatch", repositoryDispatch);
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
@@ -46,8 +44,19 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
   for (const pluginChain of pluginChains) {
     if (pluginChain.skipBotEvents && "sender" in event.payload && event.payload.sender?.type === "Bot") {
+      console.log("Skipping plugin chain because sender is a bot");
       continue;
     }
+    if (
+      context.key === "issue_comment.created" &&
+      pluginChain.command &&
+      "comment" in context.payload &&
+      !context.payload.comment.body.startsWith(pluginChain.command)
+    ) {
+      console.log("Skipping plugin chain because command does not match");
+      continue;
+    }
+
     // invoke the first plugin in the chain
     const { plugin, with: settings } = pluginChain.uses[0];
     console.log(`Calling handler for event ${event.name}`);
