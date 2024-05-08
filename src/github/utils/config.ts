@@ -29,13 +29,13 @@ export async function getConfig(context: GitHubContext): Promise<BotConfig | nul
   try {
     config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
-    console.error("Error decoding config", error);
-    return null;
+    console.error("Error decoding config, will use default.", error);
+    return defaultConfiguration;
   }
 
   checkPluginChains(config);
 
-  return generateConfiguration(config as BotConfig);
+  return generateConfiguration(Value.Default(configSchema, _repoConfig) as BotConfig);
 }
 
 function checkPluginChains(config: PluginConfiguration) {
