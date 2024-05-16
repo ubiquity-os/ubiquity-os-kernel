@@ -8,7 +8,7 @@ import { BotConfig, generateConfiguration } from "@ubiquibot/configuration";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<BotConfig | null> {
+export async function getConfig(context: GitHubContext): Promise<BotConfig> {
   const payload = context.payload;
   const defaultConfiguration = generateConfiguration();
   if (!("repository" in payload) || !payload.repository) {
