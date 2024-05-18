@@ -1,14 +1,14 @@
 import { Value } from "@sinclair/typebox/value";
-import { GitHubContext } from "../github-context";
+import { generateConfiguration } from "@ubiquibot/configuration";
 import YAML from "yaml";
+import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
-import { BotConfig, generateConfiguration } from "@ubiquibot/configuration";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<BotConfig> {
+export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
   const defaultConfiguration = generateConfiguration();
   if (!("repository" in payload) || !payload.repository) {
@@ -35,7 +35,7 @@ export async function getConfig(context: GitHubContext): Promise<BotConfig> {
 
   checkPluginChains(config);
 
-  return generateConfiguration(Value.Default(configSchema, _repoConfig) as BotConfig);
+  return config;
 }
 
 function checkPluginChains(config: PluginConfiguration) {
