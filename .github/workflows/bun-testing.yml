@@ -6,12 +6,16 @@ on:
 
 env:
   NODE_ENV: "test"
+  WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+  APP_ID: ${{ secrets.APP_ID }}
+  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
 
 jobs:
   testing:
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
+      - uses: oven-sh/setup-bun@v1
       - uses: actions/setup-node@v4
         with:
           node-version: '20.10.0'

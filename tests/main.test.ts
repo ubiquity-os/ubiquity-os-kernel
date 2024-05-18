@@ -6,6 +6,8 @@ mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
+const issueOpened = "issues.opened";
+
 class WebhooksMocked {
   constructor(_: unknown) {}
   verifyAndReceive(_: unknown) {
@@ -21,6 +23,9 @@ class WebhooksMocked {
 }
 
 import { config } from "dotenv";
+import { GitHubContext } from "../src/github/github-context";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
 
@@ -53,7 +58,7 @@ describe("Worker tests", () => {
   it("Should start a worker", async () => {
     const req = new Request("http://localhost:8080", {
       headers: {
-        "x-github-event": "issues.opened",
+        "x-github-event": issueOpened,
         "x-github-delivery": "1",
         "x-hub-signature-256": "123456",
       },
@@ -65,5 +70,74 @@ describe("Worker tests", () => {
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(200);
+  });
+
+  describe("Configuration tests", () => {
+    it("Should generate a default configuration when no repo is defined", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: "",
+        },
+        octokit: {},
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg).toBeTruthy();
+    });
+    it("Should generate a default configuration when the target repo does not contain one", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "ubiquibot-kernel",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent() {
+                return { data: null };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg).toBeTruthy();
+    });
+    it("Should merge the configuration when found", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "conversation-rewards",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent() {
+                return {
+                  data: `
+incentives:
+  enabled: false`,
+                };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg).toBeTruthy();
+      expect(cfg.incentives.enabled).toBeFalse();
+    });
   });
 });

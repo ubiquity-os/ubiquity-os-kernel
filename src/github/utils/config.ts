@@ -1,14 +1,14 @@
 import { Value } from "@sinclair/typebox/value";
-import { GitHubContext } from "../github-context";
+import { generateConfiguration } from "@ubiquibot/configuration";
 import YAML from "yaml";
+import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
-import { BotConfig, generateConfiguration } from "@ubiquibot/configuration";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
-export async function getConfig(context: GitHubContext): Promise<BotConfig | null> {
+export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
   const defaultConfiguration = generateConfiguration();
   if (!("repository" in payload) || !payload.repository) {
@@ -29,13 +29,13 @@ export async function getConfig(context: GitHubContext): Promise<BotConfig | nul
   try {
     config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
   } catch (error) {
-    console.error("Error decoding config", error);
-    return null;
+    console.error("Error decoding config, will use default.", error);
+    return defaultConfiguration;
   }
 
   checkPluginChains(config);
 
-  return generateConfiguration(config as BotConfig);
+  return config;
 }
 
 function checkPluginChains(config: PluginConfiguration) {
