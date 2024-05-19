@@ -76,7 +76,8 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const token = await eventHandler.getToken(event.payload.installation.id);
 
     if (typeof plugin === "string") {
-      return await dispatchWorker(plugin, { token, settings, payload: event.payload });
+      const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, "");
+      return await dispatchWorker(plugin, inputs.getInputs());
     }
 
     const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
