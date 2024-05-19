@@ -4,6 +4,7 @@ import { getConfig } from "../utils/config";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { DelegatedComputeInputs } from "../types/plugin";
+import { isGithubPlugin } from "../types/plugin-configuration";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -51,6 +52,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       context.key === "issue_comment.created" &&
       pluginChain.command &&
       "comment" in context.payload &&
+      typeof context.payload.comment !== "string" &&
       !context.payload.comment.body.startsWith(pluginChain.command)
     ) {
       console.log("Skipping plugin chain because command does not match");
@@ -75,7 +77,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const token = await eventHandler.getToken(event.payload.installation.id);
 
-    if (typeof plugin === "string") {
+    if (!isGithubPlugin(plugin)) {
       const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, "");
       return await dispatchWorker(plugin, inputs.getInputs());
     }

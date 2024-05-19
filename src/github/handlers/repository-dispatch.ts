@@ -2,6 +2,7 @@ import { GitHubContext } from "../github-context";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { Value } from "@sinclair/typebox/value";
 import { DelegatedComputeInputs, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
+import { isGithubPlugin } from "../types/plugin-configuration";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
   console.log("Repository dispatch event received", context.payload.client_payload);
@@ -33,6 +34,10 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   }
 
   const currentPlugin = state.pluginChain[state.currentPlugin];
+  if (!isGithubPlugin(currentPlugin.plugin)) {
+    console.error("Trying to call a non-github plugin.");
+    return;
+  }
   if (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name) {
     console.error("Plugin chain state does not match payload");
     return;
@@ -44,6 +49,10 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   if (!nextPlugin) {
     console.log("No more plugins to call");
     await context.eventHandler.pluginChainState.put(pluginOutput.state_id, state);
+    return;
+  }
+  if (!isGithubPlugin(nextPlugin.plugin)) {
+    console.error("Trying to call a non-github plugin.");
     return;
   }
   console.log("Dispatching next plugin", nextPlugin);
@@ -78,17 +87,7 @@ function findAndReplaceExpressions(settings: object, state: PluginChainState): R
         continue;
       }
       const parts = matches[1].split(".");
-      if (parts.length !== 3) {
-        throw new Error(`Invalid expression: ${value}`);
-      }
-      const pluginId = parts[0];
-
-      if (parts[1] === "output") {
-        const outputProperty = parts[2];
-        newSettings[key] = getPluginOutputValue(state, pluginId, outputProperty);
-      } else {
-        throw new Error(`Invalid expression: ${value}`);
-      }
+      newSettings[key] = getPluginInfosFromParts(parts, value, state);
     } else if (typeof value === "object" && value !== null) {
       newSettings[key] = findAndReplaceExpressions(value, state);
     } else {
@@ -97,6 +96,20 @@ function findAndReplaceExpressions(settings: object, state: PluginChainState): R
   }
 
   return newSettings;
+}
+
+function getPluginInfosFromParts(parts: string[], value: string, state: PluginChainState) {
+  if (parts.length !== 3) {
+    throw new Error(`Invalid expression: ${value}`);
+  }
+  const pluginId = parts[0];
+
+  if (parts[1] === "output") {
+    const outputProperty = parts[2];
+    return getPluginOutputValue(state, pluginId, outputProperty);
+  } else {
+    throw new Error(`Invalid expression: ${value}`);
+  }
 }
 
 function getPluginOutputValue(state: PluginChainState, pluginId: string, outputKey: string): unknown {
