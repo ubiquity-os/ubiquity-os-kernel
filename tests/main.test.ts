@@ -64,9 +64,9 @@ describe("Worker tests", () => {
       },
     });
     const res = await worker.fetch(req, {
-      WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
+      WEBHOOK_SECRET: "webhook-secret",
       APP_ID: process.env.APP_ID,
-      PRIVATE_KEY: process.env.PRIVATE_KEY,
+      PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(200);
