@@ -36,6 +36,9 @@ export async function dispatchWorker(targetUrl: string, payload: Record<string, 
   const result = await fetch(targetUrl, {
     body: JSON.stringify(payload),
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
   });
   return result.json();
 }
