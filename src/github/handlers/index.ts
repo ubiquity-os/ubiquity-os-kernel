@@ -2,7 +2,7 @@ import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
 import { repositoryDispatch } from "./repository-dispatch";
-import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { DelegatedComputeInputs } from "../types/plugin";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
@@ -73,8 +73,13 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       inputs: new Array(pluginChain.uses.length),
     };
 
-    const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
     const token = await eventHandler.getToken(event.payload.installation.id);
+
+    if (typeof plugin === "string") {
+      return await dispatchWorker(plugin, { token, settings, payload: event.payload });
+    }
+
+    const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
     const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, ref);
 
     state.inputs[0] = inputs;
