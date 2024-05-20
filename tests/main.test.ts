@@ -1,7 +1,13 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-
 // @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
+import { config } from "dotenv";
+import { GitHubContext } from "../src/github/github-context";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { getConfig } from "../src/github/utils/config";
+import worker from "../src/worker";
+import { server } from "./__mocks__/node";
+
 mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
@@ -21,13 +27,6 @@ class WebhooksMocked {
   verify(_: unknown, __: unknown) {}
   receive(_: unknown) {}
 }
-
-import { config } from "dotenv";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { getConfig } from "../src/github/utils/config";
-import worker from "../src/worker";
-import { server } from "./__mocks__/node";
 
 config({ path: ".dev.vars" });
 
@@ -64,9 +63,9 @@ describe("Worker tests", () => {
       },
     });
     const res = await worker.fetch(req, {
-      WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
-      APP_ID: process.env.APP_ID,
-      PRIVATE_KEY: process.env.PRIVATE_KEY,
+      WEBHOOK_SECRET: "webhook-secret",
+      APP_ID: "app-id",
+      PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(200);
