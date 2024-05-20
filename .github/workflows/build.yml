@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: 20.10.0
 
+      - uses: oven-sh/setup-bun@v1
+
       - uses: cloudflare/wrangler-action@v3
         with:
           wranglerVersion: '3.57.0'
