@@ -28,3 +28,18 @@ jobs:
         run: |
           bun install
           bun build src/worker.ts
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          wranglerVersion: '3.57.0'
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          secrets: |
+            WEBHOOK_PROXY_URL
+            WEBHOOK_SECRET
+            APP_ID
+            PRIVATE_KEY
+        env:
+          WEBHOOK_PROXY_URL: ${{ secrets.WEBHOOK_PROXY_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          APP_ID: ${{ secrets.APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
