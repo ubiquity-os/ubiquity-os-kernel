@@ -24,10 +24,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v1
 
-      - name: Build
-        run: |
-          bun install
-          bun build src/worker.ts
+#      - name: Build
+#        run: |
+#          bun install
+#          bun build src/worker.ts
 
       - uses: cloudflare/wrangler-action@v3
         with:
