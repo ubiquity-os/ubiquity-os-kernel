@@ -35,8 +35,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
 
   const currentPlugin = state.pluginChain[state.currentPlugin];
   if (!isGithubPlugin(currentPlugin.plugin)) {
-    console.error("Trying to call a non-github plugin.");
-    return;
+    throw new Error("Trying to call a non-github plugin.");
   }
   if (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name) {
     console.error("Plugin chain state does not match payload");
@@ -52,8 +51,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
     return;
   }
   if (!isGithubPlugin(nextPlugin.plugin)) {
-    console.error("Trying to call a non-github plugin.");
-    return;
+    throw new Error("Trying to call a non-github plugin.");
   }
   console.log("Dispatching next plugin", nextPlugin);
 

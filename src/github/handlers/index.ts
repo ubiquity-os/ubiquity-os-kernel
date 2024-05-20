@@ -84,7 +84,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       inputs: new Array(pluginChain.uses.length),
     };
 
-    const ref = isGithubPluginObject ? plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)) : "";
+    const ref = isGithubPluginObject ? plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)) : plugin;
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, ref);
 
