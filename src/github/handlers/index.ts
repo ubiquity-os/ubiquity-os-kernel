@@ -92,15 +92,15 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     await eventHandler.pluginChainState.put(stateId, state);
 
     if (!isGithubPluginObject) {
-      return await dispatchWorker(plugin, inputs.getInputs());
+      await dispatchWorker(plugin, inputs.getInputs());
+    } else {
+      await dispatchWorkflow(context, {
+        owner: plugin.owner,
+        repository: plugin.repo,
+        workflowId: plugin.workflowId,
+        ref: plugin.ref,
+        inputs: inputs.getInputs(),
+      });
     }
-
-    await dispatchWorkflow(context, {
-      owner: plugin.owner,
-      repository: plugin.repo,
-      workflowId: plugin.workflowId,
-      ref: plugin.ref,
-      inputs: inputs.getInputs(),
-    });
   }
 }
