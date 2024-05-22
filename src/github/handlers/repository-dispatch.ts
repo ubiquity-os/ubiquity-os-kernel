@@ -1,5 +1,5 @@
 import { GitHubContext } from "../github-context";
-import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { Value } from "@sinclair/typebox/value";
 import { DelegatedComputeInputs, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
@@ -34,10 +34,10 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   }
 
   const currentPlugin = state.pluginChain[state.currentPlugin];
-  if (!isGithubPlugin(currentPlugin.plugin)) {
-    throw new Error("Trying to call a non-github plugin.");
-  }
-  if (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name) {
+  if (
+    isGithubPlugin(currentPlugin.plugin) &&
+    (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name)
+  ) {
     console.error("Plugin chain state does not match payload");
     return;
   }
@@ -50,28 +50,34 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
     await context.eventHandler.pluginChainState.put(pluginOutput.state_id, state);
     return;
   }
-  if (!isGithubPlugin(nextPlugin.plugin)) {
-    throw new Error("Trying to call a non-github plugin.");
-  }
   console.log("Dispatching next plugin", nextPlugin);
 
-  const defaultBranch = await getDefaultBranch(context, nextPlugin.plugin.owner, nextPlugin.plugin.repo);
   const token = await context.eventHandler.getToken(state.eventPayload.installation.id);
-  const ref = nextPlugin.plugin.ref ?? defaultBranch;
   const settings = findAndReplaceExpressions(nextPlugin.with, state);
+  let ref: string;
+  if (isGithubPlugin(nextPlugin.plugin)) {
+    const defaultBranch = await getDefaultBranch(context, nextPlugin.plugin.owner, nextPlugin.plugin.repo);
+    ref = nextPlugin.plugin.ref ?? defaultBranch;
+  } else {
+    ref = nextPlugin.plugin;
+  }
   const inputs = new DelegatedComputeInputs(pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
 
   state.currentPlugin++;
   state.inputs[state.currentPlugin] = inputs;
   await context.eventHandler.pluginChainState.put(pluginOutput.state_id, state);
 
-  await dispatchWorkflow(context, {
-    owner: nextPlugin.plugin.owner,
-    repository: nextPlugin.plugin.repo,
-    ref: nextPlugin.plugin.ref,
-    workflowId: nextPlugin.plugin.workflowId,
-    inputs: inputs.getInputs(),
-  });
+  if (isGithubPlugin(nextPlugin.plugin)) {
+    await dispatchWorkflow(context, {
+      owner: nextPlugin.plugin.owner,
+      repository: nextPlugin.plugin.repo,
+      ref: nextPlugin.plugin.ref,
+      workflowId: nextPlugin.plugin.workflowId,
+      inputs: inputs.getInputs(),
+    });
+  } else {
+    await dispatchWorker(nextPlugin.plugin, inputs.getInputs());
+  }
 }
 
 function findAndReplaceExpressions(settings: object, state: PluginChainState): Record<string, unknown> {
