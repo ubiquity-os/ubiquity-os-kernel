@@ -90,7 +90,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, ref);
 
     state.inputs[0] = inputs;
-    console.log("state".stateId, state);
+    console.log("state", stateId, state);
     await eventHandler.pluginChainState.put(stateId, state);
 
     if (!isGithubPluginObject) {
