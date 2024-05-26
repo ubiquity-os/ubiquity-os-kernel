@@ -33,6 +33,8 @@ jobs:
             WEBHOOK_SECRET
             APP_ID
             PRIVATE_KEY
+          postCommands: |
+            wrangler kv:key put --binding=PLUGIN_CHAIN_STATE id "0"
         env:
           WEBHOOK_PROXY_URL: ${{ secrets.WEBHOOK_PROXY_URL }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
