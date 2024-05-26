@@ -33,7 +33,7 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
 }
 
 export async function dispatchWorker(targetUrl: string, payload: WorkflowDispatchOptions["inputs"]) {
-  console.log("dispatchWorker", payload);
+  console.log(targetUrl, "dispatchWorker", payload);
   const result = await fetch(targetUrl, {
     body: JSON.stringify(payload),
     method: "POST",
