@@ -34,7 +34,8 @@ jobs:
             APP_ID
             PRIVATE_KEY
           postCommands: |
-            wrangler kv:key put --binding=PLUGIN_CHAIN_STATE id "0"
+            wrangler kv:namespace create PLUGIN_CHAIN_STATE
+            wrangler kv:key put --binding=PLUGIN_CHAIN_STATE id "TO_BE_FILLED"
         env:
           WEBHOOK_PROXY_URL: ${{ secrets.WEBHOOK_PROXY_URL }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
