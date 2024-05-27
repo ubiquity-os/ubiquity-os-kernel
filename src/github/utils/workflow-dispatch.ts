@@ -41,7 +41,7 @@ export async function dispatchWorker(targetUrl: string, payload: WorkflowDispatc
       "Content-Type": "application/json",
     },
   });
-  console.log("response", result.status);
+  console.log("response", result.status, await result.text());
   return result.json();
 }
 
