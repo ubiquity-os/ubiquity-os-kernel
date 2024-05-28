@@ -4,9 +4,13 @@ compatibility_date = "2023-12-06"
 
 [env]
 	[env.dev]
-
+		[[env.dev.kv_namespaces]]
+		binding = "PLUGIN_CHAIN_STATE"
+		id = "4f7aadc56bef41a7ae2cc8c0582320b3"
 	[env.production]
-
+		[[env.production.kv_namespaces]]
+		binding = "PLUGIN_CHAIN_STATE"
+		id = "TO_BE_DEFINED"
 [[kv_namespaces]]
 binding = "PLUGIN_CHAIN_STATE"
 id = "TO_BE_DEFINED"

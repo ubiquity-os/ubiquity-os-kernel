@@ -7,6 +7,7 @@ import { configSchema, PluginConfiguration } from "../types/plugin-configuration
 import { eventNames } from "../types/webhook-events";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
+const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
@@ -16,18 +17,31 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     return defaultConfiguration;
   }
 
-  const _repoConfig = parseYaml(
+  let _innerConfig: PluginConfiguration;
+  // First, try to get the config in the target repo
+  _innerConfig = parseYaml(
     await download({
       context,
       repository: payload.repository.name,
       owner: payload.repository.owner.login,
     })
   );
-  if (!_repoConfig) return defaultConfiguration;
+  // If no config is found, check if there is an Org wide config
+  if (!_innerConfig) {
+    _innerConfig = parseYaml(
+      await download({
+        context,
+        repository: UBIQUIBOT_CONFIG_ORG_REPO,
+        owner: payload.repository.owner.login,
+      })
+    );
+  }
+  // Otherwise, use defaults
+  if (!_innerConfig) return defaultConfiguration;
 
   let config: PluginConfiguration;
   try {
-    config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
+    config = Value.Decode(configSchema, Value.Default(configSchema, _innerConfig));
   } catch (error) {
     console.error("Error decoding config, will use default.", error);
     return defaultConfiguration;
