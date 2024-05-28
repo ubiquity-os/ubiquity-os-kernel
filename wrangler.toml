@@ -2,20 +2,14 @@ name = "ubiquibot-worker"
 main = "src/worker.ts"
 compatibility_date = "2023-12-06"
 
+# Prefer this syntax due to a bug in Wrangler: https://github.com/cloudflare/workers-sdk/issues/5634
 [env]
-
  [env.dev]
-
   [[env.dev.kv_namespaces]]
-  binding = "PLUGIN_CHAIN_STATE"
-  id = "4f7aadc56bef41a7ae2cc8c0582320b3"
+		binding = "PLUGIN_CHAIN_STATE"
+		id = "4f7aadc56bef41a7ae2cc8c0582320b3"
 
  [env.production]
-
   [[env.production.kv_namespaces]]
-  binding = "PLUGIN_CHAIN_STATE"
-  id = "af612cce0703489d87345e6578496336"
-
-#[[kv_namespaces]]
-#binding = "PLUGIN_CHAIN_STATE"
-#id = "TO_BE_DEFINED"
+		binding = "PLUGIN_CHAIN_STATE"
+		id = "TO_BE_DEFINED"

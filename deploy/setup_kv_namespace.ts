@@ -20,26 +20,43 @@ interface WranglerConfiguration {
   name: string;
   env: {
     production: {
-      kv_namespaces: {
+      kv_namespaces?: {
+        id: string;
+        binding: string;
+      }[];
+    };
+    dev: {
+      kv_namespaces?: {
         id: string;
         binding: string;
       }[];
     };
   };
+  kv_namespaces: {
+    id: string;
+    binding: string;
+  }[];
 }
 
 function updateWranglerToml(namespaceId: string) {
   // Ensure kv_namespaces array exists
-  if (!wranglerToml.env.production.kv_namespaces) {
-    wranglerToml.env.production.kv_namespaces = [];
+  if (!wranglerToml.kv_namespaces) {
+    wranglerToml.kv_namespaces = [];
+  }
+  if (wranglerToml.env.production.kv_namespaces) {
+    wranglerToml.kv_namespaces = wranglerToml.env.production.kv_namespaces;
+    delete wranglerToml.env.production.kv_namespaces;
+  }
+  if (wranglerToml.env.dev.kv_namespaces) {
+    delete wranglerToml.env.dev.kv_namespaces;
   }
 
-  const existingNamespace = wranglerToml.env.production.kv_namespaces.find((o) => o.binding === BINDING_NAME);
+  const existingNamespace = wranglerToml.kv_namespaces.find((o) => o.binding === BINDING_NAME);
   if (existingNamespace) {
     existingNamespace.id = namespaceId;
   } else {
     // Add the new binding
-    wranglerToml.env.production.kv_namespaces.push({
+    wranglerToml.kv_namespaces.push({
       binding: BINDING_NAME,
       id: namespaceId,
     });
