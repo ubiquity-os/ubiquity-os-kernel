@@ -8,7 +8,7 @@ kv_namespaces = [
 ]
 
 [env.production]
-kv_namespaces = [{ binding = "PLUGIN_CHAIN_STATE", id = "TO_BE_FILLED" }]
+kv_namespaces = [{ binding = "PLUGIN_CHAIN_STATE", id = "790cdde6ed2448b7a82e4eff5eb43793" }]
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
