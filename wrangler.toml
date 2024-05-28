@@ -9,7 +9,7 @@ compatibility_date = "2023-12-06"
 
 [[kv_namespaces]]
 binding = "PLUGIN_CHAIN_STATE"
-id = "790cdde6ed2448b7a82e4eff5eb43793"
+id = "TO_BE_DEFINED"
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
