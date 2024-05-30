@@ -1,3 +1,11 @@
+/**
+ * The purpose of the script is to ensure that the KV for the worker is properly set on deployment.
+ * There is currently a bug that makes the environment reset on each deploy, because of a problem with Wrangler not
+ * parsing the TOML configuration properly. See https://github.com/cloudflare/workers-sdk/issues/5634
+ * It seems to only work when the values are set at the root of the TOML, not withing the environments.
+ * This scripts takes out the Production values for kv_namespaces and rewrites them at the root of the TOML file.
+ */
+
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as toml from "toml";
@@ -55,14 +63,12 @@ function updateWranglerToml(namespaceId: string) {
   if (existingNamespace) {
     existingNamespace.id = namespaceId;
   } else {
-    // Add the new binding
     wranglerToml.kv_namespaces.push({
       binding: BINDING_NAME,
       id: namespaceId,
     });
   }
 
-  // Write the updated toml file
   fs.writeFileSync(tomlFilePath, tomlify.toToml(wranglerToml, { space: 1 }));
 }
 
@@ -87,7 +93,6 @@ async function main() {
     console.log(`Namespace ${NAMESPACE_TITLE_WITH_PREFIX} already exists with ID: ${namespaceId}`);
   }
 
-  // Update the wrangler.toml file
   updateWranglerToml(namespaceId);
 }
 
