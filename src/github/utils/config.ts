@@ -52,7 +52,6 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(mergedConfiguration);
 
-  console.log("Merged config", JSON.stringify(mergedConfiguration));
   return mergedConfiguration;
 }
 
