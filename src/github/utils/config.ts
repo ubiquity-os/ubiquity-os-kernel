@@ -1,5 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { generateConfiguration } from "@ubiquibot/configuration";
+import { merge } from "lodash";
 import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
@@ -17,39 +18,42 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     return defaultConfiguration;
   }
 
-  let _innerConfig: PluginConfiguration;
-  // First, try to get the config in the target repo
-  _innerConfig = parseYaml(
+  let mergedConfiguration = defaultConfiguration;
+
+  const targetRepoConfiguration: PluginConfiguration = parseYaml(
     await download({
       context,
       repository: payload.repository.name,
       owner: payload.repository.owner.login,
     })
   );
-  // If no config is found, check if there is an Org wide config
-  if (!_innerConfig) {
-    _innerConfig = parseYaml(
-      await download({
-        context,
-        repository: UBIQUIBOT_CONFIG_ORG_REPO,
-        owner: payload.repository.owner.login,
-      })
-    );
+  const orgRepoConfiguration: PluginConfiguration = parseYaml(
+    await download({
+      context,
+      repository: UBIQUIBOT_CONFIG_ORG_REPO,
+      owner: payload.repository.owner.login,
+    })
+  );
+  if (orgRepoConfiguration) {
+    try {
+      const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, orgRepoConfiguration));
+      mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
+    } catch (error) {
+      console.error("Error decoding organization repository configuration, will ignore.", error);
+    }
   }
-  // Otherwise, use defaults
-  if (!_innerConfig) return defaultConfiguration;
-
-  let config: PluginConfiguration;
-  try {
-    config = Value.Decode(configSchema, Value.Default(configSchema, _innerConfig));
-  } catch (error) {
-    console.error("Error decoding config, will use default.", error);
-    return defaultConfiguration;
+  if (targetRepoConfiguration) {
+    try {
+      const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, targetRepoConfiguration));
+      mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
+    } catch (error) {
+      console.error("Error decoding target repository configuration, will ignore.", error);
+    }
   }
 
-  checkPluginChains(config);
+  checkPluginChains(mergedConfiguration);
 
-  return config;
+  return mergedConfiguration;
 }
 
 function checkPluginChains(config: PluginConfiguration) {

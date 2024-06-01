@@ -24,8 +24,8 @@
     "knip": "knip --config .github/knip.ts",
     "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
     "test": "bun test",
-		"setup-kv": "bun --env-file=.dev.vars deploy/setup_kv_namespace.ts"
-	},
+    "setup-kv": "bun --env-file=.dev.vars deploy/setup_kv_namespace.ts"
+  },
   "keywords": [
     "typescript",
     "template",
@@ -45,6 +45,7 @@
     "@sinclair/typebox": "^0.32.5",
     "@ubiquibot/configuration": "2.1.0",
     "dotenv": "^16.4.4",
+    "lodash": "4.17.21",
     "smee-client": "^2.0.0",
     "yaml": "^2.4.1"
   },
