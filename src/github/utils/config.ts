@@ -38,6 +38,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     try {
       const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, orgRepoConfiguration));
       mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
+      console.log("org config", JSON.stringify(decodedConfiguration, null, 2));
     } catch (error) {
       console.error("Error decoding organization repository configuration, will ignore.", error);
     }
@@ -45,6 +46,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   if (targetRepoConfiguration) {
     try {
       const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, targetRepoConfiguration));
+      console.log("repo config", JSON.stringify(decodedConfiguration, null, 2));
       mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
     } catch (error) {
       console.error("Error decoding target repository configuration, will ignore.", error);
@@ -53,6 +55,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(mergedConfiguration);
 
+  console.log("Merged config", JSON.stringify(mergedConfiguration));
   return mergedConfiguration;
 }
 
