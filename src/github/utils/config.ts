@@ -10,6 +10,25 @@ import { eventNames } from "../types/webhook-events";
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
 
+async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
+  const targetRepoConfiguration: PluginConfiguration = parseYaml(
+    await download({
+      context,
+      repository,
+      owner,
+    })
+  );
+  if (targetRepoConfiguration) {
+    try {
+      return Value.Decode(configSchema, Value.Default(configSchema, targetRepoConfiguration));
+    } catch (error) {
+      console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
   const defaultConfiguration = generateConfiguration();
@@ -20,38 +39,16 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   let mergedConfiguration = defaultConfiguration;
 
-  const targetRepoConfiguration: PluginConfiguration = parseYaml(
-    await download({
-      context,
-      repository: payload.repository.name,
-      owner: payload.repository.owner.login,
-    })
-  );
-  const orgRepoConfiguration: PluginConfiguration = parseYaml(
-    await download({
-      context,
-      repository: UBIQUIBOT_CONFIG_ORG_REPO,
-      owner: payload.repository.owner.login,
-    })
-  );
-  if (orgRepoConfiguration) {
-    try {
-      const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, orgRepoConfiguration));
-      mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
-      console.log("org config", JSON.stringify(decodedConfiguration, null, 2));
-    } catch (error) {
-      console.error("Error decoding organization repository configuration, will ignore.", error);
+  const configurations = await Promise.all([
+    getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
+    getConfigurationFromRepo(context, UBIQUIBOT_CONFIG_ORG_REPO, payload.repository.owner.login),
+  ]);
+
+  configurations.forEach((configuration) => {
+    if (configuration) {
+      mergedConfiguration = merge(mergedConfiguration, configuration);
     }
-  }
-  if (targetRepoConfiguration) {
-    try {
-      const decodedConfiguration = Value.Decode(configSchema, Value.Default(configSchema, targetRepoConfiguration));
-      console.log("repo config", JSON.stringify(decodedConfiguration, null, 2));
-      mergedConfiguration = merge(mergedConfiguration, decodedConfiguration);
-    } catch (error) {
-      console.error("Error decoding target repository configuration, will ignore.", error);
-    }
-  }
+  });
 
   checkPluginChains(mergedConfiguration);
 
