@@ -11,9 +11,21 @@ type GithubPlugin = {
   ref?: string;
 };
 
+const urlRegex = /^https?:\/\/\S+?$/;
+
+export function isGithubPlugin(plugin: string | GithubPlugin): plugin is GithubPlugin {
+  return typeof plugin !== "string";
+}
+
+/**
+ * Transforms the string into a plugin object if the string is not an url
+ */
 function githubPluginType() {
   return T.Transform(T.String())
     .Decode((value) => {
+      if (urlRegex.test(value)) {
+        return value;
+      }
       const matches = value.match(pluginNameRegex);
       if (!matches) {
         throw new Error(`Invalid plugin name: ${value}`);
@@ -26,6 +38,9 @@ function githubPluginType() {
       } as GithubPlugin;
     })
     .Encode((value) => {
+      if (typeof value === "string") {
+        return value;
+      }
       return `${value.owner}/${value.repo}${value.workflowId ? ":" + value.workflowId : ""}${value.ref ? "@" + value.ref : ""}`;
     });
 }

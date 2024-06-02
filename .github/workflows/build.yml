@@ -1,8 +1,9 @@
-name: Build & Deploy
+name: Build & Deploy to Cloudflare
 
 on:
   push:
-  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,19 +16,25 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        # with:
-        # submodules: "recursive" # Ensures submodules are checked out
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20.10.0
 
-      - name: Build
-        run: |
-          npm i -g bun
-          bun install
-          bun build src/worker.ts
-        # env: # Set environment variables for the build
-          # SUPABASE_URL: "https://wfzpewmlyiozupulbuur.supabase.co"
-          # SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmenBld21seWlvenVwdWxidXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTU2NzQzMzksImV4cCI6MjAxMTI1MDMzOX0.SKIL3Q0NOBaMehH0ekFspwgcu3afp3Dl9EDzPqs1nKs"
+      - uses: oven-sh/setup-bun@v1
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          wranglerVersion: '3.57.0'
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          secrets: |
+            WEBHOOK_PROXY_URL
+            WEBHOOK_SECRET
+            APP_ID
+            PRIVATE_KEY
+        env:
+          WEBHOOK_PROXY_URL: ${{ secrets.WEBHOOK_PROXY_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          APP_ID: ${{ secrets.APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}

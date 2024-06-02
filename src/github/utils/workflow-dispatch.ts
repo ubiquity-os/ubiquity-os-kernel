@@ -32,6 +32,17 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
   });
 }
 
+export async function dispatchWorker(targetUrl: string, payload: WorkflowDispatchOptions["inputs"]) {
+  const result = await fetch(targetUrl, {
+    body: JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+  return result.json();
+}
+
 export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {
   const octokit = await getInstallationOctokitForOrg(context, owner); // we cannot access other repos with the context's octokit
   const repo = await octokit.repos.get({
