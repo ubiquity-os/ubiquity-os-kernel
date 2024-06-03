@@ -1,5 +1,4 @@
 import { Value } from "@sinclair/typebox/value";
-import { generateConfiguration } from "@ubiquibot/configuration";
 import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
@@ -10,7 +9,7 @@ const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
-  const defaultConfiguration = generateConfiguration();
+  const defaultConfiguration = Value.Decode(configSchema, Value.Default(configSchema, {}));
   if (!("repository" in payload) || !payload.repository) {
     console.warn("Repository is not defined");
     return defaultConfiguration;
