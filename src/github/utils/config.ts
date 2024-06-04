@@ -14,6 +14,10 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     console.warn("Repository is not defined");
     return defaultConfiguration;
   }
+  if (!("owner" in payload.repository) || !payload.repository.owner) {
+    console.warn("Owner is not defined");
+    return defaultConfiguration;
+  }
 
   const _repoConfig = parseYaml(
     await download({
