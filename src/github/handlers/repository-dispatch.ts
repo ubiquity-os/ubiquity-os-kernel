@@ -1,7 +1,7 @@
 import { GitHubContext } from "../github-context";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { Value } from "@sinclair/typebox/value";
-import { DelegatedComputeInputs, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
+import { PluginInput, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
@@ -61,7 +61,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   } else {
     ref = nextPlugin.plugin;
   }
-  const inputs = new DelegatedComputeInputs(pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
+  const inputs = new PluginInput(context.eventHandler, pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
 
   state.currentPlugin++;
   state.inputs[state.currentPlugin] = inputs;
@@ -73,10 +73,10 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
       repository: nextPlugin.plugin.repo,
       ref: nextPlugin.plugin.ref,
       workflowId: nextPlugin.plugin.workflowId,
-      inputs: inputs.getInputs(),
+      inputs: inputs.getWorkflowInputs(),
     });
   } else {
-    await dispatchWorker(nextPlugin.plugin, inputs.getInputs());
+    await dispatchWorker(nextPlugin.plugin, await inputs.getWorkerInputs());
   }
 }
 

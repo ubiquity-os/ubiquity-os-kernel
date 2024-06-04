@@ -46,6 +46,29 @@ export class GitHubEventHandler {
     });
   }
 
+  async importRsaPrivateKey(pem: string) {
+    const pemContents = pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").trim();
+    const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+
+    return await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer.buffer,
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        hash: "SHA-256",
+      },
+      true,
+      ["sign"]
+    );
+  }
+
+  async signPayload(payload: string) {
+    const data = new TextEncoder().encode(payload);
+    const privateKey = await this.importRsaPrivateKey(this._privateKey);
+    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, data);
+    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  }
+
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
