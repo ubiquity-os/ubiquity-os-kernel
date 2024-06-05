@@ -128,7 +128,7 @@ describe("Worker tests", () => {
                   data: `
                   plugins:
                     issue_comment.created:
-                      - name: "Run on commment created"
+                      - name: "Run on comment created"
                         uses:
                           - id: plugin-A
                             plugin: https://plugin-a.internal
