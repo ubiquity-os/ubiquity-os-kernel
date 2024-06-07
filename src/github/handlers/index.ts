@@ -4,7 +4,7 @@ import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
-import { DelegatedComputeInputs } from "../types/plugin";
+import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
@@ -86,20 +86,20 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const ref = isGithubPluginObject ? plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)) : plugin;
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new DelegatedComputeInputs(stateId, context.key, event.payload, settings, token, ref);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings, token, ref);
 
     state.inputs[0] = inputs;
     await eventHandler.pluginChainState.put(stateId, state);
 
     if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, inputs.getInputs());
+      await dispatchWorker(plugin, await inputs.getWorkerInputs());
     } else {
       await dispatchWorkflow(context, {
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
         ref: plugin.ref,
-        inputs: inputs.getInputs(),
+        inputs: inputs.getWorkflowInputs(),
       });
     }
   }

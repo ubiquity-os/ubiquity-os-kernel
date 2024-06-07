@@ -109,6 +109,46 @@ describe("Worker tests", () => {
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
+    it("Should fill the config with defaults", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "ubiquibot-kernel",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent() {
+                return {
+                  data: `
+                  plugins:
+                    issue_comment.created:
+                      - name: "Run on comment created"
+                        uses:
+                          - id: plugin-A
+                            plugin: https://plugin-a.internal
+                  `,
+                };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg).toBeTruthy();
+      const pluginChain = cfg.plugins["issue_comment.created"];
+      expect(pluginChain.length).toBe(1);
+      expect(pluginChain[0].uses.length).toBe(1);
+      expect(pluginChain[0].skipBotEvents).toBeTrue();
+      expect(pluginChain[0].uses[0].id).toBe("plugin-A");
+      expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
+      expect(pluginChain[0].uses[0].with).toEqual({});
+    });
     it("Should merge the configuration when found", async () => {
       const cfg = await getConfig({
         key: issueOpened,

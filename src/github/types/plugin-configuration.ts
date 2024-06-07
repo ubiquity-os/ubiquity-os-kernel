@@ -50,9 +50,9 @@ const pluginChainSchema = T.Array(
     id: T.Optional(T.String()),
     plugin: githubPluginType(),
     type: T.Union([T.Literal("github")], { default: "github" }),
-    with: T.Record(T.String(), T.Unknown()),
+    with: T.Record(T.String(), T.Unknown(), { default: {} }),
   }),
-  { minItems: 1 }
+  { minItems: 1, default: [] }
 );
 
 export type PluginChain = StaticDecode<typeof pluginChainSchema>;
