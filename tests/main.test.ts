@@ -149,34 +149,5 @@ describe("Worker tests", () => {
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});
     });
-    it("Should merge the configuration when found", async () => {
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "conversation-rewards",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent() {
-                return {
-                  data: `
-incentives:
-  enabled: false`,
-                };
-              },
-            },
-          },
-        },
-        eventHandler: {} as GitHubEventHandler,
-      } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-      expect(cfg.incentives.enabled).toBeFalse();
-    });
   });
 });

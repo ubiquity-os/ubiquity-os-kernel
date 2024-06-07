@@ -1,9 +1,10 @@
-import { EmitterWebhookEventName as WebhookEventName, emitterEventNames } from "@octokit/webhooks";
+import { emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
 import { CloudflareKV } from "./github/utils/cloudflare-kv";
+import { WebhookEventName } from "@octokit/webhooks-types";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
