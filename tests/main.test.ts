@@ -1,3 +1,4 @@
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 /* eslint-disable @typescript-eslint/naming-convention */
 // @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
@@ -177,6 +178,94 @@ incentives:
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       expect(cfg.incentives.enabled).toBeFalse();
+    });
+    it("Should merge organization and repository configuration", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "conversation-rewards",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+                if (args.repo !== "ubiquibot-config") {
+                  return {
+                    data: `
+plugins:
+  '*':
+    - uses:
+      - plugin: repo-3/plugin-3
+        type: github
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-1/plugin-1
+        type: github
+        with:
+          setting2: true`,
+                  };
+                }
+                return {
+                  data: `
+plugins:
+  '*':
+    - uses:
+      - plugin: repo-1/plugin-1
+        type: github
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-2/plugin-2
+        type: github
+        with:
+          setting2: true`,
+                };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg.plugins["*"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-3",
+                repo: "plugin-3",
+                workflowId: "compute.yml",
+              },
+              type: "github",
+              with: {
+                setting1: false,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-1",
+                repo: "plugin-1",
+                workflowId: "compute.yml",
+              },
+              type: "github",
+              with: {
+                setting2: true,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
     });
   });
 });

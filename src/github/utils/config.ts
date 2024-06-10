@@ -1,9 +1,10 @@
+import { emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
-import { merge } from "lodash";
+import { isArray, mergeWith } from "lodash";
 import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
-import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
+import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
@@ -19,13 +20,43 @@ async function getConfigurationFromRepo(context: GitHubContext, repository: stri
   );
   if (targetRepoConfiguration) {
     try {
-      return Value.Decode(configSchema, Value.Default(configSchema, targetRepoConfiguration));
+      const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
+      const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
+      if (errors !== null) {
+        for (const error of errors) {
+          console.error(error);
+        }
+      }
+      return Value.Decode(configSchema, configSchemaWithDefaults);
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
       return null;
     }
   }
   return null;
+}
+
+type UsesType = PluginConfiguration["plugins"]["*"][0]["uses"];
+
+function mergeEventNames(arrays: UsesType[]) {
+  const mergedMap = new Map<string, unknown>();
+
+  arrays.flat().forEach((item) => {
+    const pluginKey = JSON.stringify(item.plugin);
+    mergedMap.set(pluginKey, item); // Override the content if the key exists
+  });
+
+  return Array.from(mergedMap.values());
+}
+
+function customMerge(objValue: UsesType, srcValue: UsesType, key: string) {
+  if ((emitterEventNames as readonly string[]).includes(key) && isArray(objValue) && isArray(srcValue)) {
+    return mergeEventNames([objValue, srcValue]);
+  }
+}
+
+function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
+  return mergeWith({}, configuration1, configuration2, customMerge);
 }
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
@@ -36,16 +67,16 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     return defaultConfiguration;
   }
 
-  let mergedConfiguration = defaultConfiguration;
+  let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
   const configurations = await Promise.all([
-    getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
     getConfigurationFromRepo(context, UBIQUIBOT_CONFIG_ORG_REPO, payload.repository.owner.login),
+    getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
   ]);
 
   configurations.forEach((configuration) => {
     if (configuration) {
-      mergedConfiguration = merge(mergedConfiguration, configuration);
+      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration);
     }
   });
 

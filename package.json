@@ -46,6 +46,7 @@
     "dotenv": "^16.4.4",
     "lodash": "4.17.21",
     "smee-client": "^2.0.0",
+    "typebox-validators": "0.3.5",
     "yaml": "^2.4.1"
   },
   "devDependencies": {
