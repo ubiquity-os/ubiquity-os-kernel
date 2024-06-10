@@ -1,6 +1,4 @@
-import { emitterEventNames } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
-import { isArray, mergeWith } from "lodash";
 import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
@@ -36,27 +34,18 @@ async function getConfigurationFromRepo(context: GitHubContext, repository: stri
   return null;
 }
 
-type UsesType = PluginConfiguration["plugins"]["*"][0]["uses"];
-
-function mergeEventNames(arrays: UsesType[]) {
-  const mergedMap = new Map<string, unknown>();
-
-  arrays.flat().forEach((item) => {
-    const pluginKey = JSON.stringify(item.plugin);
-    mergedMap.set(pluginKey, item); // Override the content if the key exists
-  });
-
-  return Array.from(mergedMap.values());
-}
-
-function customMerge(objValue: UsesType, srcValue: UsesType, key: string) {
-  if ((emitterEventNames as readonly string[]).includes(key) && isArray(objValue) && isArray(srcValue)) {
-    return mergeEventNames([objValue, srcValue]);
-  }
-}
-
+/**
+ * Merge configurations based on their 'plugins' keys
+ */
 function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
-  return mergeWith({}, configuration1, configuration2, customMerge);
+  const mergedConfiguration = { ...configuration1 };
+  for (const key of Object.keys(configuration2.plugins)) {
+    const pluginKey = key as keyof PluginConfiguration["plugins"];
+    if (configuration2.plugins[pluginKey]?.length) {
+      mergedConfiguration.plugins[pluginKey] = configuration2.plugins[pluginKey];
+    }
+  }
+  return mergedConfiguration;
 }
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {

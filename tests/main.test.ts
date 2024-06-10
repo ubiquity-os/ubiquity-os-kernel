@@ -150,36 +150,8 @@ describe("Worker tests", () => {
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});
     });
-    it("Should merge the configuration when found", async () => {
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "conversation-rewards",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent() {
-                return {
-                  data: `
-incentives:
-  enabled: false`,
-                };
-              },
-            },
-          },
-        },
-        eventHandler: {} as GitHubEventHandler,
-      } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-      expect(cfg.incentives.enabled).toBeFalse();
-    });
     it("Should merge organization and repository configuration", async () => {
+      const workflowId = "compute.yml";
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -214,6 +186,12 @@ plugins:
                 return {
                   data: `
 plugins:
+  'issues.assigned':
+    - uses:
+      - plugin: uses-1/plugin-1
+        type: github
+        with:
+          settings1: 'enabled'
   '*':
     - uses:
       - plugin: repo-1/plugin-1
@@ -232,6 +210,24 @@ plugins:
         },
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
+      expect(cfg.plugins["issues.assigned"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "uses-1",
+                repo: "plugin-1",
+                workflowId,
+              },
+              type: "github",
+              with: {
+                settings1: "enabled",
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
       expect(cfg.plugins["*"]).toEqual([
         {
           uses: [
@@ -239,7 +235,7 @@ plugins:
               plugin: {
                 owner: "repo-3",
                 repo: "plugin-3",
-                workflowId: "compute.yml",
+                workflowId,
               },
               type: "github",
               with: {
@@ -255,7 +251,7 @@ plugins:
               plugin: {
                 owner: "repo-1",
                 repo: "plugin-1",
-                workflowId: "compute.yml",
+                workflowId,
               },
               type: "github",
               with: {
