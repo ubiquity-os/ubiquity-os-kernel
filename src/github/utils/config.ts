@@ -55,6 +55,10 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     console.warn("Repository is not defined");
     return defaultConfiguration;
   }
+  if (!("owner" in payload.repository) || !payload.repository.owner) {
+    console.warn("Owner is not defined");
+    return defaultConfiguration;
+  }
 
   let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
