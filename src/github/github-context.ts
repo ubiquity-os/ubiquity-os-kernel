@@ -2,21 +2,17 @@ import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as Webhook
 import { customOctokit } from "./github-client";
 import { GitHubEventHandler } from "./github-event-handler";
 
-export type SupportedEventsU = WebhookEventName;
-
-export type SupportedEvents = {
-  [K in SupportedEventsU]: K extends WebhookEventName ? WebhookEvent<K> : never;
-};
-
-export class GitHubContext<T extends SupportedEventsU = SupportedEventsU, TU extends SupportedEvents[T] = SupportedEvents[T]> {
+export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;
   public name: WebhookEventName;
   public id: string;
-  public payload: TU["payload"];
+  public payload: {
+    [K in TSupportedEvents]: K extends WebhookEventName ? WebhookEvent<K> : never;
+  }[TSupportedEvents]["payload"];
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
 
-  constructor(eventHandler: InstanceType<typeof GitHubEventHandler>, event: TU, octokit: InstanceType<typeof customOctokit>) {
+  constructor(eventHandler: InstanceType<typeof GitHubEventHandler>, event: WebhookEvent<WebhookEventName>, octokit: InstanceType<typeof customOctokit>) {
     this.eventHandler = eventHandler;
     this.name = event.name;
     this.id = event.id;
