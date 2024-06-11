@@ -12,7 +12,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
 
-  constructor(eventHandler: InstanceType<typeof GitHubEventHandler>, event: WebhookEvent<WebhookEventName>, octokit: InstanceType<typeof customOctokit>) {
+  constructor(eventHandler: InstanceType<typeof GitHubEventHandler>, event: WebhookEvent<TSupportedEvents>, octokit: InstanceType<typeof customOctokit>) {
     this.eventHandler = eventHandler;
     this.name = event.name;
     this.id = event.id;
