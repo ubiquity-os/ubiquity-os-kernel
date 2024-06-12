@@ -24,6 +24,13 @@ jobs:
 
       - uses: oven-sh/setup-bun@v1
 
+      - name: Run setup script
+        run: |
+          bun install
+          bun setup-kv
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
       - uses: cloudflare/wrangler-action@v3
         with:
           wranglerVersion: '3.57.0'

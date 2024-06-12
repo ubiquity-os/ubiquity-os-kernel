@@ -1,5 +1,6 @@
 import { Type as T } from "@sinclair/typebox";
 import { StaticDecode } from "@sinclair/typebox";
+import { StandardValidator } from "typebox-validators";
 import { githubWebhookEvents } from "./webhook-events";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)?))?$");
@@ -72,5 +73,7 @@ const handlerSchema = T.Array(
 export const configSchema = T.Object({
   plugins: T.Record(T.Enum(githubWebhookEvents), handlerSchema, { default: {} }),
 });
+
+export const configSchemaValidator = new StandardValidator(configSchema);
 
 export type PluginConfiguration = StaticDecode<typeof configSchema>;

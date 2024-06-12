@@ -1,3 +1,4 @@
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 /* eslint-disable @typescript-eslint/naming-convention */
 // @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
@@ -148,6 +149,119 @@ describe("Worker tests", () => {
       expect(pluginChain[0].uses[0].id).toBe("plugin-A");
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});
+    });
+    it("Should merge organization and repository configuration", async () => {
+      const workflowId = "compute.yml";
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "conversation-rewards",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+                if (args.repo !== "ubiquibot-config") {
+                  return {
+                    data: `
+plugins:
+  '*':
+    - uses:
+      - plugin: repo-3/plugin-3
+        type: github
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-1/plugin-1
+        type: github
+        with:
+          setting2: true`,
+                  };
+                }
+                return {
+                  data: `
+plugins:
+  'issues.assigned':
+    - uses:
+      - plugin: uses-1/plugin-1
+        type: github
+        with:
+          settings1: 'enabled'
+  '*':
+    - uses:
+      - plugin: repo-1/plugin-1
+        type: github
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-2/plugin-2
+        type: github
+        with:
+          setting2: true`,
+                };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg.plugins["issues.assigned"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "uses-1",
+                repo: "plugin-1",
+                workflowId,
+              },
+              type: "github",
+              with: {
+                settings1: "enabled",
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
+      expect(cfg.plugins["*"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-3",
+                repo: "plugin-3",
+                workflowId,
+              },
+              type: "github",
+              with: {
+                setting1: false,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-1",
+                repo: "plugin-1",
+                workflowId,
+              },
+              type: "github",
+              with: {
+                setting2: true,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
     });
   });
 });
