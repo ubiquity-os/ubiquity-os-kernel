@@ -1,5 +1,4 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-// @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
@@ -9,7 +8,7 @@ import worker from "../src/worker";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
