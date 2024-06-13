@@ -1,6 +1,4 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-/* eslint-disable @typescript-eslint/naming-convention */
-// @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
@@ -8,26 +6,13 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
+import { WebhooksMocked } from "./__mocks__/webhooks";
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
 const issueOpened = "issues.opened";
-
-class WebhooksMocked {
-  constructor(_: unknown) {}
-  verifyAndReceive(_: unknown) {
-    return Promise.resolve();
-  }
-  onAny(_: unknown) {}
-  on(_: unknown) {}
-  onError(_: unknown) {}
-  removeListener(_: unknown, __: unknown) {}
-  sign(_: unknown) {}
-  verify(_: unknown, __: unknown) {}
-  receive(_: unknown) {}
-}
 
 config({ path: ".dev.vars" });
 
