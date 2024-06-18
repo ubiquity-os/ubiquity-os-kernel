@@ -8,7 +8,7 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 
 config({ path: ".dev.vars" });
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
@@ -46,7 +46,6 @@ plugins:
   'issues.labeled':
     - uses:
       - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
-        type: github
         with:
           settings1: 'enabled'`,
               };
@@ -66,7 +65,6 @@ plugins:
               workflowId: "compute.yml",
               ref: "pull/1",
             },
-            type: "github",
             with: {
               settings1: "enabled",
             },

@@ -158,12 +158,10 @@ plugins:
   '*':
     - uses:
       - plugin: repo-3/plugin-3
-        type: github
         with:
           setting1: false
     - uses:
       - plugin: repo-1/plugin-1
-        type: github
         with:
           setting2: true`,
                   };
@@ -174,18 +172,15 @@ plugins:
   'issues.assigned':
     - uses:
       - plugin: uses-1/plugin-1
-        type: github
         with:
           settings1: 'enabled'
   '*':
     - uses:
       - plugin: repo-1/plugin-1
-        type: github
         with:
           setting1: false
     - uses:
       - plugin: repo-2/plugin-2
-        type: github
         with:
           setting2: true`,
                 };
@@ -204,7 +199,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 settings1: "enabled",
               },
@@ -222,7 +216,6 @@ plugins:
                 repo: "plugin-3",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting1: false,
               },
@@ -238,7 +231,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting2: true,
               },

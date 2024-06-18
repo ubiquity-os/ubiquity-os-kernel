@@ -50,7 +50,6 @@ const pluginChainSchema = T.Array(
   T.Object({
     id: T.Optional(T.String()),
     plugin: githubPluginType(),
-    type: T.Union([T.Literal("github")], { default: "github" }),
     with: T.Record(T.String(), T.Unknown(), { default: {} }),
   }),
   { minItems: 1, default: [] }
