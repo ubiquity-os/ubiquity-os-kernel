@@ -46,7 +46,6 @@ plugins:
   'issues.labeled':
     - uses:
       - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
-        type: github
         with:
           settings1: 'enabled'`,
               };
