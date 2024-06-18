@@ -4,11 +4,13 @@ import { getConfig } from "../utils/config";
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   if (/^\/help$/.test(body)) {
-    const comments = ["---", "| name | description | command | example |", "---"];
+    const comments = ["| Name | Description | Command | Example |", "|---|---|---|---|"];
     const configuration = await getConfig(context);
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const plugin of pluginArray) {
-        comments.push(`| ${plugin.name} | ${plugin.description} | \`${plugin.command}\` | \`${plugin.example}\` |`);
+        if (plugin.name) {
+          comments.push(`| ${plugin.name} | ${getContent(plugin.description)} | \`${getContent(plugin.command)}\` | \`${getContent(plugin.example)}\` |`);
+        }
       }
     }
     await context.octokit.issues.createComment({
@@ -18,4 +20,8 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       repo: context.payload.repository.name,
     });
   }
+}
+
+function getContent(content: string | undefined) {
+  return content || "-";
 }
