@@ -204,7 +204,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 settings1: "enabled",
               },
@@ -222,7 +221,6 @@ plugins:
                 repo: "plugin-3",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting1: false,
               },
@@ -238,7 +236,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting2: true,
               },

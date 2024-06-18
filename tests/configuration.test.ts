@@ -8,7 +8,7 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 
 config({ path: ".dev.vars" });
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
@@ -66,7 +66,6 @@ plugins:
               workflowId: "compute.yml",
               ref: "pull/1",
             },
-            type: "github",
             with: {
               settings1: "enabled",
             },
