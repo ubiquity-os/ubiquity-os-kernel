@@ -31,32 +31,6 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 /**
  * Ensures that passed content does not break MD display within the table.
  */
-function escapeMarkdown(text: string) {
-  const replacements = {
-    "\\": "\\\\",
-    "`": "\\`",
-    "*": "\\*",
-    _: "\\_",
-    "{": "\\{",
-    "}": "\\}",
-    "[": "\\[",
-    "]": "\\]",
-    "(": "\\(",
-    ")": "\\)",
-    "#": "\\#",
-    "+": "\\+",
-    "-": "\\-",
-    ".": "\\.",
-    "!": "\\!",
-    "|": "\\|",
-    "~": "\\~",
-    ">": "\\>",
-    "<": "\\<",
-  };
-
-  return text.replace(/[\\`*_{}[\]()#+\-.!|~><]/g, (match) => replacements[match as keyof typeof replacements]);
-}
-
 function getContent(content: string | undefined) {
-  return content ? escapeMarkdown(content) : "-";
+  return content ? content.replace("|", "\\|") : "-";
 }

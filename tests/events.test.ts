@@ -72,7 +72,9 @@ describe("Event related tests", () => {
     expect(spy.mock.calls).toEqual([
       [
         {
-          body: "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/command` | Plugin A | `/command \\[foo \\| bar\\]` |",
+          body:
+            "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
+            " all available commands. | `/help` |\n| `/command` | Plugin A | `/command [foo \\| bar]` |",
           issue_number: 1,
           owner: "ubiquity",
           repo: "ubiquibot-kernel",
