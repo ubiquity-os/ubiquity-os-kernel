@@ -8,8 +8,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     const configuration = await getConfig(context);
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const plugin of pluginArray) {
-        if (plugin.name) {
-          comments.push(`| ${plugin.name} | ${getContent(plugin.description)} | \`${getContent(plugin.command)}\` | \`${getContent(plugin.example)}\` |`);
+        // Only show plugins that have commands available for the user
+        if (plugin.command) {
+          comments.push(
+            `| ${getContent(plugin.name)} | ${getContent(plugin.description)} | \`${getContent(plugin.command)}\` | \`${getContent(plugin.example)}\` |`
+          );
         }
       }
     }
