@@ -4,7 +4,12 @@ import { getConfig } from "../utils/config";
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   if (/^\/help$/.test(body)) {
-    const comments = ["| Command | Description | Example |", "|---|---|---|---|", "| `/help` | List all available commands. | `/help` |"];
+    const comments = [
+      "### Available Commands\n\n",
+      "| Command | Description | Example |",
+      "|---|---|---|---|",
+      "| `/help` | List all available commands. | `/help` |",
+    ];
     const configuration = await getConfig(context);
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const plugin of pluginArray) {
