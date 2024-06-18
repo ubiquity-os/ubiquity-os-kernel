@@ -45,7 +45,7 @@ describe("Event related tests", () => {
                     issue_comment.created:
                       - name: "Run on comment created"
                         description: "Plugin A"
-                        example: /command foobar
+                        example: /command [foo | bar]
                         command: /command
                         uses:
                           - id: plugin-A
@@ -72,7 +72,7 @@ describe("Event related tests", () => {
     expect(spy.mock.calls).toEqual([
       [
         {
-          body: "---\n| name | description | command | example |\n---\n| Run on comment created | Plugin A | `/command` | `/command foobar` |",
+          body: "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/command` | Plugin A | `/command \\[foo \\| bar\\]` |",
           issue_number: 1,
           owner: "ubiquity",
           repo: "ubiquibot-kernel",
