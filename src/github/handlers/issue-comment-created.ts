@@ -7,7 +7,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     const comments = [
       "### Available Commands\n\n",
       "| Command | Description | Example |",
-      "|---|---|---|---|",
+      "|---|---|---|",
       "| `/help` | List all available commands. | `/help` |",
     ];
     const configuration = await getConfig(context);
