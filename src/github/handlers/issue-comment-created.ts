@@ -13,9 +13,9 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     }
     await context.octokit.issues.createComment({
       body: comments.join("\n"),
-      issue_number: 0,
-      owner: "",
-      repo: "",
+      issue_number: context.payload.issue.number,
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
     });
   }
 }

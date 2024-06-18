@@ -62,6 +62,7 @@ describe("Event related tests", () => {
           owner: { login: "ubiquity" },
           name: "ubiquibot-kernel",
         },
+        issue: { number: 1 },
         comment: {
           body: "/help",
         },
@@ -72,9 +73,9 @@ describe("Event related tests", () => {
       [
         {
           body: "---\n| name | description | command | example |\n---\n| Run on comment created | Plugin A | `/command` | `/command foobar` |",
-          issue_number: 0,
-          owner: "",
-          repo: "",
+          issue_number: 1,
+          owner: "ubiquity",
+          repo: "ubiquibot-kernel",
         },
       ],
     ]);
