@@ -4,15 +4,13 @@ import { getConfig } from "../utils/config";
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   if (/^\/help$/.test(body)) {
-    const comments = ["| Name | Description | Command | Example |", "|---|---|---|---|"];
+    const comments = ["| Command | Description | Example |", "|---|---|---|---|", "| `/help` | List all available commands. | `/help` |"];
     const configuration = await getConfig(context);
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const plugin of pluginArray) {
         // Only show plugins that have commands available for the user
         if (plugin.command) {
-          comments.push(
-            `| ${getContent(plugin.name)} | ${getContent(plugin.description)} | \`${getContent(plugin.command)}\` | \`${getContent(plugin.example)}\` |`
-          );
+          comments.push(`| \`${getContent(plugin.command)}\` | ${getContent(plugin.description)} | \`${getContent(plugin.example)}\` |`);
         }
       }
     }
