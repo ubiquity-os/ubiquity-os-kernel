@@ -2,6 +2,7 @@ import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { GitHubContext } from "../github-context";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
+import issueCommentCreated from "./issue-comment-created";
 import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { PluginInput } from "../types/plugin";
@@ -19,6 +20,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("repository_dispatch", repositoryDispatch);
+  eventHandler.on("issue_comment.created", issueCommentCreated);
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 

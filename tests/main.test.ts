@@ -1,6 +1,4 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-/* eslint-disable @typescript-eslint/naming-convention */
-// @ts-expect-error package name is correct, TypeScript doesn't recognize it
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
@@ -8,26 +6,13 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
+import { WebhooksMocked } from "./__mocks__/webhooks";
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
 const issueOpened = "issues.opened";
-
-class WebhooksMocked {
-  constructor(_: unknown) {}
-  verifyAndReceive(_: unknown) {
-    return Promise.resolve();
-  }
-  onAny(_: unknown) {}
-  on(_: unknown) {}
-  onError(_: unknown) {}
-  removeListener(_: unknown, __: unknown) {}
-  sign(_: unknown) {}
-  verify(_: unknown, __: unknown) {}
-  receive(_: unknown) {}
-}
 
 config({ path: ".dev.vars" });
 
@@ -173,12 +158,10 @@ plugins:
   '*':
     - uses:
       - plugin: repo-3/plugin-3
-        type: github
         with:
           setting1: false
     - uses:
       - plugin: repo-1/plugin-1
-        type: github
         with:
           setting2: true`,
                   };
@@ -189,18 +172,15 @@ plugins:
   'issues.assigned':
     - uses:
       - plugin: uses-1/plugin-1
-        type: github
         with:
           settings1: 'enabled'
   '*':
     - uses:
       - plugin: repo-1/plugin-1
-        type: github
         with:
           setting1: false
     - uses:
       - plugin: repo-2/plugin-2
-        type: github
         with:
           setting2: true`,
                 };
@@ -219,7 +199,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 settings1: "enabled",
               },
@@ -237,7 +216,6 @@ plugins:
                 repo: "plugin-3",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting1: false,
               },
@@ -253,7 +231,6 @@ plugins:
                 repo: "plugin-1",
                 workflowId,
               },
-              type: "github",
               with: {
                 setting2: true,
               },
