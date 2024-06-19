@@ -2,10 +2,51 @@ import { Value } from "@sinclair/typebox/value";
 import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
-import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
+import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
+const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
+
+async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
+  const targetRepoConfiguration: PluginConfiguration = parseYaml(
+    await download({
+      context,
+      repository,
+      owner,
+    })
+  );
+  if (targetRepoConfiguration) {
+    try {
+      const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
+      const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
+      if (errors !== null) {
+        for (const error of errors) {
+          console.error(error);
+        }
+      }
+      return Value.Decode(configSchema, configSchemaWithDefaults);
+    } catch (error) {
+      console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Merge configurations based on their 'plugins' keys
+ */
+function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
+  const mergedConfiguration = { ...configuration1 };
+  for (const key of Object.keys(configuration2.plugins)) {
+    const pluginKey = key as keyof PluginConfiguration["plugins"];
+    if (configuration2.plugins[pluginKey]?.length) {
+      mergedConfiguration.plugins[pluginKey] = configuration2.plugins[pluginKey];
+    }
+  }
+  return mergedConfiguration;
+}
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
@@ -14,27 +55,27 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     console.warn("Repository is not defined");
     return defaultConfiguration;
   }
-
-  const _repoConfig = parseYaml(
-    await download({
-      context,
-      repository: payload.repository.name,
-      owner: payload.repository.owner.login,
-    })
-  );
-  if (!_repoConfig) return defaultConfiguration;
-
-  let config: PluginConfiguration;
-  try {
-    config = Value.Decode(configSchema, Value.Default(configSchema, _repoConfig));
-  } catch (error) {
-    console.error("Error decoding config, will use default.", error);
+  if (!("owner" in payload.repository) || !payload.repository.owner) {
+    console.warn("Owner is not defined");
     return defaultConfiguration;
   }
 
-  checkPluginChains(config);
+  let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
-  return config;
+  const configurations = await Promise.all([
+    getConfigurationFromRepo(context, UBIQUIBOT_CONFIG_ORG_REPO, payload.repository.owner.login),
+    getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
+  ]);
+
+  configurations.forEach((configuration) => {
+    if (configuration) {
+      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration);
+    }
+  });
+
+  checkPluginChains(mergedConfiguration);
+
+  return mergedConfiguration;
 }
 
 function checkPluginChains(config: PluginConfiguration) {

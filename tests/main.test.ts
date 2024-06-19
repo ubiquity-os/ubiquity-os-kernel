@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/naming-convention */
-// @ts-expect-error package name is correct, TypeScript doesn't recognize it
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
@@ -7,26 +6,13 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
+import { WebhooksMocked } from "./__mocks__/webhooks";
 
-mock.module("@octokit/webhooks", () => ({
+void mock.module("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
 const issueOpened = "issues.opened";
-
-class WebhooksMocked {
-  constructor(_: unknown) {}
-  verifyAndReceive(_: unknown) {
-    return Promise.resolve();
-  }
-  onAny(_: unknown) {}
-  on(_: unknown) {}
-  onError(_: unknown) {}
-  removeListener(_: unknown, __: unknown) {}
-  sign(_: unknown) {}
-  verify(_: unknown, __: unknown) {}
-  receive(_: unknown) {}
-}
 
 config({ path: ".dev.vars" });
 
@@ -109,7 +95,48 @@ describe("Worker tests", () => {
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
-    it("Should merge the configuration when found", async () => {
+    it("Should fill the config with defaults", async () => {
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "ubiquibot-kernel",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent() {
+                return {
+                  data: `
+                  plugins:
+                    issue_comment.created:
+                      - name: "Run on comment created"
+                        uses:
+                          - id: plugin-A
+                            plugin: https://plugin-a.internal
+                  `,
+                };
+              },
+            },
+          },
+        },
+        eventHandler: {} as GitHubEventHandler,
+      } as unknown as GitHubContext);
+      expect(cfg).toBeTruthy();
+      const pluginChain = cfg.plugins["issue_comment.created"];
+      expect(pluginChain.length).toBe(1);
+      expect(pluginChain[0].uses.length).toBe(1);
+      expect(pluginChain[0].skipBotEvents).toBeTrue();
+      expect(pluginChain[0].uses[0].id).toBe("plugin-A");
+      expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
+      expect(pluginChain[0].uses[0].with).toEqual({});
+    });
+    it("Should merge organization and repository configuration", async () => {
+      const workflowId = "compute.yml";
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -123,11 +150,39 @@ describe("Worker tests", () => {
         octokit: {
           rest: {
             repos: {
-              getContent() {
+              getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+                if (args.repo !== "ubiquibot-config") {
+                  return {
+                    data: `
+plugins:
+  '*':
+    - uses:
+      - plugin: repo-3/plugin-3
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-1/plugin-1
+        with:
+          setting2: true`,
+                  };
+                }
                 return {
                   data: `
-incentives:
-  enabled: false`,
+plugins:
+  'issues.assigned':
+    - uses:
+      - plugin: uses-1/plugin-1
+        with:
+          settings1: 'enabled'
+  '*':
+    - uses:
+      - plugin: repo-1/plugin-1
+        with:
+          setting1: false
+    - uses:
+      - plugin: repo-2/plugin-2
+        with:
+          setting2: true`,
                 };
               },
             },
@@ -135,8 +190,55 @@ incentives:
         },
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-      expect(cfg.incentives.enabled).toBeFalse();
+      expect(cfg.plugins["issues.assigned"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "uses-1",
+                repo: "plugin-1",
+                workflowId,
+              },
+              with: {
+                settings1: "enabled",
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
+      expect(cfg.plugins["*"]).toEqual([
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-3",
+                repo: "plugin-3",
+                workflowId,
+              },
+              with: {
+                setting1: false,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+        {
+          uses: [
+            {
+              plugin: {
+                owner: "repo-1",
+                repo: "plugin-1",
+                workflowId,
+              },
+              with: {
+                setting2: true,
+              },
+            },
+          ],
+          skipBotEvents: true,
+        },
+      ]);
     });
   });
 });
