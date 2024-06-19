@@ -5,7 +5,7 @@ const config: KnipConfig = {
   project: ["src/**/*.ts"],
   ignoreBinaries: ["build", "i", "format:cspell", "awk", "lsof"],
   ignoreExportsUsedInFile: true,
-  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier"],
+  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier", "msw"],
 };
 
 export default config;
