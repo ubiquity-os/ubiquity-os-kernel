@@ -16,14 +16,16 @@ jobs:
         with:
           node-version: 20.10.0
 
+      - uses: oven-sh/setup-bun@v1
+
       - name: Install toolchain
-        run: yarn install
+        run: bun install
 
       - name: Store PR number
         run: echo ${{ github.event.number }} > pr-number.txt
 
       - name: Run Knip
-        run: yarn knip || yarn knip --reporter json > knip-results.json
+        run: bun knip || bun knip --reporter json > knip-results.json
 
       - name: Upload knip result
         if: failure()
