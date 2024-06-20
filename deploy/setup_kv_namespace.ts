@@ -77,6 +77,7 @@ async function main() {
   let namespaceId: string;
   try {
     const res = execSync(`wrangler kv:namespace create ${NAMESPACE_TITLE}`).toString();
+    console.log(res);
     const newId = res.match(/id = \s*"([^"]+)"/)?.[1];
     if (!newId) {
       throw new Error(`The new ID could not be found.`);
