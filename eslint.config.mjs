@@ -21,7 +21,7 @@ export default tsEslint.config({
     "check-file/filename-naming-convention": [
       "error",
       {
-        "**/*.{js,ts}": "+([-._a-z0-9])",
+        "**/*.{js,ts}": "+([-.a-z0-9])",
       },
     ],
     "prefer-arrow-callback": [
