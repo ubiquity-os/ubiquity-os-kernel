@@ -33,7 +33,7 @@ jobs:
 
       - uses: cloudflare/wrangler-action@v3
         with:
-          wranglerVersion: '3.57.0'
+          wranglerVersion: "3.57.0"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           secrets: |
             WEBHOOK_PROXY_URL
