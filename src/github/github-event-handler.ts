@@ -52,7 +52,7 @@ export class GitHubEventHandler {
 
     return await crypto.subtle.importKey(
       "pkcs8",
-      binaryDer.buffer,
+      binaryDer.buffer as ArrayBuffer,
       {
         name: "RSASSA-PKCS1-v1_5",
         hash: "SHA-256",
