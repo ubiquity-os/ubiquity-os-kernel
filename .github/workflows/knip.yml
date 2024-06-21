@@ -1,10 +1,7 @@
 name: Knip
 
 on:
-  pull_request_target:
-  workflow_dispatch:
-
-permissions: write-all
+  pull_request:
 
 jobs:
   run-knip:
@@ -23,11 +20,17 @@ jobs:
           npm i -g bun
           bun install
 
-      - name: Report knip results to pull request
-        uses: Codex-/knip-reporter@v2
+      - name: Store PR number
+        run: echo ${{ github.event.number }} > pr-number.txt
+
+      - name: Run Knip
+        run: bun knip || bun knip --reporter json > knip-results.json
+
+      - name: Upload knip result
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          verbose: true
-          comment_id: ${{ github.workflow }}-reporter
-          command_script_name: knip-ci
-          annotations: true
-          ignore_results: false
+          name: knip-results
+          path: |
+            knip-results.json
+            pr-number.txt
