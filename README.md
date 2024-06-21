@@ -9,7 +9,7 @@ The kernel is designed to:
 ## Environment Variables
 
 - **`PRIVATE_KEY`**
-  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. Use the following command to perform this conversion and append the result to your `.dev.vars` file:
+  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}. Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.dev.vars` file:
 
     ```sh
     echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
