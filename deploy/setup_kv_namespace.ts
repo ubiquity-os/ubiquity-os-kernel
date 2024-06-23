@@ -77,6 +77,7 @@ async function main() {
   let namespaceId: string;
   try {
     const res = execSync(`wrangler kv:namespace create ${NAMESPACE_TITLE}`).toString();
+    console.log(res);
     const newId = res.match(/id = \s*"([^"]+)"/)?.[1];
     if (!newId) {
       throw new Error(`The new ID could not be found.`);
@@ -84,6 +85,7 @@ async function main() {
     namespaceId = newId;
     console.log(`Namespace created with ID: ${namespaceId}`);
   } catch (error) {
+    console.error(error);
     const listOutput = JSON.parse(execSync(`wrangler kv:namespace list`).toString()) as Namespace[];
     const existingNamespace = listOutput.find((o) => o.title === NAMESPACE_TITLE_WITH_PREFIX);
     if (!existingNamespace) {
@@ -99,6 +101,6 @@ async function main() {
 main()
   .then(() => console.log("Successfully bound namespace."))
   .catch((e) => {
-    console.error("Error checking or creating namespace:", e);
+    console.error("Error checking or creating namespace:\n", e);
     process.exit(1);
   });
