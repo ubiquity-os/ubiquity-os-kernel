@@ -3,6 +3,7 @@
 export class WebhooksMocked {
   constructor(_: unknown) {}
   verifyAndReceive(_: unknown) {
+    console.log("verifyAndReceive");
     return Promise.resolve();
   }
   onAny(_: unknown) {}

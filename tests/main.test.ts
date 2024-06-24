@@ -56,6 +56,7 @@ describe("Worker tests", () => {
       PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
+    expect(await res.text()).toEqual("ok\n");
     expect(res.status).toEqual(200);
   });
 

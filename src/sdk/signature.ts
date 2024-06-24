@@ -4,7 +4,7 @@ export async function verifySignature(publicKeyPem: string, payload: unknown, si
 
   const publicKey = await crypto.subtle.importKey(
     "spki",
-    binaryDer.buffer,
+    binaryDer,
     {
       name: "RSASSA-PKCS1-v1_5",
       hash: "SHA-256",

@@ -106,7 +106,7 @@ describe("SDK tests", () => {
     const data = {
       ...issueCommented,
       stateId: "stateId",
-      authToken: process.env.GITHUB_TOKEN,
+      authToken: "test",
       settings: {
         shouldFail: false,
       },

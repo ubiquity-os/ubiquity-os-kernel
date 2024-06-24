@@ -1,12 +1,12 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { Octokit } from "@octokit/rest";
+import { customOctokit } from "./octokit";
 
 export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName> {
   eventName: TSupportedEvents;
   payload: {
     [K in TSupportedEvents]: K extends WebhookEventName ? WebhookEvent<K> : never;
   }[TSupportedEvents]["payload"];
-  octokit: InstanceType<typeof Octokit>;
+  octokit: InstanceType<typeof customOctokit>;
   config: TConfig;
   env: TEnv;
   logger: {

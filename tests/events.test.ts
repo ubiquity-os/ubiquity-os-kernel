@@ -1,5 +1,5 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
@@ -7,7 +7,7 @@ import issueCommentCreated from "../src/github/handlers/issue-comment-created";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
 
-void mock.module("@octokit/webhooks", () => ({
+void jest.mock("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
@@ -30,7 +30,7 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = spyOn(issues, "createComment");
+    const spy = jest.spyOn(issues, "createComment");
     await issueCommentCreated({
       id: "",
       key: "issue_comment.created",

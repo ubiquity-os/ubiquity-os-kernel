@@ -20,6 +20,7 @@ export default {
         pluginChainState: new CloudflareKV(env.PLUGIN_CHAIN_STATE),
       });
       bindHandlers(eventHandler);
+      console.log("CALLING verifyAndReceive");
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSHA256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
@@ -36,6 +37,8 @@ function handleUncaughtError(error: unknown) {
     const err = error.errors[0];
     errorMessage = err.message ? `${err.name}: ${err.message}` : `Error: ${errorMessage}`;
     status = typeof err.status !== "undefined" ? err.status : 500;
+  } else {
+    errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: { "content-type": "application/json" } });
 }

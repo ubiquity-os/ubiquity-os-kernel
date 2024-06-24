@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { Context } from "./context";
-import { customOctokit } from "../github/github-client";
+import { customOctokit } from "./octokit";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { verifySignature } from "./signature";
 import { UBIQUIBOT_KERNEL_PUBLIC_KEY } from "./constants";
@@ -32,8 +32,14 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
     const signature = payload.signature;
     delete payload.signature;
     if (!(await verifySignature(options?.ubiquibotKernelPublicKey || UBIQUIBOT_KERNEL_PUBLIC_KEY, payload, signature))) {
-      console.error("Invalid signature");
       throw new HTTPException(400, { message: "Invalid signature" });
+    }
+
+    try {
+      new customOctokit({ auth: payload.authToken });
+    } catch (error) {
+      console.error("SDK ERROR", error);
+      throw new HTTPException(500, { message: "Unexpected error" });
     }
 
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
@@ -52,7 +58,6 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
     };
 
     try {
-      console.log("CALLING HANDLER");
       const result = await handler(context);
       return ctx.json({ stateId: payload.stateId, output: result });
     } catch (error) {
