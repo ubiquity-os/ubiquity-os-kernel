@@ -160,6 +160,10 @@ How it works:
 3. The kernel passes github event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
 4. The plugin performs all of the required actions and returns the result
 
+## Hello world plugin tutorial
+
+A screencast tutorial on how to set up and run a hello world plugin is available at https://github.com/ubiquity/ubiquibot-kernel/wiki/Hello-world-Ubiquibot-plugin-onboarding-tutorial .
+
 ## Testing
 
 ### Jest
