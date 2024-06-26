@@ -162,7 +162,7 @@ How it works:
 
 ## Hello world plugin tutorial
 
-A screencast tutorial on how to set up and run a hello world plugin is available at https://github.com/ubiquity/ubiquibot-kernel/wiki/Hello-world-Ubiquibot-plugin-onboarding-tutorial .
+A screencast tutorial on how to set up and run a hello world plugin is available at [wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/Hello-world-plugin-onboarding-tutorial).
 
 ## Testing
 
