@@ -2,7 +2,6 @@ name: Knip
 
 on:
   pull_request:
-  workflow_dispatch:
 
 jobs:
   run-knip:
@@ -16,10 +15,10 @@ jobs:
         with:
           node-version: 20.10.0
 
-      - uses: oven-sh/setup-bun@v1
-
       - name: Install toolchain
-        run: bun install
+        run: |
+          npm i -g bun
+          bun install
 
       - name: Store PR number
         run: echo ${{ github.event.number }} > pr-number.txt
