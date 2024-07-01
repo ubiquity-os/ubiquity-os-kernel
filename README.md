@@ -1,4 +1,3 @@
-
 # @ubiquity/ubiquibot-kernel
 
 The kernel is designed to:
@@ -11,11 +10,11 @@ The kernel is designed to:
 - **`PRIVATE_KEY`**
   Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. Use the following command to perform this conversion and append the result to your `.dev.vars` file:
 
-    ```sh
-    echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
-    ```
+  ```sh
+  echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+  ```
 
-    **Note:** Replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
+  **Note:** Replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
 - **`WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
@@ -25,7 +24,6 @@ The kernel is designed to:
 
 - **`WEBHOOK_PROXY_URL` (only for development)**
   Obtain a webhook URL at [smee.io](https://smee.io/) and set it in your GitHub App settings.
-
 
 ### Quick Start
 
@@ -39,31 +37,38 @@ bun dev
 ### Deploying to Cloudflare Workers
 
 1. **Install Dependencies:**
+
    - Execute `bun install` to install the required dependencies.
 
 2. **Create a Github App:**
+
    - Generate a Github App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
    - Ensure the app is subscribed to all events with the following permissions:
 
      Repository permissions:
+
      - Actions: Read & Write
      - Contents: Read & Write
      - Issues: Read & Write
      - Pull Requests: Read & Write
 
      Organization permissions:
+
      - Members: Read only
 
 3. **Cloudflare Account Setup:**
+
    - If not done already, create a Cloudflare account.
    - Run `npx wrangler login` to log in.
 
 4. **Create a KV Namespace:**
+
    - Generate a KV namespace using `npx wrangler kv:namespace create PLUGIN_CHAIN_STATE`.
    - Copy the generated ID and paste it under `[env.dev]` in `wrangler.toml`.
 
 5. **Manage Secrets:**
+
    - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
    - For the private key, execute the following (replace `YOUR_PRIVATE_KEY.PEM` with the actual PEM file path):
 
@@ -97,7 +102,9 @@ Example usage:
 const input: PluginInput = {
   stateId: "abc123",
   eventName: "issue_comment.created",
-  eventPayload: { /* ... */ },
+  eventPayload: {
+    /* ... */
+  },
   settings: '{ "key": "value" }',
   authToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   ref: "refs/heads/main",
@@ -129,13 +136,16 @@ const output: PluginOutput = {
 ## Plugin Quick Start
 
 The kernel supports 2 types of plugins:
+
 1. Github actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
 2. Cloudflare Workers (which are simple backend servers with a single API route)
 
 How to run a "hello-world" plugin the Cloudflare way:
+
 1. Run `bun dev` to spin up the kernel
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquibot-config.yml`):
+
 ```
 plugins:
   'issue_comment.created':
@@ -151,12 +161,14 @@ plugins:
         with:
           response: world
 ```
+
 4. Post a `/hello` comment in any issue
 5. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
 
 How it works:
+
 1. When you post the `/hello` command the kernel receives the `issue_comment.created` event
-2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called) 
+2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called)
 3. The kernel passes github event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
 4. The plugin performs all of the required actions and returns the result
 

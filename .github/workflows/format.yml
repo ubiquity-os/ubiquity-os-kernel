@@ -1,11 +1,11 @@
-name: Spell Check
+name: Format Checks
 
 on:
   push:
 
 jobs:
-  spellcheck:
-    name: Check for spelling errors
+  formatCheck:
+    name: Check for formatting issues
     runs-on: ubuntu-latest
 
     steps:
@@ -17,8 +17,10 @@ jobs:
         with:
           node-version: "20.10.0"
 
-      - name: Install bun & CSpell
-        run: npm i -g bun cspell
+      - uses: oven-sh/setup-bun@v1
 
-      - name: Run cspell
-        run: bun format:cspell
+      - name: Install deps
+        run: bun i
+
+      - name: Run checks
+        run: bun format

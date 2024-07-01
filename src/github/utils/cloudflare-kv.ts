@@ -1,4 +1,4 @@
-export class CloudflareKV<T> {
+export class CloudflareKv<T> {
   private _kv: KVNamespace;
 
   constructor(kv: KVNamespace) {
