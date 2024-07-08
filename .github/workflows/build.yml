@@ -37,10 +37,10 @@ jobs:
         run: |
           echo "secrets_list=''" >> $GITHUB_ENV
           if [ ! -z "${{ secrets.WEBHOOK_SECRET }}" ]; then
-            echo "secrets_list='WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}\n'" >> $GITHUB_ENV
+            echo "secrets_list='WEBHOOK_SECRET\n'" >> $GITHUB_ENV
           fi
-          echo "secrets_list='\${secrets_list}APP_ID=${{ secrets.APP_ID }}\n'" >> $GITHUB_ENV
-          echo "secrets_list='\${secrets_list}APP_PRIVATE_KEY=${{ secrets.APP_PRIVATE_KEY }}\n'" >> $GITHUB_ENV
+          echo "secrets_list='\${secrets_list}APP_ID\n'" >> $GITHUB_ENV
+          echo "secrets_list='\${secrets_list}APP_PRIVATE_KEY\n'" >> $GITHUB_ENV
 
       - uses: cloudflare/wrangler-action@v3
         with:
