@@ -33,7 +33,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Set default WEBHOOK_SECRET
-        run: echo "WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET || '' }}" >> $GITHUB_ENV
+        run: echo "WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET || ' ' }}" >> $GITHUB_ENV
 
       - uses: cloudflare/wrangler-action@v3
         with:
