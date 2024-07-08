@@ -46,4 +46,4 @@ jobs:
           WEBHOOK_PROXY_URL: ${{ secrets.WEBHOOK_PROXY_URL }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
