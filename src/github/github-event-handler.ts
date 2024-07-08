@@ -2,14 +2,14 @@ import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 import { createAppAuth } from "@octokit/auth-app";
-import { CloudflareKV } from "./utils/cloudflare-kv";
+import { CloudflareKv } from "./utils/cloudflare-kv";
 import { PluginChainState } from "./types/plugin";
 
 export type Options = {
   webhookSecret: string;
   appId: string | number;
   privateKey: string;
-  pluginChainState: CloudflareKV<PluginChainState>;
+  pluginChainState: CloudflareKv<PluginChainState>;
 };
 
 export class GitHubEventHandler {
@@ -17,7 +17,7 @@ export class GitHubEventHandler {
   public on: Webhooks<SimplifiedContext>["on"];
   public onAny: Webhooks<SimplifiedContext>["onAny"];
   public onError: Webhooks<SimplifiedContext>["onError"];
-  public pluginChainState: CloudflareKV<PluginChainState>;
+  public pluginChainState: CloudflareKv<PluginChainState>;
 
   private _webhookSecret: string;
   private _privateKey: string;

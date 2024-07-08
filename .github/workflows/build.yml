@@ -30,11 +30,13 @@ jobs:
           bun setup-kv
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - uses: cloudflare/wrangler-action@v3
         with:
-          wranglerVersion: '3.57.0'
+          wranglerVersion: "3.57.0"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           secrets: |
             WEBHOOK_PROXY_URL
             WEBHOOK_SECRET
