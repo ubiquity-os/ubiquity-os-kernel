@@ -7,14 +7,14 @@ The kernel is designed to:
 
 ## Environment Variables
 
-- **`PRIVATE_KEY`**
+- **`APP_PRIVATE_KEY`**
   Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. Use the following command to perform this conversion and append the result to your `.dev.vars` file:
 
   ```sh
-  echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+  echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
   ```
 
-  **Note:** Replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
+  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
 - **`WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
@@ -70,10 +70,10 @@ bun dev
 5. **Manage Secrets:**
 
    - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
-   - For the private key, execute the following (replace `YOUR_PRIVATE_KEY.PEM` with the actual PEM file path):
+   - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
 
      ```sh
-     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM) | npx wrangler secret put PRIVATE_KEY --env dev
+     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM) | npx wrangler secret put APP_PRIVATE_KEY --env dev
      ```
 
 6. **Deploy the Kernel:**

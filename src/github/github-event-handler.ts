@@ -6,7 +6,7 @@ import { CloudflareKv } from "./utils/cloudflare-kv";
 import { PluginChainState } from "./types/plugin";
 
 export type Options = {
-  webhookSecret: string;
+  webhookSecret: string | undefined;
   appId: string | number;
   privateKey: string;
   pluginChainState: CloudflareKv<PluginChainState>;
@@ -19,9 +19,9 @@ export class GitHubEventHandler {
   public onError: Webhooks<SimplifiedContext>["onError"];
   public pluginChainState: CloudflareKv<PluginChainState>;
 
-  private _webhookSecret: string;
-  private _privateKey: string;
-  private _appId: number;
+  private readonly _webhookSecret: string | undefined;
+  private readonly _privateKey: string;
+  private readonly _appId: number;
 
   constructor(options: Options) {
     this._privateKey = options.privateKey;
@@ -30,7 +30,7 @@ export class GitHubEventHandler {
     this.pluginChainState = options.pluginChainState;
 
     this.webhooks = new Webhooks<SimplifiedContext>({
-      secret: this._webhookSecret,
+      secret: this._webhookSecret || "",
       transform: (event) => this.transformEvent(event), // it is important to use an arrow function here to keep the context of `this`
     });
 

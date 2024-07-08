@@ -16,7 +16,7 @@ export default {
       const eventHandler = new GitHubEventHandler({
         webhookSecret: env.WEBHOOK_SECRET,
         appId: env.APP_ID,
-        privateKey: env.PRIVATE_KEY,
+        privateKey: env.APP_PRIVATE_KEY,
         pluginChainState: new CloudflareKv(env.PLUGIN_CHAIN_STATE),
       });
       bindHandlers(eventHandler);

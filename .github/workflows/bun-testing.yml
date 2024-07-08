@@ -8,7 +8,7 @@ env:
   NODE_ENV: "test"
   WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
   APP_ID: ${{ secrets.APP_ID }}
-  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+  APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
 jobs:
   testing:
