@@ -19,9 +19,9 @@ export class GitHubEventHandler {
   public onError: Webhooks<SimplifiedContext>["onError"];
   public pluginChainState: CloudflareKv<PluginChainState>;
 
-  private _webhookSecret: string;
-  private _privateKey: string;
-  private _appId: number;
+  private readonly _webhookSecret: string;
+  private readonly _privateKey: string;
+  private readonly _appId: number;
 
   constructor(options: Options) {
     this._privateKey = options.privateKey;
