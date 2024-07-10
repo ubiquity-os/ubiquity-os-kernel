@@ -27,21 +27,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const pluginElement of pluginArray) {
         const { plugin } = pluginElement.uses[0];
-        if (isGithubPlugin(plugin)) {
-          const manifest = await fetchActionManifest(context, plugin);
-          console.log("Github plugin", manifest);
-          // if (manifest?.commands) {
-          //   for (const command of manifest.commands) {
-          //     comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
-          //   }
-          // }
-        } else {
-          const manifest = await fetchWorkerManifest(plugin);
-          console.log("Worker plugin", manifest);
-          if (manifest?.commands) {
-            for (const command of manifest.commands) {
-              comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
-            }
+        const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
+        if (manifest?.commands) {
+          for (const command of manifest.commands) {
+            comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
           }
         }
       }
