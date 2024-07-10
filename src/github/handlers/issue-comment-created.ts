@@ -2,6 +2,18 @@ import { GitHubContext } from "../github-context";
 import { getConfig } from "../utils/config";
 import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
 
+interface Command {
+  command: string;
+  description: string;
+  example: string;
+}
+
+interface Manifest {
+  name: string;
+  description: string;
+  commands: Command[];
+}
+
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   if (/^\/help$/.test(body)) {
@@ -16,7 +28,13 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       for (const pluginElement of pluginArray) {
         const { plugin } = pluginElement.uses[0];
         if (isGithubPlugin(plugin)) {
-          console.log("Github plugin", await fetchActionManifest(context, plugin));
+          const manifest = await fetchActionManifest(context, plugin);
+          console.log("Github plugin", manifest);
+          if (manifest) {
+            for (const command of manifest.commands) {
+              comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
+            }
+          }
         } else {
           console.log("Worker plugin", await fetchWorkerManifest(plugin));
         }
@@ -38,11 +56,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 /**
  * Ensures that passed content does not break MD display within the table.
  */
-// function getContent(content: string | undefined) {
-//   return content ? content.replace("|", "\\|") : "-";
-// }
+function getContent(content: string | undefined) {
+  return content ? content.replace("|", "\\|") : "-";
+}
 
-async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo }: GithubPlugin) {
+async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo }: GithubPlugin): Promise<Manifest | null> {
   try {
     const { data } = await context.octokit.repos.getContent({
       owner,
@@ -59,12 +77,13 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
   return null;
 }
 
-async function fetchWorkerManifest(url: string) {
+async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
+  const manifestUrl = `${url}/manifest.json`;
   try {
-    const { json } = await fetch(`${url}/manifest.json`);
-    return await json();
+    const result = await fetch(manifestUrl);
+    return await result.json();
   } catch (e) {
-    console.warn(`Could not find a manifest for ${url}`);
+    console.warn(`Could not find a manifest for ${manifestUrl}`);
   }
   return null;
 }
