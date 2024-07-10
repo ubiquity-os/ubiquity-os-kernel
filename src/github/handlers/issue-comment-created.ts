@@ -23,6 +23,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       "|---|---|---|",
       "| `/help` | List all available commands. | `/help` |",
     ];
+    const commands: string[] = [];
     const configuration = await getConfig(context);
     for (const pluginArray of Object.values(configuration.plugins)) {
       for (const pluginElement of pluginArray) {
@@ -30,13 +31,13 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
         const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
         if (manifest?.commands) {
           for (const command of manifest.commands) {
-            comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
+            commands.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
           }
         }
       }
     }
     await context.octokit.issues.createComment({
-      body: comments.sort().join("\n"),
+      body: comments.concat(commands.sort()).join("\n"),
       issue_number: context.payload.issue.number,
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
