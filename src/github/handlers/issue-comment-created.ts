@@ -30,7 +30,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
         if (isGithubPlugin(plugin)) {
           const manifest = await fetchActionManifest(context, plugin);
           console.log("Github plugin", manifest);
-          if (manifest) {
+          if (manifest?.commands) {
             for (const command of manifest.commands) {
               comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
             }
@@ -38,16 +38,12 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
         } else {
           const manifest = await fetchWorkerManifest(plugin);
           console.log("Worker plugin", manifest);
-          if (manifest) {
-            for (const command of manifest.commands) {
-              comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
-            }
-          }
+          // if (manifest?.commands) {
+          //   for (const command of manifest.commands) {
+          //     comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
+          //   }
+          // }
         }
-        // Only show plugins that have commands available for the user
-        // if (plugin.command) {
-        //   comments.push(`| \`${getContent(plugin.command)}\` | ${getContent(plugin.description)} | \`${getContent(plugin.example)}\` |`);
-        // }
       }
     }
     await context.octokit.issues.createComment({
