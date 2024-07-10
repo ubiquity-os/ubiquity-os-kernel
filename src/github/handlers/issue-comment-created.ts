@@ -36,7 +36,13 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
             }
           }
         } else {
-          console.log("Worker plugin", await fetchWorkerManifest(plugin));
+          const manifest = await fetchWorkerManifest(plugin);
+          console.log("Worker plugin", manifest);
+          if (manifest) {
+            for (const command of manifest.commands) {
+              comments.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
+            }
+          }
         }
         // Only show plugins that have commands available for the user
         // if (plugin.command) {
