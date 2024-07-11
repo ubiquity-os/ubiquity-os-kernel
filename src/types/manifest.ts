@@ -3,7 +3,7 @@ import { StandardValidator } from "typebox-validators";
 
 export const commandSchema = T.Object({
   description: T.String({ minLength: 1 }),
-  example: T.String({ minLength: 1 }),
+  "ubiquity:example": T.String({ minLength: 1 }),
 });
 
 export const manifestSchema = T.Object({
