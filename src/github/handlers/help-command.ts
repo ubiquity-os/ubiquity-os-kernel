@@ -10,6 +10,7 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
   if (manifest) {
     Value.Default(manifestSchema, manifest);
     const errors = manifestValidator.testReturningErrors(manifest);
+    console.log(errors, manifest);
     if (errors !== null) {
       console.error(`Failed to load the manifest for ${JSON.stringify(plugin)}`);
       for (const error of errors) {
