@@ -1,17 +1,29 @@
 import { getConfig } from "../utils/config";
 import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
+import { Manifest, manifestSchema, manifestValidator } from "../../types/manifest";
+import { Value } from "@sinclair/typebox/value";
 
-export interface Command {
-  command: string;
-  description: string;
-  example: string;
-}
-
-export interface Manifest {
-  name: string;
-  description: string;
-  commands: Command[];
+async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
+  const commands: string[] = [];
+  const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
+  if (manifest) {
+    Value.Default(manifestSchema, manifest);
+    const errors = manifestValidator.testReturningErrors(manifest);
+    if (errors !== null) {
+      console.error(`Failed to load the manifest for ${JSON.stringify(plugin)}`);
+      for (const error of errors) {
+        console.error(error);
+      }
+    } else {
+      if (manifest?.commands) {
+        for (const [key, value] of Object.entries(manifest.commands)) {
+          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value.example)}\` |`);
+        }
+      }
+    }
+  }
+  return commands;
 }
 
 export async function postHelpCommand(context: GitHubContext<"issue_comment.created">) {
@@ -26,12 +38,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   for (const pluginArray of Object.values(configuration.plugins)) {
     for (const pluginElement of pluginArray) {
       const { plugin } = pluginElement.uses[0];
-      const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
-      if (manifest?.commands) {
-        for (const command of manifest.commands) {
-          commands.push(`| \`${getContent(command.command)}\` | ${getContent(command.description)} | \`${getContent(command.example)}\` |`);
-        }
-      }
+      commands.push(...(await parseCommandsFromManifest(context, plugin)));
     }
   }
   await context.octokit.issues.createComment({
