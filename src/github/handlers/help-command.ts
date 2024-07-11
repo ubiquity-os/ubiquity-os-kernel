@@ -6,11 +6,13 @@ import { Value } from "@sinclair/typebox/value";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
+  console.log("gonna fetch manifest");
   const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
+  console.log(manifest);
   if (manifest) {
     Value.Default(manifestSchema, manifest);
     const errors = manifestValidator.testReturningErrors(manifest);
-    console.log(errors, manifest);
+    console.log("errors?", errors, manifest);
     if (errors !== null) {
       console.error(`Failed to load the manifest for ${JSON.stringify(plugin)}`);
       for (const error of errors) {
