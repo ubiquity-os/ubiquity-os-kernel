@@ -25,7 +25,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
-function shouldSkipPlugin(event: EmitterWebhookEvent, context: GitHubContext, pluginChain: PluginConfiguration["plugins"]["*"][0]) {
+function shouldSkipPlugin(event: EmitterWebhookEvent, context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0]) {
   if (pluginChain.skipBotEvents && "sender" in event.payload && event.payload.sender?.type === "Bot") {
     console.log("Skipping plugin chain because sender is a bot");
     return true;
@@ -58,7 +58,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = getPluginsForEvent(config.plugins, event.key);
+  const pluginChains = getPluginsForEvent(config.plugins, context.key);
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name}`);

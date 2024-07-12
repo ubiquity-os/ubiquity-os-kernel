@@ -36,11 +36,9 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   ];
   const commands: string[] = [];
   const configuration = await getConfig(context);
-  for (const pluginArray of Object.values(configuration.plugins)) {
-    for (const pluginElement of pluginArray) {
-      const { plugin } = pluginElement.uses[0];
-      commands.push(...(await parseCommandsFromManifest(context, plugin)));
-    }
+  for (const pluginElement of configuration.plugins) {
+    const { plugin } = pluginElement.uses[0];
+    commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
   await context.octokit.issues.createComment({
     body: comments.concat(commands.sort()).join("\n"),
