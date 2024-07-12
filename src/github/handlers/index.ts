@@ -57,7 +57,13 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = config.plugins[context.key].concat(config.plugins["*"]);
+  const pluginChains = config.plugins.filter((plugin) => {
+    console.log("Plugin runs on", plugin.name, plugin.runsOn);
+    if (plugin.runsOn) {
+      return plugin.runsOn.includes(event.name);
+    }
+    return false;
+  });
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name}`);
