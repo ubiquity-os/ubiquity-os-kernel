@@ -43,11 +43,10 @@ describe("Configuration tests", () => {
               return {
                 data: `
 plugins:
-  'issues.labeled':
-    - uses:
-      - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
-        with:
-          settings1: 'enabled'`,
+  - uses:
+    - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
+      with:
+        settings1: 'enabled'`,
               };
             },
           },
@@ -55,23 +54,22 @@ plugins:
       },
       eventHandler: {} as GitHubEventHandler,
     } as unknown as GitHubContext);
-    expect(cfg.plugins["issues.labeled"]).toEqual([
-      {
-        uses: [
-          {
-            plugin: {
-              owner: "ubiquity",
-              repo: "user-activity-watcher",
-              workflowId: "compute.yml",
-              ref: "pull/1",
-            },
-            with: {
-              settings1: "enabled",
-            },
+    expect(cfg.plugins[0]).toEqual({
+      uses: [
+        {
+          plugin: {
+            owner: "ubiquity",
+            repo: "user-activity-watcher",
+            workflowId: "compute.yml",
+            ref: "pull/1",
           },
-        ],
-        skipBotEvents: true,
-      },
-    ]);
+          runsOn: [],
+          with: {
+            settings1: "enabled",
+          },
+        },
+      ],
+      skipBotEvents: true,
+    });
   });
 });

@@ -63,15 +63,14 @@ describe("Event related tests", () => {
               return {
                 data: `
                   plugins:
-                    issue_comment.created:
-                      - name: "Run on comment created"
-                        uses:
-                          - id: plugin-A
-                            plugin: https://plugin-a.internal
-                      - name: "Some Action plugin"
-                        uses:
-                          - id: plugin-B
-                            plugin: ubiquibot/plugin-b
+                    - name: "Run on comment created"
+                      uses:
+                        - id: plugin-A
+                          plugin: https://plugin-a.internal
+                    - name: "Some Action plugin"
+                      uses:
+                        - id: plugin-B
+                          plugin: ubiquibot/plugin-b
                   `,
               };
             },

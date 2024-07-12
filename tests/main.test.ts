@@ -113,11 +113,10 @@ describe("Worker tests", () => {
                 return {
                   data: `
                   plugins:
-                    issue_comment.created:
-                      - name: "Run on comment created"
-                        uses:
-                          - id: plugin-A
-                            plugin: https://plugin-a.internal
+                    - name: "Run on comment created"
+                      uses:
+                        - id: plugin-A
+                          plugin: https://plugin-a.internal
                   `,
                 };
               },
@@ -127,7 +126,7 @@ describe("Worker tests", () => {
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
-      const pluginChain = cfg.plugins["issue_comment.created"];
+      const pluginChain = cfg.plugins;
       expect(pluginChain.length).toBe(1);
       expect(pluginChain[0].uses.length).toBe(1);
       expect(pluginChain[0].skipBotEvents).toBeTrue();
@@ -155,34 +154,31 @@ describe("Worker tests", () => {
                   return {
                     data: `
 plugins:
-  '*':
-    - uses:
-      - plugin: repo-3/plugin-3
-        with:
-          setting1: false
-    - uses:
-      - plugin: repo-1/plugin-1
-        with:
-          setting2: true`,
+  - uses:
+    - plugin: repo-3/plugin-3
+      with:
+        setting1: false
+  - uses:
+    - plugin: repo-1/plugin-1
+      with:
+        setting2: true`,
                   };
                 }
                 return {
                   data: `
 plugins:
-  'issues.assigned':
-    - uses:
-      - plugin: uses-1/plugin-1
-        with:
-          settings1: 'enabled'
-  '*':
-    - uses:
-      - plugin: repo-1/plugin-1
-        with:
-          setting1: false
-    - uses:
-      - plugin: repo-2/plugin-2
-        with:
-          setting2: true`,
+  - uses:
+    - plugin: uses-1/plugin-1
+      with:
+        settings1: 'enabled'
+  - uses:
+    - plugin: repo-1/plugin-1
+      with:
+        setting1: false
+  - uses:
+    - plugin: repo-2/plugin-2
+      with:
+        setting2: true`,
                 };
               },
             },
@@ -190,24 +186,24 @@ plugins:
         },
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
-      expect(cfg.plugins["issues.assigned"]).toEqual([
-        {
-          uses: [
-            {
-              plugin: {
-                owner: "uses-1",
-                repo: "plugin-1",
-                workflowId,
-              },
-              with: {
-                settings1: "enabled",
-              },
+      expect(cfg.plugins[0]).toEqual({
+        uses: [
+          {
+            plugin: {
+              owner: "repo-3",
+              repo: "plugin-3",
+              ref: undefined,
+              workflowId,
             },
-          ],
-          skipBotEvents: true,
-        },
-      ]);
-      expect(cfg.plugins["*"]).toEqual([
+            runsOn: [],
+            with: {
+              setting1: false,
+            },
+          },
+        ],
+        skipBotEvents: true,
+      });
+      expect(cfg.plugins.slice(1)).toEqual([
         {
           uses: [
             {
@@ -217,7 +213,7 @@ plugins:
                 workflowId,
               },
               with: {
-                setting1: false,
+                settings1: false,
               },
             },
           ],
