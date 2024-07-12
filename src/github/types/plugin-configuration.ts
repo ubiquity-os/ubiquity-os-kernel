@@ -1,7 +1,6 @@
-import { Type as T } from "@sinclair/typebox";
-import { StaticDecode } from "@sinclair/typebox";
+import { StaticDecode, TLiteral, Type as T, Union } from "@sinclair/typebox";
 import { StandardValidator } from "typebox-validators";
-import { runEvent } from "../../types/manifest";
+import { emitterEventNames } from "@octokit/webhooks";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)?))?$");
 
@@ -46,12 +45,21 @@ function githubPluginType() {
     });
 }
 
+type IntoStringLiteralUnion<T> = { [K in keyof T]: T[K] extends string ? TLiteral<T[K]> : never };
+
+export function stringLiteralUnion<T extends string[]>(values: readonly [...T]): Union<IntoStringLiteralUnion<T>> {
+  const literals = values.map((value) => T.Literal(value));
+  return T.Union(literals as never);
+}
+
+const emitterType = stringLiteralUnion(emitterEventNames);
+
 const pluginChainSchema = T.Array(
   T.Object({
     id: T.Optional(T.String()),
     plugin: githubPluginType(),
     with: T.Record(T.String(), T.Unknown(), { default: {} }),
-    runsOn: T.Optional(T.Array(runEvent, { default: [] })),
+    runsOn: T.Optional(T.Array(emitterType, { default: [] })),
   }),
   { minItems: 1, default: [] }
 );
