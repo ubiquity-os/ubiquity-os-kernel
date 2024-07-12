@@ -51,6 +51,7 @@ const pluginChainSchema = T.Array(
     id: T.Optional(T.String()),
     plugin: githubPluginType(),
     with: T.Record(T.String(), T.Unknown(), { default: {} }),
+    runsOn: T.Optional(T.Array(runEvent, { default: [] })),
   }),
   { minItems: 1, default: [] }
 );
@@ -65,7 +66,6 @@ const handlerSchema = T.Array(
     example: T.Optional(T.String()),
     uses: pluginChainSchema,
     skipBotEvents: T.Boolean({ default: true }),
-    runsOn: T.Optional(T.Array(runEvent, { default: [] })),
   }),
   { default: [] }
 );

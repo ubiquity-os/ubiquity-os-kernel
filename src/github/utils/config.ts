@@ -4,6 +4,7 @@ import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { eventNames } from "../types/webhook-events";
+import { getManifest, getPluginsForEvent } from "./plugins";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
@@ -39,11 +40,8 @@ async function getConfigurationFromRepo(context: GitHubContext, repository: stri
  */
 function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
   const mergedConfiguration = { ...configuration1 };
-  for (const key of Object.keys(configuration2.plugins)) {
-    const pluginKey = key as keyof PluginConfiguration["plugins"];
-    if (configuration2.plugins[pluginKey]?.length) {
-      mergedConfiguration.plugins[pluginKey] = configuration2.plugins[pluginKey];
-    }
+  if (configuration2.plugins?.length) {
+    mergedConfiguration.plugins = configuration2.plugins;
   }
   return mergedConfiguration;
 }
@@ -75,12 +73,20 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(mergedConfiguration);
 
+  for (const plugin of mergedConfiguration.plugins) {
+    if (plugin.uses.length && !plugin.uses[0].runsOn?.length) {
+      const manifest = await getManifest(context, plugin.uses[0].plugin);
+      if (manifest) {
+        plugin.uses[0].runsOn = manifest["ubiquibot:listeners"];
+      }
+    }
+  }
   return mergedConfiguration;
 }
 
 function checkPluginChains(config: PluginConfiguration) {
   for (const eventName of eventNames) {
-    const plugins = config.plugins[eventName];
+    const plugins = getPluginsForEvent(config.plugins, eventName);
     for (const plugin of plugins) {
       const allIds = checkPluginChainUniqueIds(plugin);
       checkPluginChainExpressions(plugin, allIds);
@@ -88,7 +94,7 @@ function checkPluginChains(config: PluginConfiguration) {
   }
 }
 
-function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"]["*"][0]) {
+function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"][0]) {
   const allIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;
@@ -101,7 +107,7 @@ function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"]["*"][0
   return allIds;
 }
 
-function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"]["*"][0], allIds: Set<string>) {
+function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"][0], allIds: Set<string>) {
   const calledIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;

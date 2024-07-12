@@ -1,12 +1,13 @@
 import { getConfig } from "../utils/config";
-import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
+import { GithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
-import { Manifest, manifestSchema, manifestValidator } from "../../types/manifest";
+import { manifestSchema, manifestValidator } from "../../types/manifest";
 import { Value } from "@sinclair/typebox/value";
+import { getManifest } from "../utils/plugins";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
-  const manifest = await (isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin));
+  const manifest = await getManifest(context, plugin);
   if (manifest) {
     Value.Default(manifestSchema, manifest);
     const errors = manifestValidator.testReturningErrors(manifest);
@@ -18,7 +19,7 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
     } else {
       if (manifest?.commands) {
         for (const [key, value] of Object.entries(manifest.commands)) {
-          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquity:example"])}\` |`);
+          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquibot:example"])}\` |`);
         }
       }
     }
@@ -54,32 +55,4 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
  */
 function getContent(content: string | undefined) {
   return content ? content.replace("|", "\\|") : "-";
-}
-
-async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo }: GithubPlugin): Promise<Manifest | null> {
-  try {
-    const { data } = await context.octokit.repos.getContent({
-      owner,
-      repo,
-      path: "manifest.json",
-    });
-    if ("content" in data) {
-      const content = Buffer.from(data.content, "base64").toString();
-      return JSON.parse(content);
-    }
-  } catch (e) {
-    console.warn(`Could not find a manifest for ${owner}/${repo}: ${e}`);
-  }
-  return null;
-}
-
-async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
-  const manifestUrl = `${url}/manifest.json`;
-  try {
-    const result = await fetch(manifestUrl);
-    return await result.json();
-  } catch (e) {
-    console.warn(`Could not find a manifest for ${manifestUrl}: ${e}`);
-  }
-  return null;
 }

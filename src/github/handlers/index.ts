@@ -7,6 +7,7 @@ import { repositoryDispatch } from "./repository-dispatch";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
+import { getPluginsForEvent } from "../utils/plugins";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -57,13 +58,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = config.plugins.filter((plugin) => {
-    console.log("Plugin runs on", plugin.name, plugin.runsOn);
-    if (plugin.runsOn) {
-      return plugin.runsOn.includes(event.name);
-    }
-    return false;
-  });
+  const pluginChains = getPluginsForEvent(config.plugins, event.key);
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name}`);
