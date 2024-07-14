@@ -105,7 +105,7 @@ function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"]["*"]
   const calledIds = new Set<string>();
   for (const use of plugin.uses) {
     if (!use.id) continue;
-    for (const key in use.with) {
+    for (const key of Object.keys(use.with)) {
       const value = use.with[key];
       if (typeof value !== "string") continue;
       checkExpression(value, allIds, calledIds);

@@ -33,7 +33,7 @@ describe("Worker tests", () => {
     const res = await worker.fetch(req, {
       WEBHOOK_SECRET: "",
       APP_ID: "",
-      PRIVATE_KEY: "",
+      APP_PRIVATE_KEY: "",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(500);
@@ -51,7 +51,7 @@ describe("Worker tests", () => {
     const res = await worker.fetch(req, {
       WEBHOOK_SECRET: "webhook-secret",
       APP_ID: "app-id",
-      PRIVATE_KEY: "private-key",
+      APP_PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
     expect(res.status).toEqual(200);
