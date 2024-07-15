@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { config } from "dotenv";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
@@ -8,8 +8,9 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 
 config({ path: ".dev.vars" });
 
-void mock.module("@octokit/webhooks", () => ({
+jest.mock("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
+  emitterEventNames: [],
 }));
 
 const issueOpened = "issues.opened";

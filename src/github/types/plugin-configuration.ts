@@ -23,6 +23,7 @@ export function isGithubPlugin(plugin: string | GithubPlugin): plugin is GithubP
 function githubPluginType() {
   return T.Transform(T.String())
     .Decode((value) => {
+      console.log("DECODING");
       if (urlRegex.test(value)) {
         return value;
       }

@@ -26,7 +26,9 @@ async function getConfigurationFromRepo(context: GitHubContext, repository: stri
           console.error(error);
         }
       }
-      return Value.Decode(configSchema, configSchemaWithDefaults);
+      const res = Value.Decode(configSchema, configSchemaWithDefaults);
+      console.log(JSON.stringify(res, null, 2), JSON.stringify(configSchemaWithDefaults, null, 2));
+      return res;
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
       return null;
