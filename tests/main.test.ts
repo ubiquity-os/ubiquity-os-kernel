@@ -6,13 +6,9 @@ import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
-import worker from "../src/worker";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
-
-void jest.mock("@octokit/webhooks", () => ({
-  Webhooks: WebhooksMocked,
-}));
+import "./__mocks__/webhooks";
+import worker from "../src/worker"; // has to be imported after the mocks
 
 const issueOpened = "issues.opened";
 

@@ -1,16 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import { config } from "dotenv";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
+import "./__mocks__/webhooks";
 import { getConfig } from "../src/github/utils/config";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 
 config({ path: ".dev.vars" });
-
-void jest.mock("@octokit/webhooks", () => ({
-  Webhooks: WebhooksMocked,
-}));
 
 const issueOpened = "issues.opened";
 

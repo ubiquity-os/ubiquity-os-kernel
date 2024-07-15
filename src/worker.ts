@@ -20,7 +20,6 @@ export default {
         pluginChainState: new CloudflareKV(env.PLUGIN_CHAIN_STATE),
       });
       bindHandlers(eventHandler);
-      console.log("CALLING verifyAndReceive");
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSHA256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {

@@ -5,11 +5,7 @@ import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import issueCommentCreated from "../src/github/handlers/issue-comment-created";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
-
-void jest.mock("@octokit/webhooks", () => ({
-  Webhooks: WebhooksMocked,
-}));
+import "./__mocks__/webhooks";
 
 config({ path: ".dev.vars" });
 
