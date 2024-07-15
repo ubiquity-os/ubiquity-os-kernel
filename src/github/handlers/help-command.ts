@@ -18,7 +18,7 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
     } else {
       if (manifest?.commands) {
         for (const [key, value] of Object.entries(manifest.commands)) {
-          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquity:example"])}\` |`);
+          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquibot:example"])}\` |`);
         }
       }
     }
