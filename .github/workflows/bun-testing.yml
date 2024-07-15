@@ -25,4 +25,4 @@ jobs:
       - name: Build & Run test suite
         run: |
           bun i
-          bun test --coverage
+          bun jest:test
