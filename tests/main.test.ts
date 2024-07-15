@@ -1,5 +1,5 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
@@ -7,6 +7,7 @@ import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
+import { http, HttpResponse } from "msw";
 
 jest.mock("@octokit/webhooks", () => ({
   Webhooks: jest.fn(() => new WebhooksMocked({})),
@@ -18,6 +19,11 @@ jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
 jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
+jest.mock("@octokit/core", () => ({
+  Octokit: {
+    plugin: jest.fn(() => ({ defaults: jest.fn() })),
+  },
+}));
 
 const issueOpened = "issues.opened";
 
@@ -34,6 +40,25 @@ afterAll(() => {
 });
 
 describe("Worker tests", () => {
+  beforeEach(() => {
+    server.use(
+      http.get("https://plugin-a.internal/manifest.json", () =>
+        HttpResponse.json({
+          name: "plugin",
+          commands: {
+            foo: {
+              description: "foo command",
+              "ubiquibot:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquibot:example": "/bar foo",
+            },
+          },
+        })
+      )
+    );
+  });
   it("Should fail on missing env variables", async () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());

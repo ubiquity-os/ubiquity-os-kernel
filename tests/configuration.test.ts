@@ -27,6 +27,16 @@ afterAll(() => {
 
 describe("Configuration tests", () => {
   it("Should properly parse the Action path if a branch and workflow are specified", async () => {
+    function getContent() {
+      return {
+        data: `
+plugins:
+  - uses:
+    - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
+      with:
+        settings1: 'enabled'`,
+      };
+    }
     const cfg = await getConfig({
       key: issueOpened,
       name: issueOpened,
@@ -38,18 +48,25 @@ describe("Configuration tests", () => {
         },
       } as unknown as GitHubContext<"issues.closed">["payload"],
       octokit: {
+        repos: {
+          getContent() {
+            return {
+              data: {
+                content: Buffer.from(
+                  JSON.stringify({
+                    name: "plugin",
+                    commands: {
+                      command: {},
+                    },
+                  })
+                ).toString("base64"),
+              },
+            };
+          },
+        },
         rest: {
           repos: {
-            getContent() {
-              return {
-                data: `
-plugins:
-  - uses:
-    - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
-      with:
-        settings1: 'enabled'`,
-              };
-            },
+            getContent,
           },
         },
       },
