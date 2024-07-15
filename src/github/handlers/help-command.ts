@@ -77,7 +77,7 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
   const manifestUrl = `${url}/manifest.json`;
   try {
     const result = await fetch(manifestUrl);
-    return await result.json();
+    return (await result.json()) as Manifest;
   } catch (e) {
     console.warn(`Could not find a manifest for ${manifestUrl}: ${e}`);
   }
