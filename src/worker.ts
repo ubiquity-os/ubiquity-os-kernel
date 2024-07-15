@@ -3,7 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
-import { CloudflareKV } from "./github/utils/cloudflare-kv";
+import { CloudflareKv } from "./github/utils/cloudflare-kv";
 import { WebhookEventName } from "@octokit/webhooks-types";
 
 export default {
@@ -11,16 +11,16 @@ export default {
     try {
       validateEnv(env);
       const eventName = getEventName(request);
-      const signatureSHA256 = getSignature(request);
+      const signatureSha256 = getSignature(request);
       const id = getId(request);
       const eventHandler = new GitHubEventHandler({
         webhookSecret: env.WEBHOOK_SECRET,
         appId: env.APP_ID,
-        privateKey: env.PRIVATE_KEY,
-        pluginChainState: new CloudflareKV(env.PLUGIN_CHAIN_STATE),
+        privateKey: env.APP_PRIVATE_KEY,
+        pluginChainState: new CloudflareKv(env.PLUGIN_CHAIN_STATE),
       });
       bindHandlers(eventHandler);
-      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSHA256 });
+      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
       return handleUncaughtError(error);
@@ -59,11 +59,11 @@ function getEventName(request: Request): WebhookEventName {
 }
 
 function getSignature(request: Request): string {
-  const signatureSHA256 = request.headers.get("x-hub-signature-256");
-  if (!signatureSHA256) {
+  const signatureSha256 = request.headers.get("x-hub-signature-256");
+  if (!signatureSha256) {
     throw new Error(`Missing "x-hub-signature-256" header`);
   }
-  return signatureSHA256;
+  return signatureSha256;
 }
 
 function getId(request: Request): string {

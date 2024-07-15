@@ -2,13 +2,13 @@ name: Run Bun testing suite
 on:
   workflow_dispatch:
   pull_request:
-    types: [ opened, synchronize ]
+    types: [opened, synchronize]
 
 env:
   NODE_ENV: "test"
   WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
   APP_ID: ${{ secrets.APP_ID }}
-  PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+  APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
 jobs:
   testing:
@@ -18,7 +18,7 @@ jobs:
       - uses: oven-sh/setup-bun@v1
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.10.0'
+          node-version: "20.10.0"
       - uses: actions/checkout@master
         with:
           fetch-depth: 0
