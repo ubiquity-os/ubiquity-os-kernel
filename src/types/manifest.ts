@@ -11,7 +11,7 @@ export const commandSchema = T.Object({
 
 export const manifestSchema = T.Object({
   name: T.String({ minLength: 1 }),
-  description: T.String({ minLength: 1 }),
+  description: T.String({ default: "" }),
   commands: T.Record(T.String(), commandSchema),
   "ubiquibot:listeners": T.Optional(T.Array(runEvent, { default: [] })),
 });

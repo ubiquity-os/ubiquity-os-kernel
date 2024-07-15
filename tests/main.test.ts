@@ -9,8 +9,15 @@ import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
 
 jest.mock("@octokit/webhooks", () => ({
-  Webhooks: WebhooksMocked,
+  Webhooks: jest.fn(() => new WebhooksMocked({})),
+  emitterEventNames: ["issues.opened"],
 }));
+
+jest.mock("@octokit/plugin-paginate-rest", () => ({}));
+jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
+jest.mock("@octokit/plugin-retry", () => ({}));
+jest.mock("@octokit/plugin-throttling", () => ({}));
+jest.mock("@octokit/auth-app", () => ({}));
 
 const issueOpened = "issues.opened";
 
@@ -136,23 +143,10 @@ describe("Worker tests", () => {
     });
     it("Should merge organization and repository configuration", async () => {
       const workflowId = "compute.yml";
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "conversation-rewards",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-                if (args.repo !== "ubiquibot-config") {
-                  return {
-                    data: `
+      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+        if (args.repo !== "ubiquibot-config") {
+          return {
+            data: `
 plugins:
   - uses:
     - plugin: repo-3/plugin-3
@@ -162,10 +156,10 @@ plugins:
     - plugin: repo-1/plugin-1
       with:
         setting2: true`,
-                  };
-                }
-                return {
-                  data: `
+          };
+        }
+        return {
+          data: `
 plugins:
   - uses:
     - plugin: uses-1/plugin-1
@@ -179,8 +173,38 @@ plugins:
     - plugin: repo-2/plugin-2
       with:
         setting2: true`,
-                };
-              },
+        };
+      }
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: "conversation-rewards",
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          repos: {
+            getContent() {
+              return {
+                data: {
+                  content: Buffer.from(
+                    JSON.stringify({
+                      name: "plugin",
+                      commands: {
+                        command: {},
+                      },
+                    })
+                  ).toString("base64"),
+                },
+              };
+            },
+          },
+          rest: {
+            repos: {
+              getContent,
             },
           },
         },
@@ -205,34 +229,21 @@ plugins:
       });
       expect(cfg.plugins.slice(1)).toEqual([
         {
-          uses: [
-            {
-              plugin: {
-                owner: "repo-3",
-                repo: "plugin-3",
-                workflowId,
-              },
-              with: {
-                settings1: false,
-              },
-            },
-          ],
           skipBotEvents: true,
-        },
-        {
           uses: [
             {
               plugin: {
                 owner: "repo-1",
                 repo: "plugin-1",
-                workflowId,
+                ref: undefined,
+                workflowId: "compute.yml",
               },
+              runsOn: [],
               with: {
                 setting2: true,
               },
             },
           ],
-          skipBotEvents: true,
         },
       ]);
     });
