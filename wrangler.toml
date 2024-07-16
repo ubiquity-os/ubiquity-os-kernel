@@ -1,6 +1,7 @@
 name = "ubiquibot-worker"
 main = "src/worker.ts"
 compatibility_date = "2023-12-06"
+compatibility_flags = [ "nodejs_compat" ]
 
 # Prefer this syntax due to a bug in Wrangler: https://github.com/cloudflare/workers-sdk/issues/5634
 [env]
