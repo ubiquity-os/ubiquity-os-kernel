@@ -77,7 +77,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     if (plugin.uses.length && !plugin.uses[0].runsOn?.length) {
       const manifest = await getManifest(context, plugin.uses[0].plugin);
       if (manifest) {
-        plugin.uses[0].runsOn = manifest["ubiquibot:listeners"] || [];
+        plugin.uses[0].runsOn = manifest["ubiquity:listeners"] || [];
       }
     }
   }

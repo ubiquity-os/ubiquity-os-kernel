@@ -40,11 +40,11 @@ describe("Event related tests", () => {
           commands: {
             foo: {
               description: "foo command",
-              "ubiquibot:example": "/foo bar",
+              "ubiquity:example": "/foo bar",
             },
             bar: {
               description: "bar command",
-              "ubiquibot:example": "/bar foo",
+              "ubiquity:example": "/bar foo",
             },
           },
         })
@@ -92,7 +92,7 @@ describe("Event related tests", () => {
                     commands: {
                       action: {
                         description: "action",
-                        "ubiquibot:example": "/action",
+                        "ubiquity:example": "/action",
                       },
                     },
                   })
