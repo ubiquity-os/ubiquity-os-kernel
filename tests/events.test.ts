@@ -31,8 +31,8 @@ describe("Event related tests", () => {
       id: "",
       key: "issue_comment.created",
       octokit: {
-        issues,
         rest: {
+          issues,
           repos: {
             getContent() {
               return {
