@@ -3,6 +3,7 @@ import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
 import { Manifest, manifestSchema, manifestValidator } from "../../types/manifest";
 import { Value } from "@sinclair/typebox/value";
+import { Buffer } from "node:buffer";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
