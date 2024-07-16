@@ -2,6 +2,7 @@ import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plug
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../github-context";
 import { Manifest } from "../../types/manifest";
+import { Buffer } from "node:buffer";
 
 const _manifestCache: Record<string, Manifest> = {};
 
