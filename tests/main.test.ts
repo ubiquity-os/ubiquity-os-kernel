@@ -1,5 +1,5 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest, mock, spyOn } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
@@ -8,7 +8,7 @@ import worker from "../src/worker";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
 
-void mock.module("@octokit/webhooks", () => ({
+jest.mock("@octokit/webhooks", () => ({
   Webhooks: WebhooksMocked,
 }));
 
@@ -29,7 +29,7 @@ afterAll(() => {
 describe("Worker tests", () => {
   it("Should fail on missing env variables", async () => {
     const req = new Request("http://localhost:8080");
-    const consoleSpy = spyOn(console, "error").mockImplementation(() => jest.fn());
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
     const res = await worker.fetch(req, {
       WEBHOOK_SECRET: "",
       APP_ID: "",
@@ -130,7 +130,7 @@ describe("Worker tests", () => {
       const pluginChain = cfg.plugins["issue_comment.created"];
       expect(pluginChain.length).toBe(1);
       expect(pluginChain[0].uses.length).toBe(1);
-      expect(pluginChain[0].skipBotEvents).toBeTrue();
+      expect(pluginChain[0].skipBotEvents).toBeTruthy();
       expect(pluginChain[0].uses[0].id).toBe("plugin-A");
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});
