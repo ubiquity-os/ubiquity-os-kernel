@@ -59,7 +59,7 @@ const pluginChainSchema = T.Array(
     id: T.Optional(T.String()),
     plugin: githubPluginType(),
     with: T.Record(T.String(), T.Unknown(), { default: {} }),
-    runsOn: T.Optional(T.Array(emitterType, { default: [] })),
+    runsOn: T.Array(emitterType, { default: [] }),
   }),
   { minItems: 1, default: [] }
 );
