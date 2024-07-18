@@ -3,8 +3,7 @@ import YAML from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
-import { eventNames } from "../types/webhook-events";
-import { getManifest, getPluginsForEvent } from "./plugins";
+import { getManifest } from "./plugins";
 
 const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
@@ -85,12 +84,9 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 }
 
 function checkPluginChains(config: PluginConfiguration) {
-  for (const eventName of eventNames) {
-    const plugins = getPluginsForEvent(config.plugins, eventName);
-    for (const plugin of plugins) {
-      const allIds = checkPluginChainUniqueIds(plugin);
-      checkPluginChainExpressions(plugin, allIds);
-    }
+  for (const plugin of config.plugins) {
+    const allIds = checkPluginChainUniqueIds(plugin);
+    checkPluginChainExpressions(plugin, allIds);
   }
 }
 
