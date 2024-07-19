@@ -4,7 +4,6 @@ import { GitHubContext } from "../github-context";
 import { manifestSchema, manifestValidator } from "../../types/manifest";
 import { Value } from "@sinclair/typebox/value";
 import { getManifest } from "../utils/plugins";
-import { Buffer } from "node:buffer";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
