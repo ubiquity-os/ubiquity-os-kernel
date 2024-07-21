@@ -219,7 +219,10 @@ plugins:
                     JSON.stringify({
                       name: "plugin",
                       commands: {
-                        command: {},
+                        command: {
+                          description: "description",
+                          "ubiquity:example": "example",
+                        },
                       },
                     })
                   ).toString("base64"),
