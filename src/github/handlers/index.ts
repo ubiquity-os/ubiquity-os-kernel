@@ -33,10 +33,9 @@ async function shouldSkipPlugin(event: EmitterWebhookEvent, context: GitHubConte
   const manifest = await getManifest(context, pluginChain.uses[0].plugin);
   if (
     context.key === "issue_comment.created" &&
-    pluginChain.command &&
     manifest &&
     !Object.keys(manifest.commands).some(
-      (command) => "comment" in context.payload && typeof context.payload.comment !== "string" && context.payload.comment?.body.startsWith(command)
+      (command) => "comment" in context.payload && typeof context.payload.comment !== "string" && context.payload.comment?.body.startsWith(`/${command}`)
     )
   ) {
     console.log(`Skipping plugin chain ${pluginChain.command} because command does not match`);

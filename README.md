@@ -150,10 +150,9 @@ How to run a "hello-world" plugin the Cloudflare way:
 plugins:
   - skipBotEvents: true
     uses:
-    # hello-world-plugin
+    	# hello-world-plugin
       - plugin: http://127.0.0.1:9090
         runsOn: [ "issue_comment.created" ]
-        type: github
         with:
           response: world
 ```

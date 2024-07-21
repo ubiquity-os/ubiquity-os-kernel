@@ -1,27 +1,14 @@
 import { getConfig } from "../utils/config";
 import { GithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
-import { manifestSchema, manifestValidator } from "../../types/manifest";
-import { Value } from "@sinclair/typebox/value";
 import { getManifest } from "../utils/plugins";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
   const manifest = await getManifest(context, plugin);
-  if (manifest) {
-    Value.Default(manifestSchema, manifest);
-    const errors = manifestValidator.testReturningErrors(manifest);
-    if (errors !== null) {
-      console.error(`Failed to load the manifest for ${JSON.stringify(plugin)}`);
-      for (const error of errors) {
-        console.error(error);
-      }
-    } else {
-      if (manifest?.commands) {
-        for (const [key, value] of Object.entries(manifest.commands)) {
-          commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquity:example"])}\` |`);
-        }
-      }
+  if (manifest?.commands) {
+    for (const [key, value] of Object.entries(manifest.commands)) {
+      commands.push(`| \`/${getContent(key)}\` | ${getContent(value.description)} | \`${getContent(value["ubiquity:example"])}\` |`);
     }
   }
   return commands;

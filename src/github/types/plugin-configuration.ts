@@ -69,9 +69,6 @@ export type PluginChain = StaticDecode<typeof pluginChainSchema>;
 const handlerSchema = T.Array(
   T.Object({
     name: T.Optional(T.String()),
-    description: T.Optional(T.String()),
-    command: T.Optional(T.String()),
-    example: T.Optional(T.String()),
     uses: pluginChainSchema,
     skipBotEvents: T.Boolean({ default: true }),
   }),
