@@ -5,16 +5,11 @@ import { customOctokit } from "./octokit";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { verifySignature } from "./signature";
 import { UBIQUIBOT_KERNEL_PUBLIC_KEY } from "./constants";
+import { Logs, LogLevel, LOG_LEVEL } from "@ubiquity-dao/ubiquibot-logger";
 
 interface Options {
   ubiquibotKernelPublicKey?: string;
-  logger?: {
-    fatal?: (message: unknown, ...optionalParams: unknown[]) => void;
-    error?: (message: unknown, ...optionalParams: unknown[]) => void;
-    warn?: (message: unknown, ...optionalParams: unknown[]) => void;
-    info?: (message: unknown, ...optionalParams: unknown[]) => void;
-    debug?: (message: unknown, ...optionalParams: unknown[]) => void;
-  };
+  logLevel?: LogLevel;
 }
 
 export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName>(
@@ -48,13 +43,7 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
       octokit: new customOctokit({ auth: payload.authToken }),
       config: payload.settings as TConfig,
       env: ctx.env as TEnv,
-      logger: {
-        fatal: options?.logger?.fatal || console.error,
-        error: options?.logger?.error || console.error,
-        warn: options?.logger?.warn || console.warn,
-        info: options?.logger?.info || console.info,
-        debug: options?.logger?.debug || console.debug,
-      },
+      logger: new Logs(options?.logLevel || LOG_LEVEL.INFO),
     };
 
     try {

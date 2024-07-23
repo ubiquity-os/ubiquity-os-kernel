@@ -1,5 +1,6 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { customOctokit } from "./octokit";
+import { Logs } from "@ubiquity-dao/ubiquibot-logger";
 
 export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName> {
   eventName: TSupportedEvents;
@@ -9,11 +10,5 @@ export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents ext
   octokit: InstanceType<typeof customOctokit>;
   config: TConfig;
   env: TEnv;
-  logger: {
-    fatal: (message: unknown, ...optionalParams: unknown[]) => void;
-    error: (message: unknown, ...optionalParams: unknown[]) => void;
-    warn: (message: unknown, ...optionalParams: unknown[]) => void;
-    info: (message: unknown, ...optionalParams: unknown[]) => void;
-    debug: (message: unknown, ...optionalParams: unknown[]) => void;
-  };
+  logger: Logs;
 }
