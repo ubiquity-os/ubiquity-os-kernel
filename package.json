@@ -25,7 +25,7 @@
     "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
-    "setup-kv": "bun --env-file=.dev.vars deploy/setup_kv_namespace.ts",
+    "setup-kv": "bun --env-file=.dev.vars deploy/setup-kv-namespace.ts",
     "sdk:build": "tsup src/sdk/index.ts --format cjs,esm"
   },
   "keywords": [
