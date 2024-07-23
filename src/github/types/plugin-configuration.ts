@@ -5,7 +5,7 @@ import { githubWebhookEvents } from "./webhook-events";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)?))?$");
 
-type GithubPlugin = {
+export type GithubPlugin = {
   owner: string;
   repo: string;
   workflowId: string;

@@ -1,4 +1,3 @@
- 
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
@@ -129,7 +128,7 @@ describe("Worker tests", () => {
       const pluginChain = cfg.plugins["issue_comment.created"];
       expect(pluginChain.length).toBe(1);
       expect(pluginChain[0].uses.length).toBe(1);
-      expect(pluginChain[0].skipBotEvents).toEqual(true);
+      expect(pluginChain[0].skipBotEvents).toBeTruthy();
       expect(pluginChain[0].uses[0].id).toBe("plugin-A");
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});

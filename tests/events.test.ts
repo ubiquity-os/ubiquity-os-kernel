@@ -1,6 +1,7 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest, beforeEach } from "@jest/globals";
 import { config } from "dotenv";
+import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import issueCommentCreated from "../src/github/handlers/issue-comment-created";
@@ -20,6 +21,26 @@ afterAll(() => {
 });
 
 describe("Event related tests", () => {
+  beforeEach(() => {
+    server.use(
+      http.get("https://plugin-a.internal/manifest.json", () =>
+        HttpResponse.json({
+          commands: {
+            foo: {
+              command: "/foo",
+              description: "foo command",
+              example: "/foo bar",
+            },
+            bar: {
+              command: "/bar",
+              description: "bar command",
+              example: "/bar foo",
+            },
+          },
+        })
+      )
+    );
+  });
   it("Should post the help menu when /help command is invoked", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
@@ -40,15 +61,35 @@ describe("Event related tests", () => {
                   plugins:
                     issue_comment.created:
                       - name: "Run on comment created"
-                        description: "Plugin A"
-                        example: /command [foo | bar]
-                        command: /command
                         uses:
                           - id: plugin-A
                             plugin: https://plugin-a.internal
+                      - name: "Some Action plugin"
+                        uses:
+                          - id: plugin-B
+                            plugin: ubiquibot/plugin-b
                   `,
               };
             },
+          },
+        },
+        repos: {
+          getContent() {
+            return {
+              data: {
+                content: btoa(
+                  JSON.stringify({
+                    commands: [
+                      {
+                        command: "/action",
+                        description: "action",
+                        example: "/action",
+                      },
+                    ],
+                  })
+                ),
+              },
+            };
           },
         },
       },
@@ -70,7 +111,7 @@ describe("Event related tests", () => {
         {
           body:
             "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
-            " all available commands. | `/help` |\n| `/command` | Plugin A | `/command [foo \\| bar]` |",
+            " all available commands. | `/help` |\n| `/action` | action | `/action` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |",
           issue_number: 1,
           owner: "ubiquity",
           repo: "ubiquibot-kernel",
