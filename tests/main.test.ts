@@ -1,5 +1,5 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
@@ -7,9 +7,22 @@ import { getConfig } from "../src/github/utils/config";
 import worker from "../src/worker";
 import { server } from "./__mocks__/node";
 import { WebhooksMocked } from "./__mocks__/webhooks";
+import { http, HttpResponse } from "msw";
 
 jest.mock("@octokit/webhooks", () => ({
-  Webhooks: WebhooksMocked,
+  Webhooks: jest.fn(() => new WebhooksMocked({})),
+  emitterEventNames: ["issues.opened"],
+}));
+
+jest.mock("@octokit/plugin-paginate-rest", () => ({}));
+jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
+jest.mock("@octokit/plugin-retry", () => ({}));
+jest.mock("@octokit/plugin-throttling", () => ({}));
+jest.mock("@octokit/auth-app", () => ({}));
+jest.mock("@octokit/core", () => ({
+  Octokit: {
+    plugin: jest.fn(() => ({ defaults: jest.fn() })),
+  },
 }));
 
 const issueOpened = "issues.opened";
@@ -27,6 +40,25 @@ afterAll(() => {
 });
 
 describe("Worker tests", () => {
+  beforeEach(() => {
+    server.use(
+      http.get("https://plugin-a.internal/manifest.json", () =>
+        HttpResponse.json({
+          name: "plugin",
+          commands: {
+            foo: {
+              description: "foo command",
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquity:example": "/bar foo",
+            },
+          },
+        })
+      )
+    );
+  });
   it("Should fail on missing env variables", async () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
@@ -113,11 +145,10 @@ describe("Worker tests", () => {
                 return {
                   data: `
                   plugins:
-                    issue_comment.created:
-                      - name: "Run on comment created"
-                        uses:
-                          - id: plugin-A
-                            plugin: https://plugin-a.internal
+                    - name: "Run on comment created"
+                      uses:
+                        - id: plugin-A
+                          plugin: https://plugin-a.internal
                   `,
                 };
               },
@@ -127,7 +158,7 @@ describe("Worker tests", () => {
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
-      const pluginChain = cfg.plugins["issue_comment.created"];
+      const pluginChain = cfg.plugins;
       expect(pluginChain.length).toBe(1);
       expect(pluginChain[0].uses.length).toBe(1);
       expect(pluginChain[0].skipBotEvents).toBeTruthy();
@@ -137,6 +168,38 @@ describe("Worker tests", () => {
     });
     it("Should merge organization and repository configuration", async () => {
       const workflowId = "compute.yml";
+      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+        if (args.repo !== "ubiquibot-config") {
+          return {
+            data: `
+plugins:
+  - uses:
+    - plugin: repo-3/plugin-3
+      with:
+        setting1: false
+  - uses:
+    - plugin: repo-1/plugin-1
+      with:
+        setting2: true`,
+          };
+        }
+        return {
+          data: `
+plugins:
+  - uses:
+    - plugin: uses-1/plugin-1
+      with:
+        settings1: 'enabled'
+  - uses:
+    - plugin: repo-1/plugin-1
+      with:
+        setting1: false
+  - uses:
+    - plugin: repo-2/plugin-2
+      with:
+        setting2: true`,
+        };
+      }
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -148,95 +211,67 @@ describe("Worker tests", () => {
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
+          repos: {
+            getContent() {
+              return {
+                data: {
+                  content: Buffer.from(
+                    JSON.stringify({
+                      name: "plugin",
+                      commands: {
+                        command: {
+                          description: "description",
+                          "ubiquity:example": "example",
+                        },
+                      },
+                    })
+                  ).toString("base64"),
+                },
+              };
+            },
+          },
           rest: {
             repos: {
-              getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-                if (args.repo !== "ubiquibot-config") {
-                  return {
-                    data: `
-plugins:
-  '*':
-    - uses:
-      - plugin: repo-3/plugin-3
-        with:
-          setting1: false
-    - uses:
-      - plugin: repo-1/plugin-1
-        with:
-          setting2: true`,
-                  };
-                }
-                return {
-                  data: `
-plugins:
-  'issues.assigned':
-    - uses:
-      - plugin: uses-1/plugin-1
-        with:
-          settings1: 'enabled'
-  '*':
-    - uses:
-      - plugin: repo-1/plugin-1
-        with:
-          setting1: false
-    - uses:
-      - plugin: repo-2/plugin-2
-        with:
-          setting2: true`,
-                };
-              },
+              getContent,
             },
           },
         },
         eventHandler: {} as GitHubEventHandler,
       } as unknown as GitHubContext);
-      expect(cfg.plugins["issues.assigned"]).toEqual([
-        {
-          uses: [
-            {
-              plugin: {
-                owner: "uses-1",
-                repo: "plugin-1",
-                workflowId,
-              },
-              with: {
-                settings1: "enabled",
-              },
+      expect(cfg.plugins[0]).toEqual({
+        uses: [
+          {
+            plugin: {
+              owner: "repo-3",
+              repo: "plugin-3",
+              ref: undefined,
+              workflowId,
             },
-          ],
-          skipBotEvents: true,
-        },
-      ]);
-      expect(cfg.plugins["*"]).toEqual([
-        {
-          uses: [
-            {
-              plugin: {
-                owner: "repo-3",
-                repo: "plugin-3",
-                workflowId,
-              },
-              with: {
-                setting1: false,
-              },
+            runsOn: [],
+            with: {
+              setting1: false,
             },
-          ],
-          skipBotEvents: true,
-        },
+          },
+        ],
+        skipBotEvents: true,
+      });
+      expect(cfg.plugins.slice(1)).toEqual([
         {
+          skipBotEvents: true,
           uses: [
             {
               plugin: {
                 owner: "repo-1",
                 repo: "plugin-1",
-                workflowId,
+                ref: undefined,
+                workflowId: "compute.yml",
               },
+              runsOn: [],
               with: {
                 setting2: true,
               },
             },
           ],
-          skipBotEvents: true,
         },
       ]);
     });

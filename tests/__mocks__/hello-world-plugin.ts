@@ -1,6 +1,7 @@
 import { createServer } from "@mswjs/http-middleware";
 import { Octokit } from "@octokit/core";
 import { http, HttpResponse } from "msw";
+import manifest from "./manifest.json";
 
 type KernelInput = {
   authToken: string;
@@ -42,6 +43,9 @@ const handlers = [
       state_id: "state_id_uuid_1",
       output: `{ "result": "success", "message": "${body.settings.response}" }`,
     });
+  }),
+  http.get("/manifest.json", () => {
+    return HttpResponse.json(manifest);
   }),
 ];
 
