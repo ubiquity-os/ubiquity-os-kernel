@@ -50,6 +50,7 @@
     "dotenv": "16.4.5",
     "hono": "4.4.13",
     "smee-client": "2.0.1",
+    "ts-node": "^10.9.2",
     "typebox-validators": "0.3.5",
     "yaml": "2.4.5"
   },

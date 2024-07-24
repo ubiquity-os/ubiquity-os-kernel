@@ -1,6 +1,6 @@
-// jest.config.js
-/** @type {import('jest').Config} */
-module.exports = {
+import type { Config } from "jest";
+
+const config: Config = {
   testEnvironment: "node",
   roots: ["./tests"],
   coveragePathIgnorePatterns: ["node_modules", "mocks"],
@@ -17,3 +17,5 @@ module.exports = {
     "@octokit/webhooks-methods": "<rootDir>/node_modules/@octokit/webhooks-methods/dist-node/index.js",
   },
 };
+
+export default config;
