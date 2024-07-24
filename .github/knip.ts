@@ -3,10 +3,10 @@ import type { KnipConfig } from "knip";
 const config: KnipConfig = {
   entry: ["src/worker.ts", "deploy/setup-kv-namespace.ts"],
   project: ["src/**/*.ts"],
-  ignore: ["jest.config.js"],
+  ignore: ["jest.config.ts"],
   ignoreBinaries: ["i"],
   ignoreExportsUsedInFile: true,
-  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier", "msw"],
+  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier", "msw", "ts-node"],
 };
 
 export default config;
