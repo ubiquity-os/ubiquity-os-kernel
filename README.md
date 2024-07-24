@@ -40,9 +40,9 @@ bun dev
 
    - Execute `bun install` to install the required dependencies.
 
-2. **Create a Github App:**
+2. **Create a GitHub App:**
 
-   - Generate a Github App and configure its settings.
+   - Generate a GitHub App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
    - Ensure the app is subscribed to all events with the following permissions:
 
@@ -137,7 +137,7 @@ const output: PluginOutput = {
 
 The kernel supports 2 types of plugins:
 
-1. Github actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
+1. GitHub actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
 2. Cloudflare Workers (which are simple backend servers with a single API route)
 
 How to run a "hello-world" plugin the Cloudflare way:
@@ -146,18 +146,13 @@ How to run a "hello-world" plugin the Cloudflare way:
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquibot-config.yml`):
 
-```
+```yml
 plugins:
-  'issue_comment.created':
-    - name: "hello-world-plugin name"
-      description: "hello-world-plugin description"
-      command: "/hello"
-      example: "/hello example"
-      skipBotEvents: true
-      uses:
-      # hello-world-plugin
+  - skipBotEvents: true
+    uses:
+    	# hello-world-plugin
       - plugin: http://127.0.0.1:9090
-        type: github
+        runsOn: [ "issue_comment.created" ]
         with:
           response: world
 ```
@@ -169,8 +164,8 @@ How it works:
 
 1. When you post the `/hello` command the kernel receives the `issue_comment.created` event
 2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called)
-3. The kernel passes github event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
-4. The plugin performs all of the required actions and returns the result
+3. The kernel passes GitHub event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
+4. The plugin performs all the required actions and returns the result
 
 ## Testing
 

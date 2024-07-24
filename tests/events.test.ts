@@ -8,6 +8,12 @@ import issueCommentCreated from "../src/github/handlers/issue-comment-created";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
+jest.mock("@octokit/plugin-paginate-rest", () => ({}));
+jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
+jest.mock("@octokit/plugin-retry", () => ({}));
+jest.mock("@octokit/plugin-throttling", () => ({}));
+jest.mock("@octokit/auth-app", () => ({}));
+
 config({ path: ".dev.vars" });
 
 beforeAll(() => {
@@ -25,16 +31,15 @@ describe("Event related tests", () => {
     server.use(
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
+          name: "plugin",
           commands: {
             foo: {
-              command: "/foo",
               description: "foo command",
-              example: "/foo bar",
+              "ubiquity:example": "/foo bar",
             },
             bar: {
-              command: "/bar",
               description: "bar command",
-              example: "/bar foo",
+              "ubiquity:example": "/bar foo",
             },
           },
         })
@@ -59,15 +64,14 @@ describe("Event related tests", () => {
               return {
                 data: `
                   plugins:
-                    issue_comment.created:
-                      - name: "Run on comment created"
-                        uses:
-                          - id: plugin-A
-                            plugin: https://plugin-a.internal
-                      - name: "Some Action plugin"
-                        uses:
-                          - id: plugin-B
-                            plugin: ubiquibot/plugin-b
+                    - name: "Run on comment created"
+                      uses:
+                        - id: plugin-A
+                          plugin: https://plugin-a.internal
+                    - name: "Some Action plugin"
+                      uses:
+                        - id: plugin-B
+                          plugin: ubiquibot/plugin-b
                   `,
               };
             },
@@ -79,13 +83,13 @@ describe("Event related tests", () => {
               data: {
                 content: btoa(
                   JSON.stringify({
-                    commands: [
-                      {
-                        command: "/action",
+                    name: "plugin",
+                    commands: {
+                      action: {
                         description: "action",
-                        example: "/action",
+                        "ubiquity:example": "/action",
                       },
-                    ],
+                    },
                   })
                 ),
               },
