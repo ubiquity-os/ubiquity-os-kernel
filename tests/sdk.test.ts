@@ -32,6 +32,7 @@ beforeAll(async () => {
         event: context.eventName,
       };
     },
+    { name: "test" },
     { ubiquibotKernelPublicKey: publicKey }
   );
   server.listen();
@@ -40,11 +41,13 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("SDK tests", () => {
-  it("Should deny GET request", async () => {
-    const res = await app.request("/", {
+  it("Should serve manifest", async () => {
+    const res = await app.request("/manifest.json", {
       method: "GET",
     });
-    expect(res.status).toEqual(404);
+    expect(res.status).toEqual(200);
+    const result = await res.json();
+    expect(result).toEqual({ name: "test" });
   });
   it("Should deny POST request with different path", async () => {
     const res = await app.request("/test", {

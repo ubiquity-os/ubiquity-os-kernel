@@ -6,6 +6,7 @@ import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { verifySignature } from "./signature";
 import { UBIQUIBOT_KERNEL_PUBLIC_KEY } from "./constants";
 import { Logs, LogLevel, LOG_LEVEL } from "@ubiquity-dao/ubiquibot-logger";
+import { Manifest } from "../types/manifest";
 
 interface Options {
   ubiquibotKernelPublicKey?: string;
@@ -14,9 +15,14 @@ interface Options {
 
 export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName>(
   handler: (context: Context<TConfig, TEnv, TSupportedEvents>) => Promise<Record<string, unknown> | undefined>,
+  manifest: Manifest,
   options?: Options
 ) {
   const app = new Hono();
+
+  app.get("/manifest.json", (ctx) => {
+    return ctx.json(manifest);
+  });
 
   app.post("/", async (ctx) => {
     if (ctx.req.header("content-type") !== "application/json") {

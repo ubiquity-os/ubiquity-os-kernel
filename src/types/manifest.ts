@@ -11,8 +11,8 @@ export const commandSchema = T.Object({
 
 export const manifestSchema = T.Object({
   name: T.String({ minLength: 1 }),
-  description: T.String({ default: "" }),
-  commands: T.Record(T.String(), commandSchema, { default: {} }),
+  description: T.Optional(T.String({ default: "" })),
+  commands: T.Optional(T.Record(T.String(), commandSchema, { default: {} })),
   "ubiquity:listeners": T.Optional(T.Array(runEvent, { default: [] })),
 });
 
