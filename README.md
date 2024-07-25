@@ -7,14 +7,14 @@ The kernel is designed to:
 
 ## Environment Variables
 
-- **`PRIVATE_KEY`**
+- **`APP_PRIVATE_KEY`**
   Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. Use the following command to perform this conversion and append the result to your `.dev.vars` file:
 
   ```sh
-  echo "PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+  echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
   ```
 
-  **Note:** Replace `YOUR_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
+  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
 - **`WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
@@ -40,9 +40,9 @@ bun dev
 
    - Execute `bun install` to install the required dependencies.
 
-2. **Create a Github App:**
+2. **Create a GitHub App:**
 
-   - Generate a Github App and configure its settings.
+   - Generate a GitHub App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
    - Ensure the app is subscribed to all events with the following permissions:
 
@@ -70,10 +70,10 @@ bun dev
 5. **Manage Secrets:**
 
    - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
-   - For the private key, execute the following (replace `YOUR_PRIVATE_KEY.PEM` with the actual PEM file path):
+   - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
 
      ```sh
-     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_PRIVATE_KEY.PEM) | npx wrangler secret put PRIVATE_KEY --env dev
+     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM) | npx wrangler secret put APP_PRIVATE_KEY --env dev
      ```
 
 6. **Deploy the Kernel:**
@@ -137,7 +137,7 @@ const output: PluginOutput = {
 
 The kernel supports 2 types of plugins:
 
-1. Github actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
+1. GitHub actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
 2. Cloudflare Workers (which are simple backend servers with a single API route)
 
 How to run a "hello-world" plugin the Cloudflare way:
@@ -146,18 +146,13 @@ How to run a "hello-world" plugin the Cloudflare way:
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquibot-config.yml`):
 
-```
+```yml
 plugins:
-  'issue_comment.created':
-    - name: "hello-world-plugin name"
-      description: "hello-world-plugin description"
-      command: "/hello"
-      example: "/hello example"
-      skipBotEvents: true
-      uses:
-      # hello-world-plugin
+  - skipBotEvents: true
+    uses:
+    	# hello-world-plugin
       - plugin: http://127.0.0.1:9090
-        type: github
+        runsOn: [ "issue_comment.created" ]
         with:
           response: world
 ```
@@ -169,8 +164,8 @@ How it works:
 
 1. When you post the `/hello` command the kernel receives the `issue_comment.created` event
 2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called)
-3. The kernel passes github event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
-4. The plugin performs all of the required actions and returns the result
+3. The kernel passes GitHub event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
+4. The plugin performs all the required actions and returns the result
 
 ## Testing
 
