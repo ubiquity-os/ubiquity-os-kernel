@@ -3,7 +3,16 @@
   "version": "0.0.0",
   "private": false,
   "description": "The kernel for UbiquiBot.",
-  "main": "src/worker.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "author": "Ubiquity DAO",
   "license": "MIT",
   "engines": {
