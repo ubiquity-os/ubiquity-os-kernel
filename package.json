@@ -1,12 +1,15 @@
 {
-  "name": "ubiquibot-kernel",
-  "version": "0.0.0",
+  "name": "@ubiquity-dao/ubiquibot-kernel",
+  "version": "0.0.1",
   "private": false,
   "description": "The kernel for UbiquiBot.",
+  "module": "dist/esm/index.js",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
   "exports": {
     ".": {
       "require": "./dist/index.js",
-      "import": "./dist/index.mjs",
+      "import": "./dist/esm/index.js",
       "types": "./dist/index.d.ts"
     }
   },
@@ -35,7 +38,7 @@
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
     "setup-kv": "bun --env-file=.dev.vars deploy/setup-kv-namespace.ts",
-    "sdk:build": "tsup src/sdk/index.ts --format cjs,esm"
+    "sdk:build": "tsup"
   },
   "keywords": [
     "typescript",
