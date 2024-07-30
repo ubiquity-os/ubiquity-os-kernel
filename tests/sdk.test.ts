@@ -33,7 +33,7 @@ beforeAll(async () => {
       };
     },
     { name: "test" },
-    { ubiquibotKernelPublicKey: publicKey }
+    { kernelPublicKey: publicKey }
   );
   server.listen();
 });

@@ -4,12 +4,12 @@ import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { verifySignature } from "./signature";
-import { UBIQUIBOT_KERNEL_PUBLIC_KEY } from "./constants";
+import { KERNEL_PUBLIC_KEY } from "./constants";
 import { Logs, LogLevel, LOG_LEVEL } from "@ubiquity-dao/ubiquibot-logger";
 import { Manifest } from "../types/manifest";
 
 interface Options {
-  ubiquibotKernelPublicKey?: string;
+  kernelPublicKey?: string;
   logLevel?: LogLevel;
 }
 
@@ -32,7 +32,7 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
     const payload = await ctx.req.json();
     const signature = payload.signature;
     delete payload.signature;
-    if (!(await verifySignature(options?.ubiquibotKernelPublicKey || UBIQUIBOT_KERNEL_PUBLIC_KEY, payload, signature))) {
+    if (!(await verifySignature(options?.kernelPublicKey || KERNEL_PUBLIC_KEY, payload, signature))) {
       throw new HTTPException(400, { message: "Invalid signature" });
     }
 

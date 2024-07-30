@@ -1,1 +1,1 @@
-export const UBIQUIBOT_KERNEL_PUBLIC_KEY = "";
+export const KERNEL_PUBLIC_KEY = "";
