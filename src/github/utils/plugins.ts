@@ -23,7 +23,7 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     return _manifestCache[manifestKey];
   }
   try {
-    const { data } = await context.octokit.repos.getContent({
+    const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo,
       path: "manifest.json",

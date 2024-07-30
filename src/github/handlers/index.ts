@@ -34,6 +34,7 @@ async function shouldSkipPlugin(event: EmitterWebhookEvent, context: GitHubConte
   if (
     context.key === "issue_comment.created" &&
     manifest &&
+    manifest.commands &&
     !Object.keys(manifest.commands).some(
       (command) => "comment" in context.payload && typeof context.payload.comment !== "string" && context.payload.comment?.body.startsWith(`/${command}`)
     )

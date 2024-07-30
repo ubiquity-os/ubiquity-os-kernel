@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { jest } from "@jest/globals";
 
-export class WebhooksMocked {
+class WebhooksMocked {
   constructor(_: unknown) {}
-  verifyAndReceive(_: unknown) {
-    return Promise.resolve();
-  }
+  verifyAndReceive(_: unknown) {}
   onAny(_: unknown) {}
   on(_: unknown) {}
   onError(_: unknown) {}
@@ -13,3 +12,12 @@ export class WebhooksMocked {
   verify(_: unknown, __: unknown) {}
   receive(_: unknown) {}
 }
+
+void jest.mock("@octokit/webhooks", () => {
+  const originalModule = jest.requireActual("@octokit/webhooks");
+  return {
+    __esModule: true,
+    ...(originalModule as object),
+    Webhooks: WebhooksMocked,
+  };
+});

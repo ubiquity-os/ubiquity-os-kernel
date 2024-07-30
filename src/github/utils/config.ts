@@ -5,8 +5,8 @@ import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
 
-const UBIQUIBOT_CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
-const UBIQUIBOT_CONFIG_ORG_REPO = "ubiquibot-config";
+const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
+const CONFIG_ORG_REPO = "ubiquibot-config";
 
 async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
   const targetRepoConfiguration: PluginConfiguration = parseYaml(
@@ -60,7 +60,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
   const configurations = await Promise.all([
-    getConfigurationFromRepo(context, UBIQUIBOT_CONFIG_ORG_REPO, payload.repository.owner.login),
+    getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login),
     getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
   ]);
 
@@ -143,7 +143,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
-      path: UBIQUIBOT_CONFIG_FULL_PATH,
+      path: CONFIG_FULL_PATH,
       mediaType: { format: "raw" },
     });
     return data as unknown as string; // this will be a string if media format is raw

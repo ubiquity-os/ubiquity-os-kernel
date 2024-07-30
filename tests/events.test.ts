@@ -6,12 +6,7 @@ import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import issueCommentCreated from "../src/github/handlers/issue-comment-created";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
-
-jest.mock("@octokit/webhooks", () => ({
-  Webhooks: jest.fn(() => new WebhooksMocked({})),
-  emitterEventNames: [],
-}));
+import "./__mocks__/webhooks";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -62,43 +57,44 @@ describe("Event related tests", () => {
       id: "",
       key: "issue_comment.created",
       octokit: {
-        issues,
         rest: {
+          issues,
           repos: {
-            getContent() {
-              return {
-                data: `
-                  plugins:
-                    - name: "Run on comment created"
-                      uses:
-                        - id: plugin-A
-                          plugin: https://plugin-a.internal
-                    - name: "Some Action plugin"
-                      uses:
-                        - id: plugin-B
-                          plugin: ubiquibot/plugin-b
-                  `,
-              };
+            getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+              if (params?.path === ".github/.ubiquibot-config.yml") {
+                return {
+                  data: `
+                    plugins:
+                      - name: "Run on comment created"
+                        uses:
+                          - id: plugin-A
+                            plugin: https://plugin-a.internal
+                      - name: "Some Action plugin"
+                        uses:
+                          - id: plugin-B
+                            plugin: ubiquibot/plugin-b
+                    `,
+                };
+              } else if (params?.path === "manifest.json") {
+                return {
+                  data: {
+                    content: btoa(
+                      JSON.stringify({
+                        name: "plugin",
+                        commands: {
+                          action: {
+                            description: "action",
+                            "ubiquity:example": "/action",
+                          },
+                        },
+                      })
+                    ),
+                  },
+                };
+              } else {
+                throw new Error("Not found");
+              }
             },
-          },
-        },
-        repos: {
-          getContent() {
-            return {
-              data: {
-                content: btoa(
-                  JSON.stringify({
-                    name: "plugin",
-                    commands: {
-                      action: {
-                        description: "action",
-                        "ubiquity:example": "/action",
-                      },
-                    },
-                  })
-                ),
-              },
-            };
           },
         },
       },
