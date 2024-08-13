@@ -5,8 +5,8 @@ import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
 
-const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
-const CONFIG_ORG_REPO = "ubiquibot-config";
+export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
+export const CONFIG_ORG_REPO = "ubiquibot-config";
 
 async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
   const targetRepoConfiguration: PluginConfiguration = parseYaml(

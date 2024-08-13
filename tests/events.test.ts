@@ -1,10 +1,11 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest, beforeEach } from "@jest/globals";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import issueCommentCreated from "../src/github/handlers/issue-comment-created";
+import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -61,7 +62,7 @@ describe("Event related tests", () => {
           issues,
           repos: {
             getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-              if (params?.path === ".github/.ubiquibot-config.yml") {
+              if (params?.path === CONFIG_FULL_PATH) {
                 return {
                   data: `
                     plugins:
