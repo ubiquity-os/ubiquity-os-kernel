@@ -1,17 +1,13 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest, beforeEach } from "@jest/globals";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import issueCommentCreated from "../src/github/handlers/issue-comment-created";
+import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
-
-jest.mock("@octokit/webhooks", () => ({
-  Webhooks: jest.fn(() => new WebhooksMocked({})),
-  emitterEventNames: [],
-}));
+import "./__mocks__/webhooks";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -62,43 +58,44 @@ describe("Event related tests", () => {
       id: "",
       key: "issue_comment.created",
       octokit: {
-        issues,
         rest: {
+          issues,
           repos: {
-            getContent() {
-              return {
-                data: `
-                  plugins:
-                    - name: "Run on comment created"
-                      uses:
-                        - id: plugin-A
-                          plugin: https://plugin-a.internal
-                    - name: "Some Action plugin"
-                      uses:
-                        - id: plugin-B
-                          plugin: ubiquibot/plugin-b
-                  `,
-              };
+            getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+              if (params?.path === CONFIG_FULL_PATH) {
+                return {
+                  data: `
+                    plugins:
+                      - name: "Run on comment created"
+                        uses:
+                          - id: plugin-A
+                            plugin: https://plugin-a.internal
+                      - name: "Some Action plugin"
+                        uses:
+                          - id: plugin-B
+                            plugin: ubiquibot/plugin-b
+                    `,
+                };
+              } else if (params?.path === "manifest.json") {
+                return {
+                  data: {
+                    content: btoa(
+                      JSON.stringify({
+                        name: "plugin",
+                        commands: {
+                          action: {
+                            description: "action",
+                            "ubiquity:example": "/action",
+                          },
+                        },
+                      })
+                    ),
+                  },
+                };
+              } else {
+                throw new Error("Not found");
+              }
             },
-          },
-        },
-        repos: {
-          getContent() {
-            return {
-              data: {
-                content: btoa(
-                  JSON.stringify({
-                    name: "plugin",
-                    commands: {
-                      action: {
-                        description: "action",
-                        "ubiquity:example": "/action",
-                      },
-                    },
-                  })
-                ),
-              },
-            };
           },
         },
       },

@@ -27,7 +27,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
     const { plugin } = pluginElement.uses[0];
     commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
-  await context.octokit.issues.createComment({
+  await context.octokit.rest.issues.createComment({
     body: comments.concat(commands.sort()).join("\n"),
     issue_number: context.payload.issue.number,
     owner: context.payload.repository.owner.login,

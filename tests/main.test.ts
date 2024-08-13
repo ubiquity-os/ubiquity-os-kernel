@@ -4,15 +4,10 @@ import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
-import worker from "../src/worker";
 import { server } from "./__mocks__/node";
-import { WebhooksMocked } from "./__mocks__/webhooks";
+import "./__mocks__/webhooks";
+import worker from "../src/worker"; // has to be imported after the mocks
 import { http, HttpResponse } from "msw";
-
-jest.mock("@octokit/webhooks", () => ({
-  Webhooks: jest.fn(() => new WebhooksMocked({})),
-  emitterEventNames: ["issues.opened"],
-}));
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -86,6 +81,7 @@ describe("Worker tests", () => {
       APP_PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
     });
+    expect(await res.text()).toEqual("ok\n");
     expect(res.status).toEqual(200);
   });
 
