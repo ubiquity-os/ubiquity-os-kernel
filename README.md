@@ -8,7 +8,7 @@ The kernel is designed to:
 ## Environment Variables
 
 - **`APP_PRIVATE_KEY`**
-  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. Use the following command to perform this conversion and append the result to your `.dev.vars` file:
+  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}. Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.dev.vars` file:
 
   ```sh
   echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
@@ -166,6 +166,10 @@ How it works:
 2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called)
 3. The kernel passes GitHub event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
 4. The plugin performs all the required actions and returns the result
+
+## Hello world plugin tutorial
+
+A screencast tutorial on how to set up and run a hello world plugin is available at [wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/Hello-world-plugin-onboarding-tutorial).
 
 ## Testing
 
