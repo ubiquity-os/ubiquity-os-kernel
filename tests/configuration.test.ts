@@ -27,7 +27,7 @@ describe("Configuration tests", () => {
         data: `
 plugins:
   - uses:
-    - plugin: ubiquity/user-activity-watcher:compute.yml@pull/1
+    - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
       with:
         settings1: 'enabled'`,
       };
@@ -77,7 +77,7 @@ plugins:
             owner: "ubiquity",
             repo: "user-activity-watcher",
             workflowId: "compute.yml",
-            ref: "pull/1",
+            ref: "fork/pull/1",
           },
           runsOn: [],
           with: {
