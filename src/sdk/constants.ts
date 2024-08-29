@@ -8,3 +8,4 @@ dkRj2Je2kag9b3FMxskv1npNSrPVcSc5lGNYlnZnfxIAnCknOC118JjitlrpT6wd
 8wIDAQAB
 -----END PUBLIC KEY-----
 `;
+export const KERNEL_APP_ID = 0;
