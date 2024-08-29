@@ -32,7 +32,21 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Update wrangler.toml Name Field
+        run: |
+          branch_name=$(echo '${{ github.event.ref }}' | sed 's#refs/heads/##' | sed 's#[^a-zA-Z0-9]#-#g')
+          # Extract base name from wrangler.toml
+          base_name=$(grep '^name = ' wrangler.toml | sed 's/^name = "\(.*\)"$/\1/')
+          # Concatenate branch name with base name
+          new_name="${base_name}-${branch_name}"
+          # Truncate the new name to 63 characters for RFC 1035
+          new_name=$(echo "$new_name" | cut -c 1-63)
+          # Update the wrangler.toml file
+          sed -i "s/^name = .*/name = \"$new_name\"/" wrangler.toml
+          echo "Updated wrangler.toml name to: $new_name"
+
       - uses: cloudflare/wrangler-action@v3
+        id: wrangler_deploy
         with:
           wranglerVersion: "3.63.1"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -45,3 +59,8 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Write Deployment URL to Summary
+        run: |
+          echo "### Deployment URL" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.wrangler_deploy.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
