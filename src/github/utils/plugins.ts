@@ -18,7 +18,7 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
 }
 
 async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
-  const manifestKey = `${owner}:${repo}:${ref ?? ""}`;
+  const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   if (_manifestCache[manifestKey]) {
     return _manifestCache[manifestKey];
   }
