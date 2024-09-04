@@ -6,6 +6,7 @@ import { getConfig } from "../src/github/utils/config";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getManifest } from "../src/github/utils/plugins";
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 
 config({ path: ".dev.vars" });
 
@@ -23,16 +24,40 @@ afterAll(() => {
 
 describe("Configuration tests", () => {
   it("Should properly parse the Action path if a branch and workflow are specified", async () => {
-    function getContent() {
-      return {
-        data: `
-plugins:
-  - uses:
-    - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
-      with:
-        settings1: 'enabled'`,
-      };
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      let data: string;
+      if (args.path === "manifest.json") {
+        data = `
+          {
+            "name": "plugin",
+            "commands": {
+              "command": {
+                "description": "description",
+                "ubiquity:example": "example"
+              }
+            }
+          }
+          `;
+      } else {
+        data = `
+        plugins:
+          - uses:
+            - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
+              with:
+                settings1: 'enabled'`;
+      }
+
+      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+        return {
+          data: {
+            content: Buffer.from(data).toString("base64"),
+          },
+        };
+      } else if (args.mediaType?.format === "raw") {
+        return { data };
+      }
     }
+
     const cfg = await getConfig({
       key: issueOpened,
       name: issueOpened,

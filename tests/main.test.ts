@@ -165,36 +165,56 @@ describe("Worker tests", () => {
     it("Should merge organization and repository configuration", async () => {
       const workflowId = "compute.yml";
       function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-        if (args.repo !== "ubiquibot-config") {
-          return {
-            data: `
-plugins:
-  - uses:
-    - plugin: repo-3/plugin-3
-      with:
-        setting1: false
-  - uses:
-    - plugin: repo-1/plugin-1
-      with:
-        setting2: true`,
-          };
+        let data: string;
+        if (args.path === "manifest.json") {
+          data = `
+          {
+            "name": "plugin",
+            "commands": {
+              "command": {
+                "description": "description",
+                "ubiquity:example": "example"
+              }
+            }
+          }
+          `;
+        } else if (args.repo !== "ubiquibot-config") {
+          data = `
+          plugins:
+            - uses:
+              - plugin: repo-3/plugin-3
+                with:
+                  setting1: false
+            - uses:
+              - plugin: repo-1/plugin-1
+                with:
+                  setting2: true`;
+        } else {
+          data = `
+          plugins:
+            - uses:
+              - plugin: uses-1/plugin-1
+                with:
+                  settings1: 'enabled'
+            - uses:
+              - plugin: repo-1/plugin-1
+                with:
+                  setting1: false
+            - uses:
+              - plugin: repo-2/plugin-2
+                with:
+                  setting2: true`;
         }
-        return {
-          data: `
-plugins:
-  - uses:
-    - plugin: uses-1/plugin-1
-      with:
-        settings1: 'enabled'
-  - uses:
-    - plugin: repo-1/plugin-1
-      with:
-        setting1: false
-  - uses:
-    - plugin: repo-2/plugin-2
-      with:
-        setting2: true`,
-        };
+
+        if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+          return {
+            data: {
+              content: Buffer.from(data).toString("base64"),
+            },
+          };
+        } else if (args.mediaType?.format === "raw") {
+          return { data };
+        }
       }
       const cfg = await getConfig({
         key: issueOpened,
@@ -207,25 +227,6 @@ plugins:
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
-          repos: {
-            getContent() {
-              return {
-                data: {
-                  content: Buffer.from(
-                    JSON.stringify({
-                      name: "plugin",
-                      commands: {
-                        command: {
-                          description: "description",
-                          "ubiquity:example": "example",
-                        },
-                      },
-                    })
-                  ).toString("base64"),
-                },
-              };
-            },
-          },
           rest: {
             repos: {
               getContent,

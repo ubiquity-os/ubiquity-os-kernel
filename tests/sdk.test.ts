@@ -86,6 +86,36 @@ describe("SDK worker tests", () => {
     expect(res.status).toEqual(400);
   });
   it("Should handle thrown errors", async () => {
+    const createComment = jest.fn();
+    jest.mock("../src/sdk/octokit", () => ({
+      customOctokit: class MockOctokit {
+        constructor() {
+          return {
+            rest: {
+              issues: {
+                createComment,
+              },
+            },
+          };
+        }
+      },
+    }));
+
+    const { createPlugin } = await import("../src/sdk/server");
+    const app = await createPlugin(
+      async (context: Context<{ shouldFail: boolean }>) => {
+        if (context.config.shouldFail) {
+          throw context.logger.error("test error");
+        }
+        return {
+          success: true,
+          event: context.eventName,
+        };
+      },
+      { name: "test" },
+      { kernelPublicKey: publicKey }
+    );
+
     const data = {
       ...issueCommented,
       stateId: "stateId",
@@ -108,6 +138,19 @@ describe("SDK worker tests", () => {
       method: "POST",
     });
     expect(res.status).toEqual(500);
+    expect(createComment).toHaveBeenCalledWith({
+      issue_number: 5,
+      owner: "ubiquibot",
+      repo: "bot",
+      body: `\`\`\`diff
+! test error
+\`\`\`
+<!--
+{
+  "caller": "error"
+}
+-->`,
+    });
   });
   it("Should accept correct request", async () => {
     const data = {

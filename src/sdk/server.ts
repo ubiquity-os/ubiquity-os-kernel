@@ -66,7 +66,7 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
 
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
       eventName: payload.eventName,
-      payload: payload.payload,
+      payload: payload.eventPayload,
       octokit: new customOctokit({ auth: payload.authToken }),
       config: config,
       env: env,
