@@ -17,8 +17,8 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin);
 }
 
-async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo }: GithubPlugin): Promise<Manifest | null> {
-  const manifestKey = `${owner}:${repo}`;
+async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
+  const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   if (_manifestCache[manifestKey]) {
     return _manifestCache[manifestKey];
   }
@@ -27,6 +27,7 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
       owner,
       repo,
       path: "manifest.json",
+      ref,
     });
     if ("content" in data) {
       const content = Buffer.from(data.content, "base64").toString();
