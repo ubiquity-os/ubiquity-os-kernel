@@ -7,6 +7,7 @@ import { Logs, LogLevel, LOG_LEVEL, LogReturn } from "@ubiquity-dao/ubiquibot-lo
 import { config } from "dotenv";
 import { Type as T, TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { sanitizeMetadata } from "./util";
 config();
 
 interface Options {
@@ -92,7 +93,7 @@ async function postComment(context: Context, error: LogReturn) {
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      body: `${error.logMessage.diff}\n<!--\n${getGithubWorkflowRunUrl()}\n${JSON.stringify(error.metadata, null, 2)}\n-->`,
+      body: `${error.logMessage.diff}\n<!--\n${getGithubWorkflowRunUrl()}\n${sanitizeMetadata(error.metadata)}\n-->`,
     });
   }
 }

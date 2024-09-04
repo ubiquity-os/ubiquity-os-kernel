@@ -9,6 +9,7 @@ import { Logs, LogLevel, LOG_LEVEL, LogReturn } from "@ubiquity-dao/ubiquibot-lo
 import { Manifest } from "../types/manifest";
 import { TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { sanitizeMetadata } from "./util";
 
 interface Options {
   kernelPublicKey?: string;
@@ -104,7 +105,7 @@ async function postComment(context: Context, error: LogReturn) {
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      body: `${error.logMessage.diff}\n<!--\n${JSON.stringify(error.metadata, null, 2)}\n-->`,
+      body: `${error.logMessage.diff}\n<!--\n${sanitizeMetadata(error.metadata)}\n-->`,
     });
   }
 }

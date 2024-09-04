@@ -1,6 +1,6 @@
 import { server } from "./__mocks__/node";
 import issueCommented from "./__mocks__/requests/issue-comment-post.json";
-import { expect, describe, beforeAll, afterAll, afterEach, it } from "@jest/globals";
+import { expect, describe, beforeAll, afterAll, afterEach, it, jest } from "@jest/globals";
 
 import * as crypto from "crypto";
 import { createPlugin } from "../src/sdk/server";
@@ -37,10 +37,14 @@ beforeAll(async () => {
   );
   server.listen();
 });
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  jest.resetModules();
+  jest.restoreAllMocks();
+});
 afterAll(() => server.close());
 
-describe("SDK tests", () => {
+describe("SDK worker tests", () => {
   it("Should serve manifest", async () => {
     const res = await app.request("/manifest.json", {
       method: "GET",
@@ -129,6 +133,68 @@ describe("SDK tests", () => {
     });
     expect(res.status).toEqual(200);
     const result = await res.json();
-    expect(result).toEqual({ stateId: "stateId", output: { success: true, event: "issue_comment.created" } });
+    expect(result).toEqual({ stateId: "stateId", output: { success: true, event: issueCommented.eventName } });
+  });
+});
+
+describe("SDK actions tests", () => {
+  it("Should accept correct request", async () => {
+    jest.mock("@actions/github", () => ({
+      context: {
+        runId: "1",
+        payload: {
+          inputs: {
+            stateId: "stateId",
+            eventName: issueCommented.eventName,
+            settings: "{}",
+            eventPayload: JSON.stringify(issueCommented.eventPayload),
+            authToken: "test",
+            ref: "",
+          },
+        },
+        repo: {
+          owner: "ubiquity",
+          repo: "ubiquibot-kernel",
+        },
+      },
+    }));
+    const setOutput = jest.fn();
+    const setFailed = jest.fn();
+    jest.mock("@actions/core", () => ({
+      setOutput,
+      setFailed,
+    }));
+    const createDispatchEvent = jest.fn();
+    jest.mock("../src/sdk/octokit", () => ({
+      customOctokit: class MockOctokit {
+        constructor() {
+          return {
+            rest: {
+              repos: {
+                createDispatchEvent: createDispatchEvent,
+              },
+            },
+          };
+        }
+      },
+    }));
+    const { createActionsPlugin } = await import("../src/sdk/actions");
+
+    await createActionsPlugin(async (context: Context) => {
+      return {
+        event: context.eventName,
+      };
+    });
+    expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommented.eventName });
+    expect(setFailed).not.toHaveBeenCalled();
+    expect(createDispatchEvent).toHaveBeenCalledWith({
+      event_type: "return_data_to_ubiquibot_kernel",
+      owner: "ubiquity",
+      repo: "ubiquibot-kernel",
+      client_payload: {
+        state_id: "stateId",
+        output: JSON.stringify({ event: issueCommented.eventName }),
+      },
+    });
   });
 });
