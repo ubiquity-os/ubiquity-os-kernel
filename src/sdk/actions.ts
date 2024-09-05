@@ -8,6 +8,7 @@ import { config } from "dotenv";
 import { Type as T, TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { sanitizeMetadata } from "./util";
+
 config();
 
 interface Options {

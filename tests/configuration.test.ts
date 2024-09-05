@@ -69,25 +69,6 @@ describe("Configuration tests", () => {
         },
       } as unknown as GitHubContext<"issues.closed">["payload"],
       octokit: {
-        repos: {
-          getContent() {
-            return {
-              data: {
-                content: Buffer.from(
-                  JSON.stringify({
-                    name: "plugin",
-                    commands: {
-                      command: {
-                        description: "description",
-                        "ubiquity:example": "example",
-                      },
-                    },
-                  })
-                ).toString("base64"),
-              },
-            };
-          },
-        },
         rest: {
           repos: {
             getContent,
