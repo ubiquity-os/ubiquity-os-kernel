@@ -107,5 +107,7 @@ async function postComment(context: Context, error: LogReturn) {
       issue_number: context.payload.issue.number,
       body: `${error.logMessage.diff}\n<!--\n${sanitizeMetadata(error.metadata)}\n-->`,
     });
+  } else {
+    context.logger.info("Cannot post comment because issue is not found in the payload");
   }
 }
