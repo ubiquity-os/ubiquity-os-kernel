@@ -6,6 +6,8 @@ import { getConfig } from "../src/github/utils/config";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getManifest } from "../src/github/utils/plugins";
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
+import { shouldSkipPlugin } from "../src/github/handlers";
 
 config({ path: ".dev.vars" });
 
@@ -23,16 +25,41 @@ afterAll(() => {
 
 describe("Configuration tests", () => {
   it("Should properly parse the Action path if a branch and workflow are specified", async () => {
-    function getContent() {
-      return {
-        data: `
-plugins:
-  - uses:
-    - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
-      with:
-        settings1: 'enabled'`,
-      };
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      let data: string;
+      if (args.path === "manifest.json") {
+        data = `
+          {
+            "name": "plugin",
+            "commands": {
+              "command": {
+                "description": "description",
+                "ubiquity:example": "example"
+              }
+            }
+          }
+          `;
+      } else {
+        data = `
+        plugins:
+          - uses:
+            - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
+              with:
+                settings1: 'enabled'
+            skipBotEvents: false`;
+      }
+
+      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+        return {
+          data: {
+            content: Buffer.from(data).toString("base64"),
+          },
+        };
+      } else if (args.mediaType?.format === "raw") {
+        return { data };
+      }
     }
+
     const cfg = await getConfig({
       key: issueOpened,
       name: issueOpened,
@@ -44,25 +71,6 @@ plugins:
         },
       } as unknown as GitHubContext<"issues.closed">["payload"],
       octokit: {
-        repos: {
-          getContent() {
-            return {
-              data: {
-                content: Buffer.from(
-                  JSON.stringify({
-                    name: "plugin",
-                    commands: {
-                      command: {
-                        description: "description",
-                        "ubiquity:example": "example",
-                      },
-                    },
-                  })
-                ).toString("base64"),
-              },
-            };
-          },
-        },
         rest: {
           repos: {
             getContent,
@@ -86,7 +94,7 @@ plugins:
           },
         },
       ],
-      skipBotEvents: true,
+      skipBotEvents: false,
     });
   });
   it("Should retrieve the configuration manifest from the proper branch if specified", async () => {
@@ -153,5 +161,68 @@ plugins:
       { owner, repo, ref, workflowId }
     );
     expect(manifest).toEqual(content["withoutRef"]);
+  });
+  it("should not skip bot event if skipBotEvents is set to false", async () => {
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      let data: string;
+      if (args.path === "manifest.json") {
+        data = `
+          {
+            "name": "plugin",
+            "commands": {
+              "command": {
+                "description": "description",
+                "ubiquity:example": "example"
+              }
+            }
+          }
+          `;
+      } else {
+        data = `
+        plugins:
+          - uses:
+            - plugin: ubiquity/test-plugin
+              with:
+                settings1: 'enabled'
+            skipBotEvents: false`;
+      }
+
+      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+        return {
+          data: {
+            content: Buffer.from(data).toString("base64"),
+          },
+        };
+      } else if (args.mediaType?.format === "raw") {
+        return { data };
+      }
+    }
+
+    const context = {
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name: "conversation-rewards",
+        },
+        sender: {
+          type: "Bot",
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler: {} as GitHubEventHandler,
+    } as unknown as GitHubContext;
+
+    const cfg = await getConfig(context);
+    expect(cfg.plugins[0].skipBotEvents).toEqual(false);
+    await expect(shouldSkipPlugin(context, cfg.plugins[0])).resolves.toEqual(false);
   });
 });
