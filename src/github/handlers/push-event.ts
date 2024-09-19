@@ -15,7 +15,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
 
     if (repository.owner) {
       const { config, errors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
-      if (config) {
+      if (!errors && config) {
         // check each plugin
       }
       try {
@@ -26,18 +26,20 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
         if (errors) {
           for (const error of errors) {
             if ("linePos" in error) {
-              body.push(`https://github.com/${repository.owner.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${4}`);
+              body.push(`https://github.com/${repository.owner.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${error.linePos[0].line}\n`);
             } else if (rawData) {
               const lineCounter = new LineCounter();
               const doc = YAML.parseDocument(rawData, { lineCounter });
-              const node = doc.getIn(["plugins", 0, "uses", 0, "plugin"], true);
-              const linePos = lineCounter.linePos(node.range[0]);
-              body.push(`https://github.com/${repository.owner.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePos.line}`);
+              const path = error.error.path
+                .split("/")
+                .filter((o) => o)
+                .slice(0, -1);
+              const node = doc.getIn(path, true);
+              const linePosStart = lineCounter.linePos(node.range[0]);
+              body.push(`https://github.com/${repository.owner.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePosStart.line}`);
             }
             body.push(`\n\`\`\`\n`);
-            body.push(
-              `${error.error ? JSON.stringify({ path: error.error.path, value: error.error.value, message: error.error.message }, null, 2) : error.message}`
-            );
+            body.push(`${error.error ? error.error.message : error.message}`);
             body.push(`\n\`\`\`\n`);
           }
         }
