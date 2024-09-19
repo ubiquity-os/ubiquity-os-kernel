@@ -8,7 +8,7 @@ import { getManifest } from "./plugins";
 export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 export const CONFIG_ORG_REPO = "ubiquibot-config";
 
-async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
+export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
   const targetRepoConfiguration: PluginConfiguration = parseYaml(
     await download({
       context,
