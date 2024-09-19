@@ -9,13 +9,12 @@ export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 export const CONFIG_ORG_REPO = "ubiquibot-config";
 
 export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
-  const { yaml, errors } = parseYaml(
-    await download({
-      context,
-      repository,
-      owner,
-    })
-  );
+  const rawData = await download({
+    context,
+    repository,
+    owner,
+  });
+  const { yaml, errors } = parseYaml(rawData);
   const targetRepoConfiguration: PluginConfiguration | null = yaml;
   if (targetRepoConfiguration) {
     try {
@@ -26,13 +25,13 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
           console.error(error);
         }
       }
-      return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors };
+      return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors, rawData };
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
-      return { config: null, errors: [error] };
+      return { config: null, errors: [error], rawData };
     }
   }
-  return { config: null, errors };
+  return { config: null, errors, rawData };
 }
 
 /**
