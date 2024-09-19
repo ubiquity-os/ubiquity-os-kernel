@@ -9,13 +9,14 @@ export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 export const CONFIG_ORG_REPO = "ubiquibot-config";
 
 export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
-  const targetRepoConfiguration: PluginConfiguration = parseYaml(
+  const { yaml, errors } = parseYaml(
     await download({
       context,
       repository,
       owner,
     })
   );
+  const targetRepoConfiguration: PluginConfiguration | null = yaml;
   if (targetRepoConfiguration) {
     try {
       const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
@@ -25,13 +26,13 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
           console.error(error);
         }
       }
-      return Value.Decode(configSchema, configSchemaWithDefaults);
+      return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors };
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
-      return null;
+      return { config: null, errors: [error] };
     }
   }
-  return null;
+  return { config: null, errors };
 }
 
 /**
@@ -65,8 +66,8 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   ]);
 
   configurations.forEach((configuration) => {
-    if (configuration) {
-      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration);
+    if (configuration.config) {
+      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration.config);
     }
   });
 
@@ -157,10 +158,11 @@ export function parseYaml(data: null | string) {
   try {
     if (data) {
       const parsedData = YAML.parse(data);
-      return parsedData ?? null;
+      return { yaml: parsedData ?? null, errors: null };
     }
   } catch (error) {
     console.error("Error parsing YAML", error);
+    return { errors: [error], yaml: null };
   }
-  return null;
+  return { yaml: null, errors: null };
 }
