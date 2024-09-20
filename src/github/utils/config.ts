@@ -1,5 +1,5 @@
-import { Value } from "@sinclair/typebox/value";
-import YAML from "yaml";
+import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
+import YAML, { YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
@@ -28,7 +28,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
       return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors, rawData };
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
-      return { config: null, errors: [error], rawData };
+      return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
   return { config: null, errors, rawData };
@@ -161,7 +161,7 @@ export function parseYaml(data: null | string) {
     }
   } catch (error) {
     console.error("Error parsing YAML", error);
-    return { errors: [error], yaml: null };
+    return { errors: [error] as YAMLError[], yaml: null };
   }
   return { yaml: null, errors: null };
 }
