@@ -45,7 +45,7 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
   if (_manifestCache[url]) {
     return _manifestCache[url];
   }
-  const manifestUrl = `${url}/manifest.json`;
+  const manifestUrl = `${url}/manifest`;
   try {
     const result = await fetch(manifestUrl);
     const manifest = decodeManifest(await result.json());
