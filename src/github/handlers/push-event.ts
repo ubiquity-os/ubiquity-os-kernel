@@ -2,7 +2,7 @@ import { GitHubContext } from "../github-context";
 import { CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { ValueError } from "typebox-validators";
-import { dispatchWorker } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflow } from "../utils/workflow-dispatch";
 
 function constructErrorBody(
   errors: Iterable<ValueError> | ValueError[] | YAML.YAMLError[],
@@ -42,6 +42,41 @@ function constructErrorBody(
   return body;
 }
 
+// TODO: store id within KV and get payload from there
+export async function handleActionValidationWorkflowCompleted(context: GitHubContext<"repository_dispatch">) {
+  const { octokit, payload } = context;
+  const { repository, client_payload } = payload;
+
+  if (client_payload && "output" in client_payload) {
+    const { rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
+    const result = JSON.parse(client_payload.output);
+    console.log("Received Action output result for validation, will process.");
+    console.log(result);
+    const errors = result.errors;
+    try {
+      const body = [];
+      body.push(`@${payload.sender?.login} Configuration is ${!errors.length ? "valid" : "invalid"}.\n`);
+      if (errors.length) {
+        body.push(...constructErrorBody(errors, rawData, repository, result.after));
+      }
+      console.log("+))) creating commit comment", {
+        owner: repository.owner.login,
+        repo: repository.name,
+        commit_sha: result.after,
+        body: body.join(""),
+      });
+      await octokit.rest.repos.createCommitComment({
+        owner: repository.owner.login,
+        repo: repository.name,
+        commit_sha: result.after,
+        body: body.join(""),
+      });
+    } catch (e) {
+      console.error("handleActionValidationWorkflowCompleted", e);
+    }
+  }
+}
+
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { octokit, payload } = context;
   const { repository, commits, after } = payload;
@@ -56,16 +91,25 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
     if (repository.owner) {
       const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
       const errors = [];
+      // TODO test unreachable endpoints
       if (!configurationErrors && config) {
-        // check each plugin
-        for (const { uses } of config.plugins) {
-          for (const use of uses) {
+        for (let i = 0; i < config.plugins.length; ++i) {
+          const { uses } = config.plugins[i];
+          for (let j = 0; j < uses.length; ++j) {
+            const use = uses[j];
             if (typeof use.plugin === "string") {
               const response = await dispatchWorker(`${use.plugin}/manifest`, { settings: use.with });
-              console.log(response);
               if (response.errors) {
-                errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/0/uses/0/with${err.path}` })));
+                errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
               }
+            } else {
+              await dispatchWorkflow(context, {
+                owner: use.plugin.owner,
+                ref: use.plugin.ref,
+                repository: use.plugin.repo,
+                workflowId: "validate-schema.yml",
+                inputs: { settings: JSON.stringify(use.with), after },
+              });
             }
           }
         }
@@ -78,6 +122,12 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
         if (errors.length) {
           body.push(...constructErrorBody(errors, rawData, repository, after));
         }
+        console.log("))) creating commit comment", {
+          owner: repository.owner.login,
+          repo: repository.name,
+          commit_sha: after,
+          body: body.join(""),
+        });
         await octokit.rest.repos.createCommitComment({
           owner: repository.owner.login,
           repo: repository.name,

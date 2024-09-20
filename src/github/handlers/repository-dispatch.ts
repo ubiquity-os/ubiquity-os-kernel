@@ -3,11 +3,14 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 import { Value } from "@sinclair/typebox/value";
 import { PluginInput, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
+import { handleActionValidationWorkflowCompleted } from "./push-event";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
   console.log("Repository dispatch event received", context.payload.client_payload);
 
-  if (context.payload.action !== "return_data_to_ubiquibot_kernel") {
+  if (context.payload.action === "configuration_validation") {
+    return handleActionValidationWorkflowCompleted(context);
+  } else if (context.payload.action !== "return_data_to_ubiquibot_kernel") {
     console.log("Skipping non-ubiquibot event");
     return;
   }
