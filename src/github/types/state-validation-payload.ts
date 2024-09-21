@@ -1,5 +1,4 @@
 import { StaticDecode, Type } from "@sinclair/typebox";
-import { StandardValidator } from "typebox-validators";
 
 export const stateValidationSchema = Type.Object({
   /**
@@ -11,7 +10,5 @@ export const stateValidationSchema = Type.Object({
    */
   path: Type.String(),
 });
-
-export const stateValidationValidator = new StandardValidator(stateValidationSchema);
 
 export type StateValidation = StaticDecode<typeof stateValidationSchema>;
