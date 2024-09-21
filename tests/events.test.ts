@@ -30,7 +30,7 @@ afterAll(() => {
 describe("Event related tests", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
+      http.get("https://plugin-a.internal/manifest", () =>
         HttpResponse.json({
           name: "plugin",
           commands: {
