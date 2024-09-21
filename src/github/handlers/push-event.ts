@@ -9,7 +9,7 @@ import { Value, ValueErrorType } from "@sinclair/typebox/value";
 import { StateValidation, stateValidationSchema } from "../types/state-validation-payload";
 
 function constructErrorBody(
-  errors: Iterable<ValueError> | ValueError[] | YAML.YAMLError[],
+  errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
   after: string
@@ -119,7 +119,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
 
     if (repository.owner) {
       const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
-      const errors = [];
+      const errors: (ValueError | YAML.YAMLError)[] = [];
       // TODO test unreachable endpoints
       if (!configurationErrors && config) {
         for (let i = 0; i < config.plugins.length; ++i) {
@@ -133,9 +133,20 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
             const inputs = new PluginInput(context.eventHandler, stateId, context.key, payload, args, token, ref);
 
             if (!isGithubPluginObject) {
-              const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
-              if (response.errors) {
-                errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
+              try {
+                const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
+                if (response.errors) {
+                  errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
+                }
+              } catch (e) {
+                console.error("Failed to reach plugin endpoint", e);
+                errors.push({
+                  path: `plugins/${i}/uses/${j}`,
+                  message: "Failed to reach plugin endpoint",
+                  value: plugin,
+                  type: 0,
+                  schema: stateValidationSchema,
+                });
               }
             } else {
               await eventHandler.pluginChainState.put(stateId, {
