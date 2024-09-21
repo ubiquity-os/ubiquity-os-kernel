@@ -47,13 +47,13 @@ function constructErrorBody(
 
 export async function handleActionValidationWorkflowCompleted(context: GitHubContext<"repository_dispatch">) {
   const { octokit, payload } = context;
-  const { repository, client_payload } = payload;
+  const { client_payload } = payload;
   let pluginOutput: PluginOutput;
 
   try {
     pluginOutput = Value.Decode(pluginOutputSchema, client_payload);
   } catch (error) {
-    console.error("Cannot decode plugin output", error);
+    console.error("[handleActionValidationWorkflowCompleted]: Cannot decode plugin output", error);
     throw error;
   }
 
@@ -66,35 +66,30 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
 
   console.log("Received Action output result for validation, will process.", pluginOutput.output);
   const errors = pluginOutput.output.errors as ValueError[];
-  console.log("=== stuff", JSON.stringify(payload, null, 2), JSON.stringify(state, null, 2));
   // TODO: validate with typebox
   const { rawData, after, configurationRepo, path } = state.additionalProperties ?? {};
   try {
-    const body = [];
-    body.push(`@${state.eventPayload.sender?.login} Configuration is ${!errors.length ? "valid" : "invalid"}.\n`);
     if (errors.length) {
-      body.push(
-        ...constructErrorBody(
-          errors.map((err) => ({ ...err, path: `${path}${err.path}` })),
-          rawData as string,
-          configurationRepo as GitHubContext<"push">["payload"]["repository"],
-          after as string
-        )
-      );
-    }
-    console.log("+))) creating commit comment", {
-      owner: repository.owner.login,
-      repo: repository.name,
-      commit_sha: state.additionalProperties?.after,
-      body: body.join(""),
-    });
-    if (after) {
-      await octokit.rest.repos.createCommitComment({
-        owner: configurationRepo.owner.login,
-        repo: configurationRepo.name,
-        commit_sha: after as string,
-        body: body.join(""),
-      });
+      const body = [];
+      body.push(`@${state.eventPayload.sender?.login} Configuration is invalid.\n`);
+      if (errors.length) {
+        body.push(
+          ...constructErrorBody(
+            errors.map((err) => ({ ...err, path: `${path}${err.path}` })),
+            rawData as string,
+            configurationRepo as GitHubContext<"push">["payload"]["repository"],
+            after as string
+          )
+        );
+      }
+      if (after) {
+        await octokit.rest.repos.createCommitComment({
+          owner: configurationRepo.owner.login,
+          repo: configurationRepo.name,
+          commit_sha: after as string,
+          body: body.join(""),
+        });
+      }
     }
   } catch (e) {
     console.error("handleActionValidationWorkflowCompleted", e);
@@ -162,23 +157,17 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
         errors.push(...configurationErrors);
       }
       try {
-        const body = [];
-        body.push(`@${payload.sender?.login} Configuration is ${!errors.length ? "valid" : "invalid"}.\n`);
         if (errors.length) {
+          const body = [];
+          body.push(`@${payload.sender?.login} Configuration is invalid.\n`);
           body.push(...constructErrorBody(errors, rawData, repository, after));
+          await octokit.rest.repos.createCommitComment({
+            owner: repository.owner.login,
+            repo: repository.name,
+            commit_sha: after,
+            body: body.join(""),
+          });
         }
-        console.log("))) creating commit comment", {
-          owner: repository.owner.login,
-          repo: repository.name,
-          commit_sha: after,
-          body: body.join(""),
-        });
-        await octokit.rest.repos.createCommitComment({
-          owner: repository.owner.login,
-          repo: repository.name,
-          commit_sha: after,
-          body: body.join(""),
-        });
       } catch (e) {
         console.error("handlePushEventError", e);
       }
