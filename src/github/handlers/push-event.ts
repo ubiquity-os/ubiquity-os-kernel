@@ -4,7 +4,7 @@ import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { ValueError } from "typebox-validators";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
-import { isGithubPlugin } from "../types/plugin-configuration";
+import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { Value, ValueErrorType } from "@sinclair/typebox/value";
 import { StateValidation, stateValidationSchema } from "../types/state-validation-payload";
 
@@ -108,8 +108,74 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
   }
 }
 
+async function checkPluginConfigurations(context: GitHubContext<"push">, config: PluginConfiguration, rawData: string | null) {
+  const { payload, eventHandler } = context;
+  const errors: (ValueError | YAML.YAMLError)[] = [];
+
+  for (let i = 0; i < config.plugins.length; ++i) {
+    const { uses } = config.plugins[i];
+    for (let j = 0; j < uses.length; ++j) {
+      const { plugin, with: args } = uses[j];
+      const isGithubPluginObject = isGithubPlugin(plugin);
+      const stateId = crypto.randomUUID();
+      const token = payload.installation ? await eventHandler.getToken(payload.installation.id) : "";
+      const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+      const inputs = new PluginInput(context.eventHandler, stateId, context.key, payload, args, token, ref);
+
+      if (!isGithubPluginObject) {
+        try {
+          const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
+          if (response.errors) {
+            errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
+          }
+        } catch (e) {
+          errors.push({
+            path: `plugins/${i}/uses/${j}`,
+            message: `Failed to reach plugin endpoint: ${e}`,
+            value: plugin,
+            type: 0,
+            schema: stateValidationSchema,
+          });
+        }
+      } else {
+        try {
+          await dispatchWorkflow(context, {
+            owner: plugin.owner,
+            repository: plugin.repo,
+            workflowId: "validate-schema.yml",
+            ref: plugin.ref,
+            inputs: inputs.getWorkflowInputs(),
+          });
+          await eventHandler.pluginChainState.put(stateId, {
+            eventPayload: payload,
+            currentPlugin: 0,
+            eventId: "",
+            eventName: "push",
+            inputs: [inputs],
+            outputs: new Array(uses.length),
+            pluginChain: uses,
+            additionalProperties: {
+              rawData,
+              path: `plugins/${i}/uses/${j}/with`,
+            },
+          });
+        } catch (e) {
+          errors.push({
+            path: `plugins/${i}/uses/${j}`,
+            message: `Failed to reach plugin action: ${e}`,
+            value: JSON.stringify(plugin),
+            type: 0,
+            schema: stateValidationSchema,
+          });
+        }
+      }
+    }
+  }
+  return errors;
+}
+
 export default async function handlePushEvent(context: GitHubContext<"push">) {
-  const { octokit, payload, eventHandler } = context;
+  const { octokit, payload } = context;
   const { repository, commits, after } = payload;
 
   const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
@@ -120,58 +186,8 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
     if (repository.owner) {
       const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
       const errors: (ValueError | YAML.YAMLError)[] = [];
-      // TODO test unreachable endpoints
       if (!configurationErrors && config) {
-        for (let i = 0; i < config.plugins.length; ++i) {
-          const { uses } = config.plugins[i];
-          for (let j = 0; j < uses.length; ++j) {
-            const { plugin, with: args } = uses[j];
-            const isGithubPluginObject = isGithubPlugin(plugin);
-            const stateId = crypto.randomUUID();
-            const token = payload.installation ? await eventHandler.getToken(payload.installation.id) : "";
-            const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
-            const inputs = new PluginInput(context.eventHandler, stateId, context.key, payload, args, token, ref);
-
-            if (!isGithubPluginObject) {
-              try {
-                const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
-                if (response.errors) {
-                  errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
-                }
-              } catch (e) {
-                console.error("Failed to reach plugin endpoint", e);
-                errors.push({
-                  path: `plugins/${i}/uses/${j}`,
-                  message: "Failed to reach plugin endpoint",
-                  value: plugin,
-                  type: 0,
-                  schema: stateValidationSchema,
-                });
-              }
-            } else {
-              await eventHandler.pluginChainState.put(stateId, {
-                eventPayload: payload,
-                currentPlugin: 0,
-                eventId: "",
-                eventName: "push",
-                inputs: [inputs],
-                outputs: new Array(uses.length),
-                pluginChain: uses,
-                additionalProperties: {
-                  rawData,
-                  path: `plugins/${i}/uses/${j}/with`,
-                },
-              });
-              await dispatchWorkflow(context, {
-                owner: plugin.owner,
-                repository: plugin.repo,
-                workflowId: "validate-schema.yml",
-                ref: plugin.ref,
-                inputs: inputs.getWorkflowInputs(),
-              });
-            }
-          }
-        }
+        errors.push(...(await checkPluginConfigurations(context, config, rawData)));
       } else if (configurationErrors) {
         errors.push(...configurationErrors);
       }
