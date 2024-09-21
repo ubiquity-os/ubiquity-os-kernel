@@ -81,11 +81,10 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
     return;
   }
 
-  const { rawData, path } = state.additionalProperties ?? {};
+  const { rawData, path } = stateValidation;
   try {
     if (errors.length) {
       const body = [];
-      console.log("+++", JSON.stringify(state, null, 2));
       body.push(`@${state.eventPayload.sender?.login} Configuration is invalid.\n`);
       if (errors.length) {
         body.push(
