@@ -81,4 +81,5 @@ export type PluginChainState<T extends EmitterWebhookEventName = EmitterWebhookE
   pluginChain: PluginChain;
   inputs: PluginInput[];
   outputs: PluginOutput[];
+  additionalProperties?: Record<string, unknown>;
 };
