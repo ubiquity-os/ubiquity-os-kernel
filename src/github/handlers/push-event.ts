@@ -3,10 +3,10 @@ import { CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { ValueError } from "typebox-validators";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
-import { PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
+import { PluginChainState, PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { Value, ValueErrorType } from "@sinclair/typebox/value";
-import { StateValidation, stateValidationSchema } from "../types/state-validation-payload";
+import { pluginValidationResponseSchema, StateValidation, stateValidationSchema } from "../types/state-validation-payload";
 
 function constructErrorBody(
   errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
@@ -60,7 +60,7 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
     throw error;
   }
 
-  const state = await context.eventHandler.pluginChainState.get(pluginOutput.state_id);
+  const state = (await context.eventHandler.pluginChainState.get(pluginOutput.state_id)) as PluginChainState<"push">;
 
   if (!state) {
     console.error(`[handleActionValidationWorkflowCompleted]: No state found for plugin chain ${pluginOutput.state_id}`);
@@ -83,7 +83,7 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
 
   const { rawData, path } = stateValidation;
   try {
-    if (errors.length) {
+    if (errors.length && state.eventPayload.repository.owner) {
       const body = [];
       body.push(`@${state.eventPayload.sender?.login} Configuration is invalid.\n`);
       if (errors.length) {
@@ -125,8 +125,9 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
       if (!isGithubPluginObject) {
         try {
           const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
-          if (response.errors) {
-            errors.push(...response.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
+          const decodedResponse = Value.Decode(pluginValidationResponseSchema, response);
+          if (decodedResponse.errors) {
+            errors.push(...decodedResponse.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
           }
         } catch (e) {
           errors.push({

@@ -11,4 +11,17 @@ export const stateValidationSchema = Type.Object({
   path: Type.String(),
 });
 
+const validationErrorSchema = Type.Object({
+  path: Type.String(),
+  message: Type.String(),
+  type: Type.Number(),
+  value: Type.Any(),
+  schema: Type.Any(),
+});
+
+export const pluginValidationResponseSchema = Type.Object({
+  message: Type.String(),
+  errors: Type.Array(validationErrorSchema),
+});
+
 export type StateValidation = StaticDecode<typeof stateValidationSchema>;
