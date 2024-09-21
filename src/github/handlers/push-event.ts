@@ -5,7 +5,7 @@ import { ValueError } from "typebox-validators";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
-import { Value } from "@sinclair/typebox/value";
+import { Value, ValueErrorType } from "@sinclair/typebox/value";
 import { StateValidation, stateValidationSchema } from "../types/state-validation-payload";
 
 function constructErrorBody(
@@ -24,8 +24,9 @@ function constructErrorBody(
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
         const path = error.path.split("/").filter((o) => o);
-        // .slice(0, -1); TODO: depending if missing, slice or not
-        console.log("+++ path", path);
+        if (error.type === ValueErrorType.ObjectRequiredProperty) {
+          path.splice(path.length - 1, 1);
+        }
         const node = doc.getIn(path, true) as Node;
         const linePosStart = lineCounter.linePos(node?.range?.[0] || 0);
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePosStart.line}`);
