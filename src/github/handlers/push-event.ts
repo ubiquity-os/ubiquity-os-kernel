@@ -6,6 +6,7 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 import { PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 import { Value } from "@sinclair/typebox/value";
+import { StateValidation, stateValidationSchema } from "../types/state-validation-payload";
 
 function constructErrorBody(
   errors: Iterable<ValueError> | ValueError[] | YAML.YAMLError[],
@@ -18,7 +19,7 @@ function constructErrorBody(
     for (const error of errors) {
       body.push("> [!CAUTION]\n");
       if (error instanceof YAMLError) {
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${error.linePos?.[0].line}`);
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${error.linePos?.[0].line || 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
@@ -26,7 +27,7 @@ function constructErrorBody(
         // .slice(0, -1); TODO: depending if missing, slice or not
         console.log("+++ path", path);
         const node = doc.getIn(path, true) as Node;
-        const linePosStart = lineCounter.linePos(node.range?.[0] || 0);
+        const linePosStart = lineCounter.linePos(node?.range?.[0] || 0);
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePosStart.line}`);
       }
       const message = [];
@@ -49,6 +50,7 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
   const { octokit, payload } = context;
   const { client_payload } = payload;
   let pluginOutput: PluginOutput;
+  let stateValidation: StateValidation;
 
   try {
     pluginOutput = Value.Decode(pluginOutputSchema, client_payload);
@@ -65,31 +67,41 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
   }
 
   console.log("Received Action output result for validation, will process.", pluginOutput.output);
+
   const errors = pluginOutput.output.errors as ValueError[];
-  // TODO: validate with typebox
-  const { rawData, after, configurationRepo, path } = state.additionalProperties ?? {};
+  try {
+    stateValidation = Value.Decode(stateValidationSchema, state.additionalProperties);
+  } catch (e) {
+    console.error(`[handleActionValidationWorkflowCompleted]: Cannot decode state properties`);
+    throw e;
+  }
+  if (!stateValidation) {
+    console.error(`[handleActionValidationWorkflowCompleted]: State validation is invalid for ${pluginOutput.state_id}`);
+    return;
+  }
+
+  const { rawData, path } = state.additionalProperties ?? {};
   try {
     if (errors.length) {
       const body = [];
+      console.log("+++", JSON.stringify(state, null, 2));
       body.push(`@${state.eventPayload.sender?.login} Configuration is invalid.\n`);
       if (errors.length) {
         body.push(
           ...constructErrorBody(
             errors.map((err) => ({ ...err, path: `${path}${err.path}` })),
             rawData as string,
-            configurationRepo as GitHubContext<"push">["payload"]["repository"],
-            after as string
+            state.eventPayload.repository as GitHubContext<"push">["payload"]["repository"],
+            state.eventPayload.after as string
           )
         );
       }
-      if (after) {
-        await octokit.rest.repos.createCommitComment({
-          owner: configurationRepo.owner.login,
-          repo: configurationRepo.name,
-          commit_sha: after as string,
-          body: body.join(""),
-        });
-      }
+      await octokit.rest.repos.createCommitComment({
+        owner: state.eventPayload.repository.owner.login,
+        repo: state.eventPayload.repository.name,
+        commit_sha: state.eventPayload.after as string,
+        body: body.join(""),
+      });
     }
   } catch (e) {
     console.error("handleActionValidationWorkflowCompleted", e);
@@ -100,9 +112,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { octokit, payload, eventHandler } = context;
   const { repository, commits, after } = payload;
 
-  const didConfigurationFileChange = commits.some(
-    (commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH) || commit.removed?.includes(CONFIG_FULL_PATH)
-  );
+  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
 
   if (didConfigurationFileChange) {
     console.log("Configuration file changed, will run configuration checks.");
@@ -137,8 +147,6 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
                 outputs: new Array(uses.length),
                 pluginChain: uses,
                 additionalProperties: {
-                  after,
-                  configurationRepo: repository,
                   rawData,
                   path: `plugins/${i}/uses/${j}/with`,
                 },
