@@ -6,7 +6,7 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 import { PluginChainState, PluginInput, PluginOutput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { Value, ValueErrorType } from "@sinclair/typebox/value";
-import { pluginValidationResponseSchema, StateValidation, stateValidationSchema } from "../types/state-validation-payload";
+import { pluginValidationResponseSchema, StateValidation, stateValidationErrorSchemaValidator, stateValidationSchema } from "../types/state-validation-payload";
 
 function constructErrorBody(
   errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
@@ -163,8 +163,15 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
       if (!isGithubPluginObject) {
         try {
           const response = await dispatchWorker(`${plugin}/manifest`, await inputs.getWorkerInputs());
-          const decodedResponse = Value.Decode(pluginValidationResponseSchema, response);
-          if (decodedResponse.errors) {
+          const responseWithDefaults = Value.Default(pluginValidationResponseSchema, response) as StateValidation;
+          if (!stateValidationErrorSchemaValidator.test(responseWithDefaults)) {
+            console.error("Malformed response from the endpoints");
+            for (const err of stateValidationErrorSchemaValidator.errors(responseWithDefaults)) {
+              console.error(err);
+            }
+          }
+          const decodedResponse = Value.Decode(pluginValidationResponseSchema, responseWithDefaults);
+          if (decodedResponse.errors.length) {
             errors.push(...decodedResponse.errors.map((err) => ({ ...err, path: `plugins/${i}/uses/${j}/with${err.path}` })));
           }
         } catch (e) {
