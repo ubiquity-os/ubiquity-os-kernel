@@ -20,7 +20,7 @@ const validationErrorSchema = Type.Object({
 });
 
 export const pluginValidationResponseSchema = Type.Object({
-  message: Type.String(),
+  message: Type.Optional(Type.String()),
   errors: Type.Optional(Type.Array(validationErrorSchema)),
 });
 
