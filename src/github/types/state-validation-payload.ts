@@ -14,9 +14,9 @@ export const stateValidationSchema = Type.Object({
 const validationErrorSchema = Type.Object({
   path: Type.String(),
   message: Type.String(),
-  type: Type.Number(),
+  type: Type.Number({ default: 0 }),
   value: Type.Any(),
-  schema: Type.Any(),
+  schema: Type.Any({ default: {} }),
 });
 
 export const pluginValidationResponseSchema = Type.Object({
