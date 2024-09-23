@@ -21,7 +21,7 @@ const validationErrorSchema = Type.Object({
 
 export const pluginValidationResponseSchema = Type.Object({
   message: Type.String(),
-  errors: Type.Array(validationErrorSchema),
+  errors: Type.Optional(Type.Array(validationErrorSchema)),
 });
 
 export type StateValidation = StaticDecode<typeof stateValidationSchema>;
