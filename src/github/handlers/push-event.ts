@@ -48,7 +48,7 @@ function constructErrorBody(
 }
 
 export async function handleActionValidationWorkflowCompleted(context: GitHubContext<"repository_dispatch">) {
-  const { octokit, payload } = context;
+  const { payload } = context;
   const { client_payload } = payload;
   let pluginOutput: PluginOutput;
   let stateValidation: StateValidation;
@@ -85,7 +85,6 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
   try {
     if (errors.length && state.eventPayload.repository.owner) {
       const body = [];
-      body.push(`@${state.eventPayload.sender?.login} Configuration is invalid.\n`);
       if (errors.length) {
         body.push(
           ...constructErrorBody(
@@ -96,15 +95,54 @@ export async function handleActionValidationWorkflowCompleted(context: GitHubCon
           )
         );
       }
-      await octokit.rest.repos.createCommitComment({
-        owner: state.eventPayload.repository.owner.login,
-        repo: state.eventPayload.repository.name,
-        commit_sha: state.eventPayload.after as string,
-        body: body.join(""),
-      });
+      await createCommitComment(
+        context,
+        {
+          owner: state.eventPayload.repository.owner.login,
+          repo: state.eventPayload.repository.name,
+          commitSha: state.eventPayload.after as string,
+          userLogin: state.eventPayload.sender?.login,
+        },
+        body
+      );
     }
   } catch (e) {
     console.error("handleActionValidationWorkflowCompleted", e);
+  }
+}
+
+async function createCommitComment(
+  context: GitHubContext,
+  { owner, repo, commitSha, userLogin }: { owner: string; repo: string; commitSha: string; userLogin?: string },
+  body: string[]
+) {
+  const { octokit } = context;
+
+  const commit = (
+    await octokit.rest.repos.listCommentsForCommit({
+      owner: owner,
+      repo: repo,
+      commit_sha: commitSha,
+    })
+  ).data
+    .filter((o) => o.user?.type === "Bot")
+    .pop();
+  if (commit) {
+    await octokit.rest.repos.updateCommitComment({
+      owner: owner,
+      repo: repo,
+      commit_sha: commitSha,
+      comment_id: commit.id,
+      body: `${commit.body}\n${body.join("")}`,
+    });
+  } else {
+    body.unshift(`@${userLogin} Configuration is invalid.\n`);
+    await octokit.rest.repos.createCommitComment({
+      owner: owner,
+      repo: repo,
+      commit_sha: commitSha,
+      body: body.join(""),
+    });
   }
 }
 
@@ -176,7 +214,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 }
 
 export default async function handlePushEvent(context: GitHubContext<"push">) {
-  const { octokit, payload } = context;
+  const { payload } = context;
   const { repository, commits, after } = payload;
 
   const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
@@ -195,14 +233,17 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
       try {
         if (errors.length) {
           const body = [];
-          body.push(`@${payload.sender?.login} Configuration is invalid.\n`);
           body.push(...constructErrorBody(errors, rawData, repository, after));
-          await octokit.rest.repos.createCommitComment({
-            owner: repository.owner.login,
-            repo: repository.name,
-            commit_sha: after,
-            body: body.join(""),
-          });
+          await createCommitComment(
+            context,
+            {
+              owner: repository.owner.login,
+              repo: repository.name,
+              commitSha: after,
+              userLogin: payload.sender?.login,
+            },
+            body
+          );
         }
       } catch (e) {
         console.error("handlePushEventError", e);
