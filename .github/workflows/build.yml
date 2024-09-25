@@ -52,9 +52,9 @@ jobs:
           secrets: |
             APP_ID
             APP_PRIVATE_KEY
-            WEBHOOK_SECRET
+            APP_WEBHOOK_SECRET
         env:
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 

@@ -36,7 +36,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* renamed PRIVATE_KEY to APP_PRIVATE_KEY, WEBHOOK_SECRET optional and removed WEBHOOK_PROXY_URL
+* renamed PRIVATE_KEY to APP_PRIVATE_KEY, APP_WEBHOOK_SECRET optional and removed WEBHOOK_PROXY_URL
 * bumped eslint to v9
 * removed GitHub type from the configuration as it is deduced using the plugin element string
 
@@ -178,7 +178,7 @@
 * remove unused import ([c96e2a7](https://github.com/ubiquity/ubiquibot-kernel/commit/c96e2a707743616df666d27974bacd99a4abe5ba))
 * removed GitHub type from the configuration as it is deduced using the plugin element string ([570b68e](https://github.com/ubiquity/ubiquibot-kernel/commit/570b68e18639e9c38a90872cfb8cbfbbdf661481))
 * rename pull_request_template ([8aa986e](https://github.com/ubiquity/ubiquibot-kernel/commit/8aa986e6885173d56f628ee6d887d3619a19407c))
-* renamed PRIVATE_KEY to APP_PRIVATE_KEY, WEBHOOK_SECRET optional and removed WEBHOOK_PROXY_URL ([f71043e](https://github.com/ubiquity/ubiquibot-kernel/commit/f71043e7f1fe0277591e0682e2ff3340e206e0b9))
+* renamed PRIVATE_KEY to APP_PRIVATE_KEY, APP_WEBHOOK_SECRET optional and removed WEBHOOK_PROXY_URL ([f71043e](https://github.com/ubiquity/ubiquibot-kernel/commit/f71043e7f1fe0277591e0682e2ff3340e206e0b9))
 * resolve conflicts ([403232c](https://github.com/ubiquity/ubiquibot-kernel/commit/403232cdc4aee6260bf968875d90edf211a6c961))
 * return default conf on custom conf fail ([207f68e](https://github.com/ubiquity/ubiquibot-kernel/commit/207f68e5e8ff2c018173636035cdf8bc3316f0c6))
 * spell ([b40750f](https://github.com/ubiquity/ubiquibot-kernel/commit/b40750ffa37ec668eb1dd0c2ee7fd0525c66f73f))
