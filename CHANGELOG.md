@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0](https://github.com/ubiquity/ubiquity-os-kernel/compare/v1.0.0...v2.0.0) (2024-09-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* renamed kernel toml
+
+### Features
+
+* actions sdk ([c4160c6](https://github.com/ubiquity/ubiquity-os-kernel/commit/c4160c6d095a0354f59666c5f8e90cfceaab1a4c))
+* add app id and bot user id ([d292f5a](https://github.com/ubiquity/ubiquity-os-kernel/commit/d292f5abf93301aaee0d508a0166d891ac36fd18))
+* add tests ([2be91f6](https://github.com/ubiquity/ubiquity-os-kernel/commit/2be91f648bb2c98e73549e5a7ed7fd5c5025098d))
+* added branch deployment ([51f1276](https://github.com/ubiquity/ubiquity-os-kernel/commit/51f1276aac4a4c382876a83e597d4610bcbbb65b))
+* added ref on manifest.json retrieval for workers ([bd1f58f](https://github.com/ubiquity/ubiquity-os-kernel/commit/bd1f58fac4fc2e591411e3696baab22cb0b247e1))
+* added tests for ref manifest fetching ([49bef29](https://github.com/ubiquity/ubiquity-os-kernel/commit/49bef29e119de767a55edd4d6069417f4984e977))
+* test for skipBotEvents ([128e93e](https://github.com/ubiquity/ubiquity-os-kernel/commit/128e93efc9a28533834d009d582f62894a2a4927))
+
+
+### Bug Fixes
+
+* log if comment can't be created ([ba98cb6](https://github.com/ubiquity/ubiquity-os-kernel/commit/ba98cb691e168b5d563ac45611cd10cc08216f93))
+* manifest commands are properly checked for skipping ([b4e8fb6](https://github.com/ubiquity/ubiquity-os-kernel/commit/b4e8fb6642dd3a759583c1998b1a351b4f3f0e56))
+* regex to match action now accepts higher depth ([668062f](https://github.com/ubiquity/ubiquity-os-kernel/commit/668062fcee5d3aab60cc97ac7434f57b4efcbb35))
+* tests ([e32602a](https://github.com/ubiquity/ubiquity-os-kernel/commit/e32602a1f357d093a2a7471796fbe54ae49176e5))
+* trimming body to find commands ([fd17b58](https://github.com/ubiquity/ubiquity-os-kernel/commit/fd17b5814da8ca35812738a7a3bf06ab8bee18dd))
+
+
+### Miscellaneous Chores
+
+* renamed kernel toml ([1c42c47](https://github.com/ubiquity/ubiquity-os-kernel/commit/1c42c47fd1f8916d71b90cd5cbff846e029e16ef))
+
 ## 1.0.0 (2024-08-14)
 
 
