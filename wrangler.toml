@@ -15,6 +15,10 @@ compatibility_flags = [ "nodejs_compat" ]
 		binding = "PLUGIN_CHAIN_STATE"
 		id = "TO_BE_DEFINED"
 
+# Enables Cloudflare Worker Logs
+[observability]
+enabled = true
+
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
 # Docs: https://developers.cloudflare.com/workers/platform/environment-variables
