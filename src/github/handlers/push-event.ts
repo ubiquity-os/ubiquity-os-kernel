@@ -226,35 +226,35 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
 
   const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
 
-  if (didConfigurationFileChange) {
-    console.log("Configuration file changed, will run configuration checks.");
+  if (!didConfigurationFileChange || !repository.owner) {
+    return;
+  }
 
-    if (repository.owner) {
-      const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
-      const errors: (ValueError | YAML.YAMLError)[] = [];
-      if (!configurationErrors && config) {
-        errors.push(...(await checkPluginConfigurations(context, config, rawData)));
-      } else if (configurationErrors) {
-        errors.push(...configurationErrors);
-      }
-      try {
-        if (errors.length) {
-          const body = [];
-          body.push(...constructErrorBody(errors, rawData, repository, after));
-          await createCommitComment(
-            context,
-            {
-              owner: repository.owner.login,
-              repo: repository.name,
-              commitSha: after,
-              userLogin: payload.sender?.login,
-            },
-            body
-          );
-        }
-      } catch (e) {
-        console.error("handlePushEventError", e);
-      }
+  console.log("Configuration file changed, will run configuration checks.");
+
+  const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
+  const errors: (ValueError | YAML.YAMLError)[] = [];
+  if (!configurationErrors && config) {
+    errors.push(...(await checkPluginConfigurations(context, config, rawData)));
+  } else if (configurationErrors) {
+    errors.push(...configurationErrors);
+  }
+  try {
+    if (errors.length) {
+      const body = [];
+      body.push(...constructErrorBody(errors, rawData, repository, after));
+      await createCommitComment(
+        context,
+        {
+          owner: repository.owner.login,
+          repo: repository.name,
+          commitSha: after,
+          userLogin: payload.sender?.login,
+        },
+        body
+      );
     }
+  } catch (e) {
+    console.error("handlePushEventError", e);
   }
 }
