@@ -58,7 +58,7 @@ describe("Worker tests", () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
     const res = await worker.fetch(req, {
-      WEBHOOK_SECRET: "",
+      APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
@@ -76,7 +76,7 @@ describe("Worker tests", () => {
       },
     });
     const res = await worker.fetch(req, {
-      WEBHOOK_SECRET: "webhook-secret",
+      APP_WEBHOOK_SECRET: "webhook-secret",
       APP_ID: "app-id",
       APP_PRIVATE_KEY: "private-key",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
