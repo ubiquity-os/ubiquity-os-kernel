@@ -16,7 +16,7 @@ The kernel is designed to:
 
   **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
 
-- **`WEBHOOK_SECRET`**
+- **`APP_WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
 
 - **`APP_ID`**
