@@ -31,6 +31,6 @@ export const pluginValidationResponseSchema = Type.Object(
   { default: {} }
 );
 
-export const stateValidationErrorSchemaValidator = new StandardValidator(pluginValidationResponseSchema);
+export const pluginValidationResponseSchemaValidator = new StandardValidator(pluginValidationResponseSchema);
 
 export type StateValidation = StaticDecode<typeof stateValidationSchema>;
