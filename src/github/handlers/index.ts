@@ -75,7 +75,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     // invoke the first plugin in the chain
     const { plugin, with: settings } = pluginChain.uses[0];
     const isGithubPluginObject = isGithubPlugin(plugin);
-    console.log(`Calling handler for event ${event.name}`);
+    console.log(`Calling handler ${JSON.stringify(plugin)} for event ${event.name}`);
 
     const stateId = crypto.randomUUID();
 
