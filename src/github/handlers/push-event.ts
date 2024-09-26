@@ -118,7 +118,7 @@ async function createCommitComment(
 ) {
   const { octokit } = context;
 
-  const commit = (
+  const comment = (
     await octokit.rest.repos.listCommentsForCommit({
       owner: owner,
       repo: repo,
@@ -127,13 +127,13 @@ async function createCommitComment(
   ).data
     .filter((o) => o.user?.type === "Bot")
     .pop();
-  if (commit) {
+  if (comment) {
     await octokit.rest.repos.updateCommitComment({
       owner: owner,
       repo: repo,
       commit_sha: commitSha,
-      comment_id: commit.id,
-      body: `${commit.body}\n${body.join("")}`,
+      comment_id: comment.id,
+      body: `${comment.body}\n${body.join("")}`,
     });
   } else {
     body.unshift(`@${userLogin} Configuration is invalid.\n`);
