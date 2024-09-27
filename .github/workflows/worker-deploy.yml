@@ -11,6 +11,8 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
+    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -46,15 +48,14 @@ jobs:
       - uses: cloudflare/wrangler-action@v3
         id: wrangler_deploy
         with:
-          wranglerVersion: "3.63.1"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           secrets: |
             APP_ID
             APP_PRIVATE_KEY
-            WEBHOOK_SECRET
+            APP_WEBHOOK_SECRET
         env:
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
