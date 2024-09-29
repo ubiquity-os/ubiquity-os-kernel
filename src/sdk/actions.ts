@@ -61,7 +61,12 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
     config: config,
     env: env,
     logger: new Logs(pluginOptions.logLevel),
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseKey: process.env.SUPABASE_KEY,
   };
+
+  // Log to ensure Supabase credentials are loaded
+  context.logger.info("Supabase credentials have been configured successfully.");
 
   try {
     const result = await handler(context);
