@@ -3,8 +3,7 @@ import { ValueErrorType } from "@sinclair/typebox/value";
 import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
-import { PluginConfiguration } from "../types/plugin-configuration";
-import { stateValidationSchema } from "../types/state-validation-payload";
+import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
@@ -97,7 +96,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
           message: `Failed to fetch the manifest configuration.`,
           value: plugin,
           type: 0,
-          schema: stateValidationSchema,
+          schema: configSchema,
         });
       } else {
         const validator = new Validator(manifest.configuration, "7", false);
@@ -112,7 +111,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
               message: error.error,
               value,
               type: 0,
-              schema: stateValidationSchema,
+              schema: configSchema,
             });
           }
         }
