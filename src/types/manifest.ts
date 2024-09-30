@@ -14,6 +14,7 @@ export const manifestSchema = T.Object({
   description: T.Optional(T.String({ default: "" })),
   commands: T.Optional(T.Record(T.String(), commandSchema, { default: {} })),
   "ubiquity:listeners": T.Optional(T.Array(runEvent, { default: [] })),
+  configuration: T.Optional(T.Record(T.String(), T.Any(), { default: {} })),
 });
 
 export const manifestValidator = new StandardValidator(manifestSchema);
