@@ -38,7 +38,7 @@ function constructErrorBody(
         message.push(`value: ${error.value}\n`);
         message.push(`message: ${error.message}`);
       }
-      body.push(`\n> \`\`\`\n`);
+      body.push(`\n> \`\`\`yml\n`);
       body.push(`> ${message.join("").replaceAll("\n", "\n> ")}`);
       body.push(`\n> \`\`\`\n\n`);
     }
