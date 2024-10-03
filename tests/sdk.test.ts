@@ -231,7 +231,7 @@ describe("SDK actions tests", () => {
     expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommented.eventName });
     expect(setFailed).not.toHaveBeenCalled();
     expect(createDispatchEvent).toHaveBeenCalledWith({
-      event_type: "return_data_to_ubiquibot_kernel",
+      event_type: "return-data-to-ubiquity-os-kernel",
       owner: "ubiquity",
       repo: "ubiquibot-kernel",
       client_payload: {

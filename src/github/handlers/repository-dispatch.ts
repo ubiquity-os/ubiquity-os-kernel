@@ -7,7 +7,7 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
   console.log("Repository dispatch event received", context.payload.client_payload);
 
-  if (context.payload.action !== "return_data_to_ubiquibot_kernel") {
+  if (context.payload.action !== "return-data-to-ubiquity-os-kernel") {
     console.log("Skipping non-ubiquibot event");
     return;
   }
