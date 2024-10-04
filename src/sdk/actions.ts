@@ -110,7 +110,7 @@ async function returnDataToKernel(repoToken: string, stateId: string, output: ob
   await octokit.rest.repos.createDispatchEvent({
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,
-    event_type: "return_data_to_ubiquibot_kernel",
+    event_type: "return-data-to-ubiquity-os-kernel",
     client_payload: {
       state_id: stateId,
       output: output ? JSON.stringify(output) : null,

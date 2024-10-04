@@ -115,7 +115,7 @@ const input: PluginInput = {
 
 Data is returned using the `repository_dispatch` event on the plugin's repository, and the output is structured within the `client_payload`.
 
-The `event_type` must be set to `return_data_to_ubiquibot_kernel`.
+The `event_type` must be set to `return-data-to-ubiquity-os-kernel`.
 
 ```typescript
 interface PluginOutput {

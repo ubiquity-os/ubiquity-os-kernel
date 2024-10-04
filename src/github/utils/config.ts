@@ -1,5 +1,5 @@
-import { Value } from "@sinclair/typebox/value";
-import YAML from "yaml";
+import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
+import YAML, { YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
@@ -8,14 +8,14 @@ import { getManifest } from "./plugins";
 export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
 export const CONFIG_ORG_REPO = "ubiquibot-config";
 
-async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
-  const targetRepoConfiguration: PluginConfiguration = parseYaml(
-    await download({
-      context,
-      repository,
-      owner,
-    })
-  );
+export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
+  const rawData = await download({
+    context,
+    repository,
+    owner,
+  });
+  const { yaml, errors } = parseYaml(rawData);
+  const targetRepoConfiguration: PluginConfiguration | null = yaml;
   if (targetRepoConfiguration) {
     try {
       const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
@@ -25,13 +25,13 @@ async function getConfigurationFromRepo(context: GitHubContext, repository: stri
           console.error(error);
         }
       }
-      return Value.Decode(configSchema, configSchemaWithDefaults);
+      return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors, rawData };
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
-      return null;
+      return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
-  return null;
+  return { config: null, errors, rawData };
 }
 
 /**
@@ -65,8 +65,8 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   ]);
 
   configurations.forEach((configuration) => {
-    if (configuration) {
-      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration);
+    if (configuration.config) {
+      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration.config);
     }
   });
 
@@ -157,10 +157,11 @@ export function parseYaml(data: null | string) {
   try {
     if (data) {
       const parsedData = YAML.parse(data);
-      return parsedData ?? null;
+      return { yaml: parsedData ?? null, errors: null };
     }
   } catch (error) {
     console.error("Error parsing YAML", error);
+    return { errors: [error] as YAMLError[], yaml: null };
   }
-  return null;
+  return { yaml: null, errors: null };
 }
