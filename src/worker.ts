@@ -14,6 +14,7 @@ export default {
       const signatureSha256 = getSignature(request);
       const id = getId(request);
       const eventHandler = new GitHubEventHandler({
+        environment: env.ENVIRONMENT,
         webhookSecret: env.APP_WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.APP_PRIVATE_KEY,

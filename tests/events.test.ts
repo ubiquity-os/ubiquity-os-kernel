@@ -27,6 +27,10 @@ afterAll(() => {
   server.close();
 });
 
+const eventHandler = {
+  environment: "production",
+} as GitHubEventHandler;
+
 describe("Event related tests", () => {
   beforeEach(() => {
     server.use(
@@ -99,7 +103,7 @@ describe("Event related tests", () => {
           },
         },
       },
-      eventHandler: {} as GitHubEventHandler,
+      eventHandler: eventHandler,
       payload: {
         repository: {
           owner: { login: "ubiquity" },
