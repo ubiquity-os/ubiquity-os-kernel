@@ -22,6 +22,10 @@ jest.mock("@octokit/core", () => ({
 
 const issueOpened = "issues.opened";
 
+const eventHandler = {
+  environment: "production",
+} as GitHubEventHandler;
+
 config({ path: ".dev.vars" });
 
 beforeAll(() => {
@@ -58,6 +62,7 @@ describe("Worker tests", () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
     const res = await worker.fetch(req, {
+      ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
@@ -76,6 +81,7 @@ describe("Worker tests", () => {
       },
     });
     const res = await worker.fetch(req, {
+      ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "webhook-secret",
       APP_ID: "app-id",
       APP_PRIVATE_KEY: "private-key",
@@ -95,7 +101,7 @@ describe("Worker tests", () => {
           repository: "",
         },
         octokit: {},
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -119,7 +125,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -151,7 +157,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       const pluginChain = cfg.plugins;
@@ -233,7 +239,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg.plugins[0]).toEqual({
         uses: [

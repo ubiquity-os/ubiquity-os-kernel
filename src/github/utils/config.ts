@@ -6,6 +6,7 @@ import { configSchema, configSchemaValidator, PluginConfiguration } from "../typ
 import { getManifest } from "./plugins";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquibot-config.yml";
+export const DEV_CONFIG_FULL_PATH = ".github/.ubiquibot-config.dev.yml";
 export const CONFIG_ORG_REPO = "ubiquibot-config";
 
 export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
@@ -143,7 +144,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
-      path: CONFIG_FULL_PATH,
+      path: context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH,
       mediaType: { format: "raw" },
     });
     return data as unknown as string; // this will be a string if media format is raw
