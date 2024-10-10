@@ -3,7 +3,7 @@ import * as github from "@actions/github";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { Type as T, TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-dao/ubiquity-os-logger";
+import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-os/ubiquity-os-logger";
 import { config } from "dotenv";
 import { Context } from "./context";
 import { customOctokit } from "./octokit";

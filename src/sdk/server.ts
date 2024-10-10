@@ -1,7 +1,7 @@
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-dao/ubiquity-os-logger";
+import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-os/ubiquity-os-logger";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { Manifest } from "../types/manifest";

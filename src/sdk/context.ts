@@ -1,5 +1,5 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { Logs } from "@ubiquity-dao/ubiquity-os-logger";
+import { Logs } from "@ubiquity-os/ubiquity-os-logger";
 import { customOctokit } from "./octokit";
 
 export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName> {
