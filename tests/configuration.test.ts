@@ -106,7 +106,7 @@ describe("Configuration tests", () => {
     });
   });
   it("Should retrieve the configuration manifest from the proper branch if specified", async () => {
-    let repo = "ubiquibot-kernel";
+    let repo = "ubiquity-os-kernel";
     let ref: string | undefined = "fork/pull/1";
     const owner = "ubiquity";
     const workflowId = "compute.yml";
