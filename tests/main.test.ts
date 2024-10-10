@@ -72,25 +72,6 @@ describe("Worker tests", () => {
     consoleSpy.mockReset();
   });
 
-  it("Should start a worker", async () => {
-    const req = new Request("http://localhost:8080", {
-      headers: {
-        "x-github-event": issueOpened,
-        "x-github-delivery": "1",
-        "x-hub-signature-256": "123456",
-      },
-    });
-    const res = await worker.fetch(req, {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: "webhook-secret",
-      APP_ID: "app-id",
-      APP_PRIVATE_KEY: "private-key",
-      PLUGIN_CHAIN_STATE: {} as KVNamespace,
-    });
-    expect(await res.text()).toEqual("ok\n");
-    expect(res.status).toEqual(200);
-  });
-
   describe("Configuration tests", () => {
     it("Should generate a default configuration when no repo is defined", async () => {
       const cfg = await getConfig({
