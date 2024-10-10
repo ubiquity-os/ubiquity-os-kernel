@@ -77,7 +77,7 @@ describe("Event related tests", () => {
                       - name: "Some Action plugin"
                         uses:
                           - id: plugin-B
-                            plugin: ubiquibot/plugin-b
+                            plugin: ubiquity-os/plugin-b
                     `,
                 };
               } else if (params?.path === "manifest.json") {
@@ -107,7 +107,7 @@ describe("Event related tests", () => {
       payload: {
         repository: {
           owner: { login: "ubiquity" },
-          name: "ubiquibot-kernel",
+          name: "ubiquity-os-kernel",
         },
         issue: { number: 1 },
         comment: {
@@ -124,7 +124,7 @@ describe("Event related tests", () => {
             " all available commands. | `/help` |\n| `/action` | action | `/action` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |",
           issue_number: 1,
           owner: "ubiquity",
-          repo: "ubiquibot-kernel",
+          repo: "ubiquity-os-kernel",
         },
       ],
     ]);

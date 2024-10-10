@@ -140,7 +140,7 @@ describe("SDK worker tests", () => {
     expect(res.status).toEqual(500);
     expect(createComment).toHaveBeenCalledWith({
       issue_number: 5,
-      owner: "ubiquibot",
+      owner: "ubiquity-os",
       repo: "bot",
       body: `\`\`\`diff
 ! test error
@@ -197,7 +197,7 @@ describe("SDK actions tests", () => {
         },
         repo: {
           owner: "ubiquity",
-          repo: "ubiquibot-kernel",
+          repo: "ubiquity-os-kernel",
         },
       },
     }));
@@ -233,7 +233,7 @@ describe("SDK actions tests", () => {
     expect(createDispatchEvent).toHaveBeenCalledWith({
       event_type: "return-data-to-ubiquity-os-kernel",
       owner: "ubiquity",
-      repo: "ubiquibot-kernel",
+      repo: "ubiquity-os-kernel",
       client_payload: {
         state_id: "stateId",
         output: JSON.stringify({ event: issueCommented.eventName }),

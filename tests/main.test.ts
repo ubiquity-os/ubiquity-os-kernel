@@ -1,13 +1,13 @@
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
+import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
+import worker from "../src/worker"; // has to be imported after the mocks
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
-import worker from "../src/worker"; // has to be imported after the mocks
-import { http, HttpResponse } from "msw";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -113,7 +113,7 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "ubiquibot-kernel",
+            name: "ubiquity-os-kernel",
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
@@ -137,7 +137,7 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "ubiquibot-kernel",
+            name: "ubiquity-os-kernel",
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
@@ -184,7 +184,7 @@ describe("Worker tests", () => {
             }
           }
           `;
-        } else if (args.repo !== "ubiquibot-config") {
+        } else if (args.repo !== ".ubiquity-os") {
           data = `
           plugins:
             - uses:

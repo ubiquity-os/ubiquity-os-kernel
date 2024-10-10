@@ -8,7 +8,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   console.log("Repository dispatch event received", context.payload.client_payload);
 
   if (context.payload.action !== "return-data-to-ubiquity-os-kernel") {
-    console.log("Skipping non-ubiquibot event");
+    console.log("Skipping non UbiquityOS event");
     return;
   }
 
