@@ -28,7 +28,7 @@ jobs:
       - uses: oven-sh/setup-bun@v1
 
       - run: |
-          bun install -p --frozen-lockfile
+          bun install --frozen-lockfile
           bun sdk:build
         if: ${{ steps.release.outputs.release_created }}
       - run: bun publish --access public
