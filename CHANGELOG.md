@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.4...v2.1.5) (2024-10-11)
+
+
+### Bug Fixes
+
+* update token variable and reorder dependencies ([f3c5df8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f3c5df8b57e135c0e367c40cec19f8fea102bc28))
+
 ## [2.1.4](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.3...v2.1.4) (2024-10-11)
 
 
