@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.2...v2.1.3) (2024-10-11)
+
+
+### Bug Fixes
+
+* add npm token authentication ([d551da3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d551da3f55f4f1e09b731a47428f70ee42417cb0))
+
 ## [2.1.2](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.1...v2.1.2) (2024-10-11)
 
 
