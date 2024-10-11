@@ -1,6 +1,6 @@
 {
   "name": "@ubiquity-os/ubiquity-os-kernel",
-  "version": "2.1.5",
+  "version": "2.2.0",
   "private": false,
   "description": "The kernel for UbiquityOS.",
   "module": "dist/esm/index.js",
