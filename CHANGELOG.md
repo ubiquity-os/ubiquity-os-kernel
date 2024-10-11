@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.0...v2.1.1) (2024-10-11)
+
+
+### Bug Fixes
+
+* update release-please.yml ([4fb79a0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4fb79a0c736d5e23701084bd5d4fcd66b7e41f19))
+
 ## [2.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.0.0...v2.1.0) (2024-10-11)
 
 
