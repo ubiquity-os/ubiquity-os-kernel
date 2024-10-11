@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.1.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.2...v2.1.3) (2024-10-11)
+
+
+### Bug Fixes
+
+* add npm token authentication ([d551da3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d551da3f55f4f1e09b731a47428f70ee42417cb0))
+
+## [2.1.2](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.1...v2.1.2) (2024-10-11)
+
+
+### Bug Fixes
+
+* update eslint ignores ([758145b](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/758145bf998e66560ae105e0353b8a5ede05f19f))
+* update Husky setup for production and CI ([9a76d37](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9a76d37ec6839f2296cece682192b9cb653b0553))
+* update husky to version 9.1.6 ([ca08e9f](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/ca08e9f8485a9ae8129e96fdefe052c1a9109ac0))
+
+## [2.1.1](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.0...v2.1.1) (2024-10-11)
+
+
+### Bug Fixes
+
+* update release-please.yml ([4fb79a0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4fb79a0c736d5e23701084bd5d4fcd66b7e41f19))
+
 ## [2.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.0.0...v2.1.0) (2024-10-11)
 
 
