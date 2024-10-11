@@ -2,7 +2,7 @@
   "name": "@ubiquity-dao/ubiquity-os-kernel",
   "version": "0.0.1",
   "private": false,
-  "description": "The kernel for UbiquiBot.",
+  "description": "The kernel for UbiquityOS.",
   "module": "dist/esm/index.js",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
