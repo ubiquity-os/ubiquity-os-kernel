@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.5...v2.2.0) (2024-10-11)
+
+
+### Features
+
+* add environment variable to configuration ([c3dc29d](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c3dc29de2c3cf00c3d5e369f260974181f8ee46c))
+
 ## [2.1.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.4...v2.1.5) (2024-10-11)
 
 
