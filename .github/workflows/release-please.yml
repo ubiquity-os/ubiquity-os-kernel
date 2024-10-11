@@ -27,9 +27,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@v1
 
-      - run: |
+      - name: Build
+        run: |
           bun install -p --frozen-lockfile
           bun sdk:build
+        env:
+          HUSKY: 0
         if: ${{ steps.release.outputs.release_created }}
       - run: bun publish --access public
         env:
