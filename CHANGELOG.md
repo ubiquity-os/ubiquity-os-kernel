@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.0.0...v2.1.0) (2024-10-11)
+
+
+### Features
+
+* development config ([94e2685](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/94e26850def80bfd770149bc364967745c58b7a0))
+* enabling worker observability ([4853aa8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4853aa80b824274c3fdfae1f0380ab121ba6e847))
+
+
+### Bug Fixes
+
+* install @ubiquity-os/ubiquity-os-logger ([4d6eae9](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4d6eae95d0826a20c8f52ac9c991bc85eeb4c379))
+* remove broken test ([472e929](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/472e929324319ee7d7282cb8fc960d63445ec737))
+* update release workflow for node support ([5e1239e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/5e1239e7622eaa9af8fbfe3a9ae925cd8cce0d70))
+
 ## [2.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v1.0.0...v2.0.0) (2024-09-25)
 
 
