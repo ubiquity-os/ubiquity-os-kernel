@@ -1,14 +1,14 @@
-import { GitHubContext } from "../github-context";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { Value } from "@sinclair/typebox/value";
-import { PluginInput, PluginChainState, expressionRegex, pluginOutputSchema } from "../types/plugin";
+import { GitHubContext } from "../github-context";
+import { expressionRegex, PluginChainState, PluginInput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
+import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
   console.log("Repository dispatch event received", context.payload.client_payload);
 
-  if (context.payload.action !== "return_data_to_ubiquibot_kernel") {
-    console.log("Skipping non-ubiquibot event");
+  if (context.payload.action !== "return-data-to-ubiquity-os-kernel") {
+    console.log("Skipping non UbiquityOS event");
     return;
   }
 

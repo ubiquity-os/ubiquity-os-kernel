@@ -1,4 +1,4 @@
-# @ubiquity/ubiquibot-kernel
+# @ubiquity-os/ubiquity-os-kernel
 
 The kernel is designed to:
 
@@ -28,8 +28,8 @@ The kernel is designed to:
 ### Quick Start
 
 ```bash
-git clone https://github.com/ubiquity/ubiquibot-kernel
-cd ubiquibot-kernel
+git clone https://github.com/ubiquity-os/ubiquity-os-kernel
+cd ubiquity-os-kernel
 bun install
 bun dev
 ```
@@ -115,7 +115,7 @@ const input: PluginInput = {
 
 Data is returned using the `repository_dispatch` event on the plugin's repository, and the output is structured within the `client_payload`.
 
-The `event_type` must be set to `return_data_to_ubiquibot_kernel`.
+The `event_type` must be set to `return-data-to-ubiquity-os-kernel`.
 
 ```typescript
 interface PluginOutput {
@@ -137,14 +137,14 @@ const output: PluginOutput = {
 
 The kernel supports 2 types of plugins:
 
-1. GitHub actions ([wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/How-it-works))
+1. GitHub actions ([wiki](https://github.com/ubiquity-os/ubiquity-os-kernel/wiki/How-it-works))
 2. Cloudflare Workers (which are simple backend servers with a single API route)
 
 How to run a "hello-world" plugin the Cloudflare way:
 
 1. Run `bun dev` to spin up the kernel
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
-3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquibot-config.yml`):
+3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
 
 ```yml
 plugins:
@@ -164,12 +164,12 @@ How it works:
 
 1. When you post the `/hello` command the kernel receives the `issue_comment.created` event
 2. The kernel matches the `/hello` command to the plugin that should be executed (i.e. the API method that should be called)
-3. The kernel passes GitHub event payload, bot's access token and plugin settings (from `.ubiquibot-config.yml`) to the plugin endpoint
+3. The kernel passes GitHub event payload, bot's access token and plugin settings (from `.ubiquity-os.config.yml`) to the plugin endpoint
 4. The plugin performs all the required actions and returns the result
 
 ## Hello world plugin tutorial
 
-A screencast tutorial on how to set up and run a hello world plugin is available at [wiki](https://github.com/ubiquity/ubiquibot-kernel/wiki/Hello-world-plugin-onboarding-tutorial).
+A screencast tutorial on how to set up and run a hello world plugin is available at [wiki](https://github.com/ubiquity-os/ubiquity-os-kernel/wiki/Hello-world-plugin-onboarding-tutorial).
 
 ## Testing
 

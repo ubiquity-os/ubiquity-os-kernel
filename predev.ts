@@ -24,7 +24,5 @@ exec(command, (error, stdout) => {
       }
       console.log(`Process ${pid} killed successfully.`);
     });
-  } else {
-    console.log("No process found listening on port 8787.");
   }
 });

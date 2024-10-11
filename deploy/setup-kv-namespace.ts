@@ -76,7 +76,7 @@ async function main() {
   // Check if the namespace exists or create a new one
   let namespaceId: string;
   try {
-    const res = execSync(`wrangler kv:namespace create ${NAMESPACE_TITLE}`).toString();
+    const res = execSync(`wrangler kv namespace create ${NAMESPACE_TITLE}`).toString();
     console.log(res);
     const newId = res.match(/id = \s*"([^"]+)"/)?.[1];
     if (!newId) {
@@ -86,7 +86,7 @@ async function main() {
     console.log(`Namespace created with ID: ${namespaceId}`);
   } catch (error) {
     console.error(error);
-    const listOutput = JSON.parse(execSync(`wrangler kv:namespace list`).toString()) as Namespace[];
+    const listOutput = JSON.parse(execSync(`wrangler kv namespace list`).toString()) as Namespace[];
     const existingNamespace = listOutput.find((o) => o.title === NAMESPACE_TITLE_WITH_PREFIX);
     if (!existingNamespace) {
       throw new Error(`Error creating namespace: ${error}`);

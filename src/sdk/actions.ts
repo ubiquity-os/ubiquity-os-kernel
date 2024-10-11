@@ -1,12 +1,12 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { Context } from "./context";
-import { customOctokit } from "./octokit";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { Logs, LogLevel, LOG_LEVEL, LogReturn } from "@ubiquity-dao/ubiquibot-logger";
-import { config } from "dotenv";
 import { Type as T, TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-os/ubiquity-os-logger";
+import { config } from "dotenv";
+import { Context } from "./context";
+import { customOctokit } from "./octokit";
 import { sanitizeMetadata } from "./util";
 
 config();
@@ -110,7 +110,7 @@ async function returnDataToKernel(repoToken: string, stateId: string, output: ob
   await octokit.rest.repos.createDispatchEvent({
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,
-    event_type: "return_data_to_ubiquibot_kernel",
+    event_type: "return-data-to-ubiquity-os-kernel",
     client_payload: {
       state_id: stateId,
       output: output ? JSON.stringify(output) : null,

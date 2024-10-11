@@ -75,9 +75,14 @@ const handlerSchema = T.Array(
   { default: [] }
 );
 
-export const configSchema = T.Object({
-  plugins: handlerSchema,
-});
+export const configSchema = T.Object(
+  {
+    plugins: handlerSchema,
+  },
+  {
+    additionalProperties: false,
+  }
+);
 
 export const configSchemaValidator = new StandardValidator(configSchema);
 

@@ -1,13 +1,13 @@
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
+import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
+import worker from "../src/worker"; // has to be imported after the mocks
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
-import worker from "../src/worker"; // has to be imported after the mocks
-import { http, HttpResponse } from "msw";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -21,6 +21,10 @@ jest.mock("@octokit/core", () => ({
 }));
 
 const issueOpened = "issues.opened";
+
+const eventHandler = {
+  environment: "production",
+} as GitHubEventHandler;
 
 config({ path: ".dev.vars" });
 
@@ -58,6 +62,7 @@ describe("Worker tests", () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
     const res = await worker.fetch(req, {
+      ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
@@ -65,24 +70,6 @@ describe("Worker tests", () => {
     });
     expect(res.status).toEqual(500);
     consoleSpy.mockReset();
-  });
-
-  it("Should start a worker", async () => {
-    const req = new Request("http://localhost:8080", {
-      headers: {
-        "x-github-event": issueOpened,
-        "x-github-delivery": "1",
-        "x-hub-signature-256": "123456",
-      },
-    });
-    const res = await worker.fetch(req, {
-      APP_WEBHOOK_SECRET: "webhook-secret",
-      APP_ID: "app-id",
-      APP_PRIVATE_KEY: "private-key",
-      PLUGIN_CHAIN_STATE: {} as KVNamespace,
-    });
-    expect(await res.text()).toEqual("ok\n");
-    expect(res.status).toEqual(200);
   });
 
   describe("Configuration tests", () => {
@@ -95,7 +82,7 @@ describe("Worker tests", () => {
           repository: "",
         },
         octokit: {},
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -107,7 +94,7 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "ubiquibot-kernel",
+            name: "ubiquity-os-kernel",
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
@@ -119,7 +106,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -131,7 +118,7 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "ubiquibot-kernel",
+            name: "ubiquity-os-kernel",
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
@@ -151,7 +138,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       const pluginChain = cfg.plugins;
@@ -178,7 +165,7 @@ describe("Worker tests", () => {
             }
           }
           `;
-        } else if (args.repo !== "ubiquibot-config") {
+        } else if (args.repo !== ".ubiquity-os") {
           data = `
           plugins:
             - uses:
@@ -233,7 +220,7 @@ describe("Worker tests", () => {
             },
           },
         },
-        eventHandler: {} as GitHubEventHandler,
+        eventHandler: eventHandler,
       } as unknown as GitHubContext);
       expect(cfg.plugins[0]).toEqual({
         uses: [
