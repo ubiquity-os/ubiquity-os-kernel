@@ -10,6 +10,9 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  HUSKY: 0
+
 jobs:
   release-please:
     runs-on: ubuntu-latest

@@ -28,7 +28,7 @@
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
     "format:cspell": "cspell **/*",
-    "prepare": "husky install",
+		"prepare": "node .husky/install.mjs",
     "deploy-dev": "wrangler deploy --env dev",
     "deploy-production": "wrangler deploy --env production",
     "worker": "wrangler dev --env dev --port 8787",
