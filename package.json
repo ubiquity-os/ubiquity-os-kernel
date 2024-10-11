@@ -1,6 +1,6 @@
 {
   "name": "@ubiquity-dao/ubiquity-os-kernel",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "private": false,
   "description": "The kernel for UbiquityOS.",
   "module": "dist/esm/index.js",
@@ -28,7 +28,7 @@
     "format:lint": "eslint --fix .",
     "format:prettier": "prettier --write .",
     "format:cspell": "cspell **/*",
-		"prepare": "node .husky/install.mjs",
+    "prepare": "node .husky/install.mjs",
     "deploy-dev": "wrangler deploy --env dev",
     "deploy-production": "wrangler deploy --env production",
     "worker": "wrangler dev --env dev --port 8787",
