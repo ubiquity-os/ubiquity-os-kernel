@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.4](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.3...v2.1.4) (2024-10-11)
+
+
+### Bug Fixes
+
+* update package name in package.json ([a8ac6fb](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a8ac6fbdab86622dd40ed5382f79babd15f13565))
+
 ## [2.1.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.2...v2.1.3) (2024-10-11)
 
 
