@@ -11,14 +11,15 @@ function constructErrorBody(
   errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
-  after: string
+  after: string,
+  configPath: string
 ) {
   const body = [];
   if (errors) {
     for (const error of errors) {
       body.push("> [!CAUTION]\n");
       if (error instanceof YAMLError) {
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${error.linePos?.[0].line || 0}`);
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.linePos?.[0].line || 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
@@ -28,7 +29,7 @@ function constructErrorBody(
         }
         const node = doc.getIn(path, true) as Node;
         const linePosStart = lineCounter.linePos(node?.range?.[0] || 0);
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePosStart.line}`);
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${linePosStart.line}`);
       }
       const message = [];
       if (error instanceof YAMLError) {
@@ -125,7 +126,17 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
   const configPaths = [CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH];
-  const didConfigurationFileChange = commits.some((commit) => configPaths.some((path) => commit.modified?.includes(path) || commit.added?.includes(path)));
+  const didConfigurationFileChange = commits.some((commit) =>
+    configPaths.some((path) => {
+      if (commit.modified?.includes(path) || commit.added?.includes(path)) {
+        // Keeps only the config that matched the modified elements
+        configPaths.length = 0;
+        configPaths.push(path);
+        return true;
+      }
+      return false;
+    })
+  );
 
   if (!didConfigurationFileChange || !repository.owner) {
     return;
@@ -143,7 +154,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after));
+      body.push(...constructErrorBody(errors, rawData, repository, after, configPaths[0]));
       await createCommitComment(
         context,
         {
