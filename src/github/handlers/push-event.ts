@@ -94,7 +94,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
         errors.push({
           path: `plugins/${i}/uses/${j}`,
           message: `Failed to fetch the manifest configuration.`,
-          value: plugin,
+          value: JSON.stringify(plugin),
           type: 0,
           schema: configSchema,
         });
@@ -109,7 +109,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
             errors.push({
               path,
               message: error.error,
-              value,
+              value: JSON.stringify(value),
               type: 0,
               schema: configSchema,
             });
