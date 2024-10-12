@@ -4,7 +4,7 @@ import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
-import { CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 function constructErrorBody(
@@ -124,8 +124,8 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-
-  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
+  const configPaths = [CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH];
+  const didConfigurationFileChange = commits.some((commit) => configPaths.some((path) => commit.modified?.includes(path) || commit.added?.includes(path)));
 
   if (!didConfigurationFileChange || !repository.owner) {
     return;
