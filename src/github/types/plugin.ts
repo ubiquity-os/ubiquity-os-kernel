@@ -45,14 +45,19 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     this.ref = ref;
   }
 
-  public getWorkflowInputs() {
-    return {
+  public async getWorkflowInputs() {
+    const inputs = {
       stateId: this.stateId,
       eventName: this.eventName,
       eventPayload: JSON.stringify(this.eventPayload),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
       ref: this.ref,
+    };
+    const signature = await this.eventHandler.signPayload(JSON.stringify(inputs));
+    return {
+      ...inputs,
+      signature,
     };
   }
 
