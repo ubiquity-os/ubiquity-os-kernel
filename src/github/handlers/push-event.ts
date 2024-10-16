@@ -4,21 +4,22 @@ import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
-import { CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 function constructErrorBody(
   errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
-  after: string
+  after: string,
+  configPath: string
 ) {
   const body = [];
   if (errors) {
     for (const error of errors) {
       body.push("> [!CAUTION]\n");
       if (error instanceof YAMLError) {
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${error.linePos?.[0].line || 0}`);
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.linePos?.[0].line || 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
@@ -28,7 +29,7 @@ function constructErrorBody(
         }
         const node = doc.getIn(path, true) as Node;
         const linePosStart = lineCounter.linePos(node?.range?.[0] || 0);
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${CONFIG_FULL_PATH}#L${linePosStart.line}`);
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${linePosStart.line}`);
       }
       const message = [];
       if (error instanceof YAMLError) {
@@ -94,7 +95,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
         errors.push({
           path: `plugins/${i}/uses/${j}`,
           message: `Failed to fetch the manifest configuration.`,
-          value: plugin,
+          value: JSON.stringify(plugin),
           type: 0,
           schema: configSchema,
         });
@@ -109,7 +110,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
             errors.push({
               path,
               message: error.error,
-              value,
+              value: JSON.stringify(value),
               type: 0,
               schema: configSchema,
             });
@@ -124,8 +125,18 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-
-  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(CONFIG_FULL_PATH) || commit.added?.includes(CONFIG_FULL_PATH));
+  const configPaths = [CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH];
+  const didConfigurationFileChange = commits.some((commit) =>
+    configPaths.some((path) => {
+      if (commit.modified?.includes(path) || commit.added?.includes(path)) {
+        // Keeps only the config that matched the modified elements
+        configPaths.length = 0;
+        configPaths.push(path);
+        return true;
+      }
+      return false;
+    })
+  );
 
   if (!didConfigurationFileChange || !repository.owner) {
     return;
@@ -143,7 +154,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after));
+      body.push(...constructErrorBody(errors, rawData, repository, after, configPaths[0]));
       await createCommitComment(
         context,
         {

@@ -59,9 +59,9 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
 
     let env: TEnv;
     if (pluginOptions.envSchema) {
-      env = Value.Decode(pluginOptions.envSchema, process.env);
+      env = Value.Decode(pluginOptions.envSchema, ctx.env);
     } else {
-      env = process.env as TEnv;
+      env = ctx.env as TEnv;
     }
 
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
