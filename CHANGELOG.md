@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.2.0...v2.3.0) (2024-10-16)
+
+
+### Features
+
+* export additional config constants ([a2ca525](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a2ca5258e2a233b7bc54d49ee2b58ca25776dbbe))
+
+
+### Bug Fixes
+
+* enhance error log context and config path handling ([9a4bede](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9a4beded34fda1226372bb901b262e3a072c7ee1))
+* **push-event:** handle changes to both dev and prod config ([9435e12](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9435e1222d7c5726f67c2e7e77df2c15aef7cd27))
+* replace process.env with ctx.env in server.ts ([d376750](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d376750105fbebe087a5f013c426002a58d8af65))
+* serialize plugin and value in error messages ([7841107](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/78411073714163f0fddde09b3b3a16705705f955))
+
 ## [2.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.5...v2.2.0) (2024-10-11)
 
 
