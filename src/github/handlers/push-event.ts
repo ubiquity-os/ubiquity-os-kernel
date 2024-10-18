@@ -125,18 +125,8 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-  const configPaths = [CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH];
-  const didConfigurationFileChange = commits.some((commit) =>
-    configPaths.some((path) => {
-      if (commit.modified?.includes(path) || commit.added?.includes(path)) {
-        // Keeps only the config that matched the modified elements
-        configPaths.length = 0;
-        configPaths.push(path);
-        return true;
-      }
-      return false;
-    })
-  );
+  const configPath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
+  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(configPath) || commit.added?.includes(configPath));
 
   if (!didConfigurationFileChange || !repository.owner) {
     return;
@@ -154,7 +144,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after, configPaths[0]));
+      body.push(...constructErrorBody(errors, rawData, repository, after, configPath));
       await createCommitComment(
         context,
         {
