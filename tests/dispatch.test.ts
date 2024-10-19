@@ -160,5 +160,6 @@ describe("handleEvent", () => {
     expect(res).toBeTruthy();
     // 2 calls means the execution didn't break
     expect(dispatchWorker).toHaveBeenCalledTimes(2);
+    dispatchWorker.mockReset();
   });
 });
