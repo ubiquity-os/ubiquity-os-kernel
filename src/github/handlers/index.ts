@@ -106,7 +106,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
         repository: plugin.repo,
         workflowId: plugin.workflowId,
         ref: plugin.ref,
-        inputs: inputs.getWorkflowInputs(),
+        inputs: await inputs.getWorkflowInputs(),
       });
     }
   }
