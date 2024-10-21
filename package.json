@@ -1,6 +1,6 @@
 {
   "name": "@ubiquity-os/ubiquity-os-kernel",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": false,
   "description": "The kernel for UbiquityOS.",
   "module": "dist/index.mjs",
@@ -8,9 +8,9 @@
   "typings": "dist/index.d.ts",
   "exports": {
     ".": {
-			"types": "./dist/index.d.ts",
-			"require": "./dist/index.js",
-			"import": "./dist/index.mjs"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
     }
   },
   "files": [
