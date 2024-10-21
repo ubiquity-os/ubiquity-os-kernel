@@ -98,16 +98,21 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     state.inputs[0] = inputs;
     await eventHandler.pluginChainState.put(stateId, state);
 
-    if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, await inputs.getWorkerInputs());
-    } else {
-      await dispatchWorkflow(context, {
-        owner: plugin.owner,
-        repository: plugin.repo,
-        workflowId: plugin.workflowId,
-        ref: plugin.ref,
-        inputs: inputs.getWorkflowInputs(),
-      });
+    // We wrap the dispatch so a failing plugin doesn't break the whole execution
+    try {
+      if (!isGithubPluginObject) {
+        await dispatchWorker(plugin, await inputs.getWorkerInputs());
+      } else {
+        await dispatchWorkflow(context, {
+          owner: plugin.owner,
+          repository: plugin.repo,
+          workflowId: plugin.workflowId,
+          ref: plugin.ref,
+          inputs: await inputs.getWorkflowInputs(),
+        });
+      }
+    } catch (e) {
+      console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
     }
   }
 }

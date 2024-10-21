@@ -52,14 +52,14 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
-      config = Value.Decode(pluginOptions.settingsSchema, payload.settings);
+      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, payload.settings));
     } else {
       config = payload.settings as TConfig;
     }
 
     let env: TEnv;
     if (pluginOptions.envSchema) {
-      env = Value.Decode(pluginOptions.envSchema, ctx.env);
+      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, ctx.env));
     } else {
       env = ctx.env as TEnv;
     }

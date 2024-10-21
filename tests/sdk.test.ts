@@ -181,24 +181,34 @@ describe("SDK worker tests", () => {
 });
 
 describe("SDK actions tests", () => {
+  const repo = {
+    owner: "ubiquity",
+    repo: "ubiquity-os-kernel",
+  };
+
   it("Should accept correct request", async () => {
+    const inputs = {
+      stateId: "stateId",
+      eventName: issueCommented.eventName,
+      settings: "{}",
+      eventPayload: JSON.stringify(issueCommented.eventPayload),
+      authToken: "test",
+      ref: "",
+    };
+    const sign = crypto.createSign("SHA256");
+    sign.update(JSON.stringify(inputs)).end();
+    const signature = sign.sign(privateKey, "base64");
+
     jest.mock("@actions/github", () => ({
       context: {
         runId: "1",
         payload: {
           inputs: {
-            stateId: "stateId",
-            eventName: issueCommented.eventName,
-            settings: "{}",
-            eventPayload: JSON.stringify(issueCommented.eventPayload),
-            authToken: "test",
-            ref: "",
+            ...inputs,
+            signature,
           },
         },
-        repo: {
-          owner: "ubiquity",
-          repo: "ubiquity-os-kernel",
-        },
+        repo: repo,
       },
     }));
     const setOutput = jest.fn();
@@ -223,13 +233,18 @@ describe("SDK actions tests", () => {
     }));
     const { createActionsPlugin } = await import("../src/sdk/actions");
 
-    await createActionsPlugin(async (context: Context) => {
-      return {
-        event: context.eventName,
-      };
-    });
-    expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommented.eventName });
+    await createActionsPlugin(
+      async (context: Context) => {
+        return {
+          event: context.eventName,
+        };
+      },
+      {
+        kernelPublicKey: publicKey,
+      }
+    );
     expect(setFailed).not.toHaveBeenCalled();
+    expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommented.eventName });
     expect(createDispatchEvent).toHaveBeenCalledWith({
       event_type: "return-data-to-ubiquity-os-kernel",
       owner: "ubiquity",
@@ -239,5 +254,48 @@ describe("SDK actions tests", () => {
         output: JSON.stringify({ event: issueCommented.eventName }),
       },
     });
+  });
+  it("Should deny invalid signature", async () => {
+    const inputs = {
+      stateId: "stateId",
+      eventName: issueCommented.eventName,
+      settings: "{}",
+      eventPayload: JSON.stringify(issueCommented.eventPayload),
+      authToken: "test",
+      ref: "",
+    };
+
+    jest.mock("@actions/github", () => ({
+      context: {
+        runId: "1",
+        payload: {
+          inputs: {
+            ...inputs,
+            signature: "invalid",
+          },
+        },
+        repo: repo,
+      },
+    }));
+    const setOutput = jest.fn();
+    const setFailed = jest.fn();
+    jest.mock("@actions/core", () => ({
+      setOutput,
+      setFailed,
+    }));
+    const { createActionsPlugin } = await import("../src/sdk/actions");
+
+    await createActionsPlugin(
+      async (context: Context) => {
+        return {
+          event: context.eventName,
+        };
+      },
+      {
+        kernelPublicKey: publicKey,
+      }
+    );
+    expect(setFailed).toHaveBeenCalledWith("Error: Invalid signature");
+    expect(setOutput).not.toHaveBeenCalled();
   });
 });
