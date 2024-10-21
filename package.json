@@ -3,14 +3,14 @@
   "version": "2.1.5",
   "private": false,
   "description": "The kernel for UbiquityOS.",
-  "module": "dist/esm/index.js",
+  "module": "dist/index.mjs",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/index.js",
-      "import": "./dist/esm/index.js",
-      "types": "./dist/index.d.ts"
+			"types": "./dist/index.d.ts",
+			"require": "./dist/index.js",
+			"import": "./dist/index.mjs"
     }
   },
   "files": [

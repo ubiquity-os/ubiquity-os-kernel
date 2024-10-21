@@ -8,5 +8,5 @@ export default defineConfig({
   sourcemap: false,
   clean: true,
   dts: true,
-  legacyOutput: true,
+  legacyOutput: false,
 });
