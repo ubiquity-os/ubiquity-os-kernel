@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.3.0...v2.4.0) (2024-10-21)
+
+
+### Features
+
+* add signature to action plugins ([a682ce0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a682ce0d64438bc82a60eaba251a4bc0b8094c49))
+
+
+### Bug Fixes
+
+* add error handling to plugin dispatch ([a3acebf](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a3acebff41da8284adaa9669f4ca987969fe506d))
+* update module paths and tsup config for modern output ([c517513](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c5175131d77f8647ecc8550aaa16c0a51d3e8e65))
+* update module paths and tsup config for modern output ([3b1f303](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/3b1f3036a3fdc672f3da357171949ae0508ec157))
+
 ## [2.3.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.2.0...v2.3.0) (2024-10-16)
 
 
