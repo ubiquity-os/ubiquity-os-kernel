@@ -16,21 +16,21 @@ export interface KvStore<T> {
  *
  * @template T - The type of the values being stored.
  */
-export class CloudflareKv<T> implements KvStore<T> {
-  private _kv: KVNamespace;
-
-  constructor(kv: KVNamespace) {
-    this._kv = kv;
-  }
-
-  get(id: string): Promise<T | null> {
-    return this._kv.get(id, "json");
-  }
-
-  put(id: string, state: T): Promise<void> {
-    return this._kv.put(id, JSON.stringify(state));
-  }
-}
+// export class CloudflareKv<T> implements KvStore<T> {
+//   private _kv: KVNamespace;
+//
+//   constructor(kv: KVNamespace) {
+//     this._kv = kv;
+//   }
+//
+//   get(id: string): Promise<T | null> {
+//     return this._kv.get(id, "json");
+//   }
+//
+//   put(id: string, state: T): Promise<void> {
+//     return this._kv.put(id, JSON.stringify(state));
+//   }
+// }
 
 /**
  * A class that implements the KvStore interface, representing an empty key-value store.
