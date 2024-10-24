@@ -10,6 +10,7 @@ import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
 import { sanitizeMetadata } from "./util";
+import { Type as T } from "@sinclair/typebox";
 
 interface Options {
   kernelPublicKey?: string;
@@ -18,6 +19,16 @@ interface Options {
   settingsSchema?: TAnySchema;
   envSchema?: TAnySchema;
 }
+
+const inputSchema = T.Object({
+  stateId: T.String(),
+  eventName: T.String(),
+  eventPayload: T.Record(T.String(), T.Any()),
+  authToken: T.String(),
+  settings: T.Record(T.String(), T.Any()),
+  ref: T.String(),
+  signature: T.String(),
+});
 
 export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName>(
   handler: (context: Context<TConfig, TEnv, TSupportedEvents>) => Promise<Record<string, unknown> | undefined>,
@@ -43,18 +54,17 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
       throw new HTTPException(400, { message: "Content-Type must be application/json" });
     }
 
-    const payload = await ctx.req.json();
-    const signature = payload.signature;
-    delete payload.signature;
-    if (!(await verifySignature(pluginOptions.kernelPublicKey, payload, signature))) {
+    const inputs = Value.Decode(inputSchema, await ctx.req.json());
+    const signature = inputs.signature;
+    if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
       throw new HTTPException(400, { message: "Invalid signature" });
     }
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
-      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, payload.settings));
+      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
     } else {
-      config = payload.settings as TConfig;
+      config = inputs.settings as TConfig;
     }
 
     let env: TEnv;
@@ -65,9 +75,9 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
     }
 
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
-      eventName: payload.eventName,
-      payload: payload.eventPayload,
-      octokit: new customOctokit({ auth: payload.authToken }),
+      eventName: inputs.eventName as TSupportedEvents,
+      payload: inputs.eventPayload,
+      octokit: new customOctokit({ auth: inputs.authToken }),
       config: config,
       env: env,
       logger: new Logs(pluginOptions.logLevel),
@@ -75,7 +85,7 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
 
     try {
       const result = await handler(context);
-      return ctx.json({ stateId: payload.stateId, output: result });
+      return ctx.json({ stateId: inputs.stateId, output: result });
     } catch (error) {
       console.error(error);
 

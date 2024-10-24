@@ -6,6 +6,10 @@ import * as crypto from "crypto";
 import { createPlugin } from "../src/sdk/server";
 import { Hono } from "hono";
 import { Context } from "../src/sdk/context";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { CloudflareKv } from "../src/github/utils/cloudflare-kv";
+import { PluginChainState, PluginInput } from "../src/github/types/plugin";
+import { EmitterWebhookEventName } from "@octokit/webhooks";
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -19,13 +23,26 @@ const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
   },
 });
 
+const issueCommentedEvent = {
+  eventName: issueCommented.eventName as EmitterWebhookEventName,
+  eventPayload: issueCommented.eventPayload,
+};
+
+const eventHandler = new GitHubEventHandler({
+  environment: "production",
+  webhookSecret: "test",
+  appId: "1",
+  privateKey: privateKey,
+  pluginChainState: undefined as unknown as CloudflareKv<PluginChainState>,
+});
+
 let app: Hono;
 
 beforeAll(async () => {
   app = await createPlugin(
     async (context: Context<{ shouldFail: boolean }>) => {
       if (context.config.shouldFail) {
-        throw new Error("Failed");
+        throw context.logger.error("test error");
       }
       return {
         success: true,
@@ -37,11 +54,13 @@ beforeAll(async () => {
   );
   server.listen();
 });
+
 afterEach(() => {
   server.resetHandlers();
   jest.resetModules();
   jest.restoreAllMocks();
 });
+
 afterAll(() => server.close());
 
 describe("SDK worker tests", () => {
@@ -66,21 +85,13 @@ describe("SDK worker tests", () => {
     expect(res.status).toEqual(400);
   });
   it("Should deny POST request with invalid signature", async () => {
-    const data = {
-      ...issueCommented,
-      stateId: "stateId",
-      authToken: process.env.GITHUB_TOKEN,
-      settings: {
-        shouldFail: false,
-      },
-      ref: "",
-    };
-    const signature = "invalid";
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: false }, "test", "");
+
     const res = await app.request("/", {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ ...data, signature }),
+      body: JSON.stringify({ ...(await inputs.getWorkerInputs()), signature: "invalid_signature" }),
       method: "POST",
     });
     expect(res.status).toEqual(400);
@@ -116,25 +127,13 @@ describe("SDK worker tests", () => {
       { kernelPublicKey: publicKey }
     );
 
-    const data = {
-      ...issueCommented,
-      stateId: "stateId",
-      authToken: process.env.GITHUB_TOKEN,
-      settings: {
-        shouldFail: true,
-      },
-      ref: "",
-    };
-    const sign = crypto.createSign("SHA256");
-    sign.update(JSON.stringify(data));
-    sign.end();
-    const signature = sign.sign(privateKey, "base64");
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: true }, "test", "");
 
     const res = await app.request("/", {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ ...data, signature }),
+      body: JSON.stringify(await inputs.getWorkerInputs()),
       method: "POST",
     });
     expect(res.status).toEqual(500);
@@ -153,25 +152,13 @@ describe("SDK worker tests", () => {
     });
   });
   it("Should accept correct request", async () => {
-    const data = {
-      ...issueCommented,
-      stateId: "stateId",
-      authToken: "test",
-      settings: {
-        shouldFail: false,
-      },
-      ref: "",
-    };
-    const sign = crypto.createSign("SHA256");
-    sign.update(JSON.stringify(data));
-    sign.end();
-    const signature = sign.sign(privateKey, "base64");
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: false }, "test", "");
 
     const res = await app.request("/", {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ ...data, signature }),
+      body: JSON.stringify(await inputs.getWorkerInputs()),
       method: "POST",
     });
     expect(res.status).toEqual(200);
@@ -181,32 +168,20 @@ describe("SDK worker tests", () => {
 });
 
 describe("SDK actions tests", () => {
+  process.env.PLUGIN_GITHUB_TOKEN = "token";
   const repo = {
     owner: "ubiquity",
     repo: "ubiquity-os-kernel",
   };
 
   it("Should accept correct request", async () => {
-    const inputs = {
-      stateId: "stateId",
-      eventName: issueCommented.eventName,
-      settings: "{}",
-      eventPayload: JSON.stringify(issueCommented.eventPayload),
-      authToken: "test",
-      ref: "",
-    };
-    const sign = crypto.createSign("SHA256");
-    sign.update(JSON.stringify(inputs)).end();
-    const signature = sign.sign(privateKey, "base64");
-
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const githubInputs = await inputs.getWorkflowInputs();
     jest.mock("@actions/github", () => ({
       context: {
         runId: "1",
         payload: {
-          inputs: {
-            ...inputs,
-            signature,
-          },
+          inputs: githubInputs,
         },
         repo: repo,
       },
@@ -247,8 +222,8 @@ describe("SDK actions tests", () => {
     expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommented.eventName });
     expect(createDispatchEvent).toHaveBeenCalledWith({
       event_type: "return-data-to-ubiquity-os-kernel",
-      owner: "ubiquity",
-      repo: "ubiquity-os-kernel",
+      owner: repo.owner,
+      repo: repo.repo,
       client_payload: {
         state_id: "stateId",
         output: JSON.stringify({ event: issueCommented.eventName }),
@@ -256,22 +231,16 @@ describe("SDK actions tests", () => {
     });
   });
   it("Should deny invalid signature", async () => {
-    const inputs = {
-      stateId: "stateId",
-      eventName: issueCommented.eventName,
-      settings: "{}",
-      eventPayload: JSON.stringify(issueCommented.eventPayload),
-      authToken: "test",
-      ref: "",
-    };
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const githubInputs = await inputs.getWorkflowInputs();
 
     jest.mock("@actions/github", () => ({
       context: {
         runId: "1",
         payload: {
           inputs: {
-            ...inputs,
-            signature: "invalid",
+            ...githubInputs,
+            signature: "invalid_signature",
           },
         },
         repo: repo,
@@ -297,5 +266,71 @@ describe("SDK actions tests", () => {
     );
     expect(setFailed).toHaveBeenCalledWith("Error: Invalid signature");
     expect(setOutput).not.toHaveBeenCalled();
+  });
+  it("Should accept inputs in different order", async () => {
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const githubInputs = await inputs.getWorkflowInputs();
+
+    jest.mock("@actions/github", () => ({
+      context: {
+        runId: "1",
+        payload: {
+          inputs: {
+            // different order
+            signature: githubInputs.signature,
+            eventName: githubInputs.eventName,
+            settings: githubInputs.settings,
+            ref: githubInputs.ref,
+            authToken: githubInputs.authToken,
+            stateId: githubInputs.stateId,
+            eventPayload: githubInputs.eventPayload,
+          },
+        },
+        repo: repo,
+      },
+    }));
+    const setOutput = jest.fn();
+    const setFailed = jest.fn();
+    jest.mock("@actions/core", () => ({
+      setOutput,
+      setFailed,
+    }));
+    const createDispatchEvent = jest.fn();
+    jest.mock("../src/sdk/octokit", () => ({
+      customOctokit: class MockOctokit {
+        constructor() {
+          return {
+            rest: {
+              repos: {
+                createDispatchEvent: createDispatchEvent,
+              },
+            },
+          };
+        }
+      },
+    }));
+    const { createActionsPlugin } = await import("../src/sdk/actions");
+
+    await createActionsPlugin(
+      async (context: Context) => {
+        return {
+          event: context.eventName,
+        };
+      },
+      {
+        kernelPublicKey: publicKey,
+      }
+    );
+    expect(setFailed).not.toHaveBeenCalled();
+    expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommentedEvent.eventName });
+    expect(createDispatchEvent).toHaveBeenCalledWith({
+      event_type: "return-data-to-ubiquity-os-kernel",
+      owner: repo.owner,
+      repo: repo.repo,
+      client_payload: {
+        state_id: "stateId",
+        output: JSON.stringify({ event: issueCommentedEvent.eventName }),
+      },
+    });
   });
 });
