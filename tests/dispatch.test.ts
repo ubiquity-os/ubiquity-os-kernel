@@ -12,8 +12,12 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/utils/cloudflare-kv", () => ({
+jest.mock("../src/github/utils/kv-store", () => ({
   CloudflareKv: jest.fn().mockImplementation(() => ({
+    get: jest.fn(),
+    put: jest.fn(),
+  })),
+  EmptyStore: jest.fn().mockImplementation(() => ({
     get: jest.fn(),
     put: jest.fn(),
   })),
