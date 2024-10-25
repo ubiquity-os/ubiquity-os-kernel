@@ -4,7 +4,6 @@ import { expect, describe, beforeAll, afterAll, afterEach, it, jest } from "@jes
 
 import * as crypto from "crypto";
 import { createPlugin } from "../src/sdk/server";
-import { Hono } from "hono";
 import { Context } from "../src/sdk/context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CloudflareKv } from "../src/github/utils/cloudflare-kv";
@@ -28,6 +27,10 @@ const issueCommentedEvent = {
   eventPayload: issueCommented.eventPayload,
 };
 
+const sdkOctokitImportPath = "../src/sdk/octokit";
+const githubActionImportPath = "@actions/github";
+const githubCoreImportPath = "@actions/core";
+
 const eventHandler = new GitHubEventHandler({
   environment: "production",
   webhookSecret: "test",
@@ -36,22 +39,21 @@ const eventHandler = new GitHubEventHandler({
   pluginChainState: undefined as unknown as CloudflareKv<PluginChainState>,
 });
 
-let app: Hono;
+const app = createPlugin(
+  async (context: Context<{ shouldFail: boolean }>) => {
+    if (context.config.shouldFail) {
+      throw context.logger.error("test error");
+    }
+    return {
+      success: true,
+      event: context.eventName,
+    };
+  },
+  { name: "test" },
+  { kernelPublicKey: publicKey }
+);
 
 beforeAll(async () => {
-  app = await createPlugin(
-    async (context: Context<{ shouldFail: boolean }>) => {
-      if (context.config.shouldFail) {
-        throw context.logger.error("test error");
-      }
-      return {
-        success: true,
-        event: context.eventName,
-      };
-    },
-    { name: "test" },
-    { kernelPublicKey: publicKey }
-  );
   server.listen();
 });
 
@@ -98,7 +100,7 @@ describe("SDK worker tests", () => {
   });
   it("Should handle thrown errors", async () => {
     const createComment = jest.fn();
-    jest.mock("../src/sdk/octokit", () => ({
+    jest.mock(sdkOctokitImportPath, () => ({
       customOctokit: class MockOctokit {
         constructor() {
           return {
@@ -113,7 +115,7 @@ describe("SDK worker tests", () => {
     }));
 
     const { createPlugin } = await import("../src/sdk/server");
-    const app = await createPlugin(
+    const app = createPlugin(
       async (context: Context<{ shouldFail: boolean }>) => {
         if (context.config.shouldFail) {
           throw context.logger.error("test error");
@@ -177,7 +179,7 @@ describe("SDK actions tests", () => {
   it("Should accept correct request", async () => {
     const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
     const githubInputs = await inputs.getWorkflowInputs();
-    jest.mock("@actions/github", () => ({
+    jest.mock(githubActionImportPath, () => ({
       context: {
         runId: "1",
         payload: {
@@ -188,7 +190,7 @@ describe("SDK actions tests", () => {
     }));
     const setOutput = jest.fn();
     const setFailed = jest.fn();
-    jest.mock("@actions/core", () => ({
+    jest.mock(githubCoreImportPath, () => ({
       setOutput,
       setFailed,
     }));
@@ -248,7 +250,7 @@ describe("SDK actions tests", () => {
     }));
     const setOutput = jest.fn();
     const setFailed = jest.fn();
-    jest.mock("@actions/core", () => ({
+    jest.mock(githubCoreImportPath, () => ({
       setOutput,
       setFailed,
     }));
@@ -271,7 +273,7 @@ describe("SDK actions tests", () => {
     const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
     const githubInputs = await inputs.getWorkflowInputs();
 
-    jest.mock("@actions/github", () => ({
+    jest.mock(githubActionImportPath, () => ({
       context: {
         runId: "1",
         payload: {
@@ -291,18 +293,18 @@ describe("SDK actions tests", () => {
     }));
     const setOutput = jest.fn();
     const setFailed = jest.fn();
-    jest.mock("@actions/core", () => ({
+    jest.mock(githubCoreImportPath, () => ({
       setOutput,
       setFailed,
     }));
-    const createDispatchEvent = jest.fn();
-    jest.mock("../src/sdk/octokit", () => ({
+    const createDispatchEventFn = jest.fn();
+    jest.mock(sdkOctokitImportPath, () => ({
       customOctokit: class MockOctokit {
         constructor() {
           return {
             rest: {
               repos: {
-                createDispatchEvent: createDispatchEvent,
+                createDispatchEvent: createDispatchEventFn,
               },
             },
           };
@@ -323,7 +325,7 @@ describe("SDK actions tests", () => {
     );
     expect(setFailed).not.toHaveBeenCalled();
     expect(setOutput).toHaveBeenCalledWith("result", { event: issueCommentedEvent.eventName });
-    expect(createDispatchEvent).toHaveBeenCalledWith({
+    expect(createDispatchEventFn).toHaveBeenCalledWith({
       event_type: "return-data-to-ubiquity-os-kernel",
       owner: repo.owner,
       repo: repo.repo,
