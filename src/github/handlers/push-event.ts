@@ -98,6 +98,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
           value: JSON.stringify(plugin),
           type: 0,
           schema: configSchema,
+          errors: [],
         });
       } else {
         const validator = new Validator(manifest.configuration, "7", false);
@@ -113,6 +114,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
               value: JSON.stringify(value),
               type: 0,
               schema: configSchema,
+              errors: [],
             });
           }
         }
