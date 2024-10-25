@@ -57,14 +57,24 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
 
   let config: TConfig;
   if (pluginOptions.settingsSchema) {
-    config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, JSON.parse(inputs.settings)));
+    try {
+      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, JSON.parse(inputs.settings)));
+    } catch (e) {
+      console.dir(...Value.Errors(pluginOptions.settingsSchema, JSON.parse(inputs.settings)), { depth: null });
+      throw e;
+    }
   } else {
     config = JSON.parse(inputs.settings) as TConfig;
   }
 
   let env: TEnv;
   if (pluginOptions.envSchema) {
-    env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, process.env));
+    try {
+      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, process.env));
+    } catch (e) {
+      console.dir(...Value.Errors(pluginOptions.envSchema, process.env), { depth: null });
+      throw e;
+    }
   } else {
     env = process.env as TEnv;
   }

@@ -10,6 +10,7 @@ import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
 import { sanitizeMetadata } from "./util";
+import { env as honoEnv } from "hono/adapter";
 
 interface Options {
   kernelPublicKey?: string;
@@ -52,14 +53,24 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
-      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, payload.settings));
+      try {
+        config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, payload.settings));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.settingsSchema, payload.settings), { depth: null });
+        throw e;
+      }
     } else {
       config = payload.settings as TConfig;
     }
 
     let env: TEnv;
     if (pluginOptions.envSchema) {
-      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, ctx.env));
+      try {
+        env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, honoEnv(ctx)));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.envSchema, ctx.env), { depth: null });
+        throw e;
+      }
     } else {
       env = ctx.env as TEnv;
     }
