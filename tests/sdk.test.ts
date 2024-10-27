@@ -6,7 +6,7 @@ import * as crypto from "crypto";
 import { createPlugin } from "../src/sdk/server";
 import { Context } from "../src/sdk/context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { CloudflareKv } from "../src/github/utils/cloudflare-kv";
+import { EmptyStore } from "../src/github/utils/kv-store";
 import { PluginChainState, PluginInput } from "../src/github/types/plugin";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 
@@ -36,7 +36,7 @@ const eventHandler = new GitHubEventHandler({
   webhookSecret: "test",
   appId: "1",
   privateKey: privateKey,
-  pluginChainState: undefined as unknown as CloudflareKv<PluginChainState>,
+  pluginChainState: new EmptyStore<PluginChainState>(),
 });
 
 const app = createPlugin(
