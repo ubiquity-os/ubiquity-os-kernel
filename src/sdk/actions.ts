@@ -43,15 +43,18 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
     kernelPublicKey: options?.kernelPublicKey || KERNEL_PUBLIC_KEY,
   };
 
-  const githubInputs = { ...github.context.payload.inputs };
-  const signature = githubInputs.signature;
-  delete githubInputs.signature;
-  if (!(await verifySignature(pluginOptions.kernelPublicKey, githubInputs, signature))) {
-    core.setFailed(`Error: Invalid signature`);
+  const pluginGithubToken = process.env.PLUGIN_GITHUB_TOKEN;
+  if (!pluginGithubToken) {
+    core.setFailed("Error: PLUGIN_GITHUB_TOKEN env is not set");
     return;
   }
 
   const inputs = Value.Decode(inputSchema, github.context.payload.inputs);
+  const signature = inputs.signature;
+  if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
+    core.setFailed(`Error: Invalid signature`);
+    return;
+  }
 
   let config: TConfig;
   if (pluginOptions.settingsSchema) {
@@ -79,7 +82,7 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
   try {
     const result = await handler(context);
     core.setOutput("result", result);
-    await returnDataToKernel(inputs.authToken, inputs.stateId, result);
+    await returnDataToKernel(pluginGithubToken, inputs.stateId, result);
   } catch (error) {
     console.error(error);
 

@@ -3,7 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
-import { CloudflareKv } from "./github/utils/cloudflare-kv";
+import { EmptyStore } from "./github/utils/kv-store";
 import { WebhookEventName } from "@octokit/webhooks-types";
 
 export default {
@@ -18,7 +18,7 @@ export default {
         webhookSecret: env.APP_WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.APP_PRIVATE_KEY,
-        pluginChainState: new CloudflareKv(env.PLUGIN_CHAIN_STATE),
+        pluginChainState: new EmptyStore(),
       });
       bindHandlers(eventHandler);
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
