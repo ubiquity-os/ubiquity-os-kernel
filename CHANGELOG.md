@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.4.0...v2.5.0) (2024-10-28)
+
+
+### Features
+
+* fix signature and add plugin github token ([6941ff8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/6941ff841db7f9a616f9e92e86f4a0dc120ea46c))
+* make createPlugin sync function ([ff36f56](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/ff36f5665d7661a253f20ef5598d712bbc26ac23))
+* use empty store ([af5da64](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/af5da64136811c8a1d5766cf2e851a282f86af63))
+
+
+### Bug Fixes
+
+* empty store ([9eb1014](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9eb10143182c70873d7ed7c92c7659eaf3fb1ad9))
+
 ## [2.4.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.3.0...v2.4.0) (2024-10-21)
 
 
