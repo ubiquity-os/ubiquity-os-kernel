@@ -18,7 +18,7 @@ export default {
         webhookSecret: env.APP_WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.APP_PRIVATE_KEY,
-        pluginChainState: new EmptyStore(env.PLUGIN_CHAIN_STATE),
+        pluginChainState: new EmptyStore(),
       });
       bindHandlers(eventHandler);
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
