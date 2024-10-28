@@ -144,14 +144,12 @@ async function returnDataToKernel(repoToken: string, stateId: string, output: ob
 }
 
 function createStructuredMetadata(className: string | undefined, logReturn: LogReturn) {
-  let logMessage, metadata;
-  if (logReturn) {
-    logMessage = logReturn.logMessage;
-    metadata = logReturn.metadata;
-  }
+  const logMessage = logReturn.logMessage;
+  const metadata = logReturn.metadata;
 
   const jsonPretty = sanitizeMetadata(metadata);
-  const stackLine = new Error().stack?.split("\n")[2] ?? "";
+  const stack = logReturn.metadata?.stack;
+  const stackLine = (Array.isArray(stack) ? stack.join("\n") : stack)?.split("\n")[2] ?? "";
   const caller = stackLine.match(/at (\S+)/)?.[1] ?? "";
   const ubiquityMetadataHeader = `<!-- ${HEADER_NAME} - ${className} - ${caller} - ${metadata?.revision}`;
 
