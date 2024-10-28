@@ -39,10 +39,6 @@ export interface KvStore<T> {
  * @template T - The type of values to be stored.
  */
 export class EmptyStore<T> implements KvStore<T> {
-  constructor(kv: KVNamespace) {
-    console.log(`Creating empty kv`, kv);
-  }
-
   get(id: string): Promise<T | null> {
     console.log(`get KV ${id}`);
     return Promise.resolve(null);
