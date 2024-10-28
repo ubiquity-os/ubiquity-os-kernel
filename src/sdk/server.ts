@@ -9,8 +9,8 @@ import { KERNEL_PUBLIC_KEY } from "./constants";
 import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
-import { sanitizeMetadata } from "./util";
 import { env as honoEnv } from "hono/adapter";
+import { postComment } from "./comment";
 
 interface Options {
   kernelPublicKey?: string;
@@ -108,17 +108,4 @@ export async function createPlugin<TConfig = unknown, TEnv = unknown, TSupported
   });
 
   return app;
-}
-
-async function postComment(context: Context, error: LogReturn) {
-  if ("issue" in context.payload && context.payload.repository?.owner?.login) {
-    await context.octokit.rest.issues.createComment({
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      body: `${error.logMessage.diff}\n<!--\n${sanitizeMetadata(error.metadata)}\n-->`,
-    });
-  } else {
-    context.logger.info("Cannot post comment because issue is not found in the payload");
-  }
 }
