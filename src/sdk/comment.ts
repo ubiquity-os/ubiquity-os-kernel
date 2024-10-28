@@ -14,7 +14,7 @@ export async function postComment(context: Context, message: LogReturn) {
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      body: [message.logMessage.raw, metadata].join("\n"),
+      body: [message.logMessage.diff, metadata].join("\n"),
     });
   } else {
     context.logger.info("Cannot post comment because issue is not found in the payload");
