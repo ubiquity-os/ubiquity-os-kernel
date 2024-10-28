@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.0...v2.5.1) (2024-10-28)
+
+
+### Bug Fixes
+
+* lockfile updates ([74c4fb3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/74c4fb32997aadbc72b3a85395a713ad68beb013))
+
 ## [2.5.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.4.0...v2.5.0) (2024-10-28)
 
 
