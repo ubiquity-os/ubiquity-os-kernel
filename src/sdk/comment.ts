@@ -43,5 +43,6 @@ function createStructuredMetadata(className: string | undefined, logReturn: LogR
     metadataSerialized = metadataSerializedHidden;
   }
 
-  return metadataSerialized;
+  // Add carriage returns to avoid any formatting issue
+  return `\n${metadataSerialized}\n`;
 }
