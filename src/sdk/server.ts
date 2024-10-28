@@ -66,7 +66,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       try {
         config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
       } catch (e) {
-        console.dir(...Value.Errors(pluginOptions.settingsSchema, payload.settings), { depth: null });
+        console.dir(...Value.Errors(pluginOptions.settingsSchema, inputs.settings), { depth: null });
         throw e;
       }
     } else {
