@@ -79,6 +79,9 @@ bun dev
 6. **Deploy the Kernel:**
    - Execute `bun run deploy-dev` to deploy the kernel.
 
+7. **Setup database (optional)**
+   - You can set up your local database by going through [this repository](https://github.com/ubiquity-os/database) and following the instructions.
+
 ### Plugin-Kernel Input/Output Interface
 
 #### Input
