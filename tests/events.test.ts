@@ -134,4 +134,61 @@ describe("Event related tests", () => {
       ],
     ]);
   });
+  it("Should not post the help menu when /help command if there is no available command", async () => {
+    const issues = {
+      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
+        return params;
+      },
+    };
+    const spy = jest.spyOn(issues, "createComment");
+    const getContent = jest.fn((params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) => {
+      if (params?.path === CONFIG_FULL_PATH) {
+        return {
+          data: `
+                    plugins:
+                      - name: "Some Action plugin"
+                        uses:
+                          - id: plugin-B
+                            plugin: ubiquity-os/plugin-b
+                    `,
+        };
+      } else if (params?.path === "manifest.json") {
+        return {
+          data: {
+            content: btoa(
+              JSON.stringify({
+                name: "plugin",
+              })
+            ),
+          },
+        };
+      } else {
+        throw new Error("Not found");
+      }
+    });
+    await issueCommentCreated({
+      id: "",
+      key: "issue_comment.created",
+      octokit: {
+        rest: {
+          issues,
+          repos: {
+            getContent: getContent,
+          },
+        },
+      },
+      eventHandler: eventHandler,
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name,
+        },
+        issue: { number: 1 },
+        comment: {
+          body: "/help",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+    } as unknown as GitHubContext);
+    expect(spy).not.toBeCalled();
+  });
 });
