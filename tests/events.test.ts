@@ -82,7 +82,7 @@ describe("Event related tests", () => {
           data: {
             content: btoa(
               JSON.stringify({
-                name: "plugin",
+                name: "plugin A",
                 commands: {
                   action: {
                     description: "action",
@@ -148,8 +148,8 @@ describe("Event related tests", () => {
                     plugins:
                       - name: "Some Action plugin"
                         uses:
-                          - id: plugin-B
-                            plugin: ubiquity-os/plugin-b
+                          - id: plugin-c
+                            plugin: ubiquity-os/plugin-c
                     `,
         };
       } else if (params?.path === "manifest.json") {
@@ -157,7 +157,7 @@ describe("Event related tests", () => {
           data: {
             content: btoa(
               JSON.stringify({
-                name: "plugin",
+                name: "plugin c",
               })
             ),
           },
