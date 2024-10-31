@@ -55,6 +55,12 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       throw new HTTPException(400, { message: "Content-Type must be application/json" });
     }
 
+    const body = await ctx.req.json();
+    const inputSchemaErrors = [...Value.Errors(inputSchema, body)];
+    if (inputSchemaErrors.length) {
+      console.dir(inputSchemaErrors, { depth: null });
+      throw new HTTPException(400, { message: "Invalid body" });
+    }
     const inputs = Value.Decode(inputSchema, await ctx.req.json());
     const signature = inputs.signature;
     if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
