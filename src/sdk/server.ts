@@ -80,11 +80,12 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
     }
 
     let env: TEnv;
+    const honoEnvironment = honoEnv(ctx);
     if (pluginOptions.envSchema) {
       try {
-        env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, honoEnv(ctx)));
+        env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, honoEnvironment));
       } catch (e) {
-        console.dir(...Value.Errors(pluginOptions.envSchema, ctx.env), { depth: null });
+        console.dir(...Value.Errors(pluginOptions.envSchema, honoEnvironment), { depth: null });
         throw e;
       }
     } else {
