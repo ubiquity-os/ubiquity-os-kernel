@@ -2,18 +2,14 @@ import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks"
 import { StaticDecode, Type } from "@sinclair/typebox";
 import { PluginChain } from "./plugin-configuration";
 import { GitHubEventHandler } from "../github-event-handler";
+import { CommandCall } from "../../types/command";
+import { jsonType } from "../../types/util";
 
 export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
 
-function jsonString() {
-  return Type.Transform(Type.String())
-    .Decode((value) => JSON.parse(value) as Record<string, unknown>)
-    .Encode((value) => JSON.stringify(value));
-}
-
 export const pluginOutputSchema = Type.Object({
   state_id: Type.String(), // GitHub forces snake_case
-  output: jsonString(),
+  output: jsonType(Type.Record(Type.String(), Type.Unknown())),
 });
 
 export type PluginOutput = StaticDecode<typeof pluginOutputSchema>;
@@ -26,6 +22,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   public settings: unknown;
   public authToken: string;
   public ref: string;
+  public command: CommandCall;
 
   constructor(
     eventHandler: GitHubEventHandler,
@@ -34,7 +31,8 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     eventPayload: EmitterWebhookEvent<T>["payload"],
     settings: unknown,
     authToken: string,
-    ref: string
+    ref: string,
+    command: CommandCall
   ) {
     this.eventHandler = eventHandler;
     this.stateId = stateId;
@@ -43,6 +41,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     this.settings = settings;
     this.authToken = authToken;
     this.ref = ref;
+    this.command = command;
   }
 
   public async getWorkflowInputs() {
@@ -53,6 +52,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
       ref: this.ref,
+      command: JSON.stringify(this.command),
     };
     const signature = await this.eventHandler.signPayload(JSON.stringify(inputs));
     return {
@@ -69,6 +69,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
       settings: this.settings,
       authToken: this.authToken,
       ref: this.ref,
+      command: this.command,
     };
     const signature = await this.eventHandler.signPayload(JSON.stringify(inputs));
     return {

@@ -65,16 +65,18 @@ describe("handleEvent", () => {
         HttpResponse.json({
           name: "plugin",
           "ubiquity:listeners": ["issue_comment.created"],
-          commands: {
-            foo: {
+          commands: [
+            {
+              name: "foo",
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            bar: {
+            {
+              name: "bar",
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          },
+          ],
         })
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
@@ -159,6 +161,7 @@ describe("handleEvent", () => {
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
+      OPENAI_API_KEY: "token",
     });
 
     expect(res).toBeTruthy();

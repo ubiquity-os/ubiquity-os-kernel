@@ -41,16 +41,18 @@ describe("Event related tests", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin",
-          commands: {
-            foo: {
+          commands: [
+            {
+              name: "foo",
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            bar: {
+            {
+              name: "bar",
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          },
+          ],
         })
       )
     );
@@ -83,12 +85,13 @@ describe("Event related tests", () => {
             content: btoa(
               JSON.stringify({
                 name: "plugin",
-                commands: {
-                  action: {
+                commands: [
+                  {
+                    name: "action",
                     description: "action",
                     "ubiquity:example": "/action",
                   },
-                },
+                ],
               })
             ),
           },
@@ -108,6 +111,31 @@ describe("Event related tests", () => {
           },
         },
       },
+      openAi: {
+        chat: {
+          completions: {
+            create: function () {
+              return {
+                choices: [
+                  {
+                    message: {
+                      tool_calls: [
+                        {
+                          type: "function",
+                          function: {
+                            name: "help",
+                            arguments: "",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              };
+            },
+          },
+        },
+      },
       eventHandler: eventHandler,
       payload: {
         repository: {
@@ -117,6 +145,9 @@ describe("Event related tests", () => {
         issue: { number: 1 },
         comment: {
           body: "/help",
+        },
+        installation: {
+          id: 1,
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);

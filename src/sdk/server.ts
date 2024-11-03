@@ -18,12 +18,14 @@ interface Options {
   postCommentOnError?: boolean;
   settingsSchema?: TAnySchema;
   envSchema?: TAnySchema;
+  disableSignatureVerification?: boolean; // only use for local development
 }
 
 const inputSchema = T.Object({
   stateId: T.String(),
   eventName: T.String(),
   eventPayload: T.Record(T.String(), T.Any()),
+  command: T.Union([T.Null(), T.Object({ name: T.String(), parameters: T.Unknown() })]),
   authToken: T.String(),
   settings: T.Record(T.String(), T.Any()),
   ref: T.String(),
@@ -41,6 +43,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
     postCommentOnError: options?.postCommentOnError || true,
     settingsSchema: options?.settingsSchema,
     envSchema: options?.envSchema,
+    disableSignatureVerification: options?.disableSignatureVerification || false,
   };
 
   const app = new Hono();
@@ -54,11 +57,13 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       throw new HTTPException(400, { message: "Content-Type must be application/json" });
     }
 
-    const inputs = Value.Decode(inputSchema, await ctx.req.json());
-    const signature = inputs.signature;
-    if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
+    const body = await ctx.req.json();
+    const signature = body.signature;
+    if (!pluginOptions.disableSignatureVerification && !(await verifySignature(pluginOptions.kernelPublicKey, body, signature))) {
       throw new HTTPException(400, { message: "Invalid signature" });
     }
+
+    const inputs = Value.Decode(inputSchema, body);
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
@@ -77,6 +82,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
       eventName: inputs.eventName as TSupportedEvents,
       payload: inputs.eventPayload,
+      command: inputs.command,
       octokit: new customOctokit({ auth: inputs.authToken }),
       config: config,
       env: env,

@@ -9,6 +9,7 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { EmptyStore } from "../src/github/utils/kv-store";
 import { PluginChainState, PluginInput } from "../src/github/types/plugin";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
+import OpenAI from "openai";
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -37,6 +38,7 @@ const eventHandler = new GitHubEventHandler({
   appId: "1",
   privateKey: privateKey,
   pluginChainState: new EmptyStore<PluginChainState>(),
+  openAiClient: undefined as unknown as OpenAI,
 });
 
 const app = createPlugin(
@@ -87,7 +89,16 @@ describe("SDK worker tests", () => {
     expect(res.status).toEqual(400);
   });
   it("Should deny POST request with invalid signature", async () => {
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: false }, "test", "");
+    const inputs = new PluginInput(
+      eventHandler,
+      "stateId",
+      issueCommentedEvent.eventName,
+      issueCommentedEvent.eventPayload,
+      { shouldFail: false },
+      "test",
+      "",
+      null
+    );
 
     const res = await app.request("/", {
       headers: {
@@ -129,7 +140,16 @@ describe("SDK worker tests", () => {
       { kernelPublicKey: publicKey }
     );
 
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: true }, "test", "");
+    const inputs = new PluginInput(
+      eventHandler,
+      "stateId",
+      issueCommentedEvent.eventName,
+      issueCommentedEvent.eventPayload,
+      { shouldFail: true },
+      "test",
+      "",
+      null
+    );
 
     const res = await app.request("/", {
       headers: {
@@ -154,7 +174,16 @@ describe("SDK worker tests", () => {
     });
   });
   it("Should accept correct request", async () => {
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, { shouldFail: false }, "test", "");
+    const inputs = new PluginInput(
+      eventHandler,
+      "stateId",
+      issueCommentedEvent.eventName,
+      issueCommentedEvent.eventPayload,
+      { shouldFail: false },
+      "test",
+      "",
+      null
+    );
 
     const res = await app.request("/", {
       headers: {
@@ -177,7 +206,7 @@ describe("SDK actions tests", () => {
   };
 
   it("Should accept correct request", async () => {
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "", null);
     const githubInputs = await inputs.getWorkflowInputs();
     jest.mock(githubActionImportPath, () => ({
       context: {
@@ -233,7 +262,7 @@ describe("SDK actions tests", () => {
     });
   });
   it("Should deny invalid signature", async () => {
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "", null);
     const githubInputs = await inputs.getWorkflowInputs();
 
     jest.mock("@actions/github", () => ({
@@ -270,7 +299,7 @@ describe("SDK actions tests", () => {
     expect(setOutput).not.toHaveBeenCalled();
   });
   it("Should accept inputs in different order", async () => {
-    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "");
+    const inputs = new PluginInput(eventHandler, "stateId", issueCommentedEvent.eventName, issueCommentedEvent.eventPayload, {}, "test_token", "", null);
     const githubInputs = await inputs.getWorkflowInputs();
 
     jest.mock(githubActionImportPath, () => ({
@@ -285,6 +314,7 @@ describe("SDK actions tests", () => {
             ref: githubInputs.ref,
             authToken: githubInputs.authToken,
             stateId: githubInputs.stateId,
+            command: githubInputs.command,
             eventPayload: githubInputs.eventPayload,
           },
         },

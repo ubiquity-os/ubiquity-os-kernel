@@ -5,6 +5,7 @@ interface Inputs {
   authToken: unknown;
   settings: unknown;
   ref: unknown;
+  command: unknown;
 }
 
 export async function verifySignature(publicKeyPem: string, inputs: Inputs, signature: string) {
@@ -16,8 +17,8 @@ export async function verifySignature(publicKeyPem: string, inputs: Inputs, sign
       settings: inputs.settings,
       authToken: inputs.authToken,
       ref: inputs.ref,
+      command: inputs.command,
     };
-    console.log(JSON.stringify(inputs));
     const pemContents = publicKeyPem.replace("-----BEGIN PUBLIC KEY-----", "").replace("-----END PUBLIC KEY-----", "").trim();
     const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
 

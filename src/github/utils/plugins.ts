@@ -66,5 +66,5 @@ function decodeManifest(manifest: unknown) {
     }
     throw new Error("Manifest is invalid.");
   }
-  return defaultManifest as Manifest;
+  return Value.Decode(manifestSchema, defaultManifest);
 }
