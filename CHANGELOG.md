@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.2](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.1...v2.5.2) (2024-11-04)
+
+
+### Bug Fixes
+
+* skip posting help comment when no commands found ([a71eb67](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a71eb673678b4eb438dd4c6d78f17a78f40f4503))
+* update public key to match new private key ([6986998](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/69869988257fbf63ebe37c4c033ab75bc7d2d2ab))
+
 ## [2.5.1](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.0...v2.5.1) (2024-10-28)
 
 
