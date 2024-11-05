@@ -61,7 +61,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       console.dir(inputSchemaErrors, { depth: null });
       throw new HTTPException(400, { message: "Invalid body" });
     }
-    const inputs = Value.Decode(inputSchema, await ctx.req.json());
+    const inputs = Value.Decode(inputSchema, body);
     const signature = inputs.signature;
     if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
       throw new HTTPException(400, { message: "Invalid signature" });
