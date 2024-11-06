@@ -9,8 +9,9 @@ import { KERNEL_PUBLIC_KEY } from "./constants";
 import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
-import { sanitizeMetadata } from "./util";
 import { Type as T } from "@sinclair/typebox";
+import { CallbackBuilder, handleProxyCallbacks, proxyCallbacks } from "./proxy-callbacks";
+import { postWorkerErrorComment } from "./errors";
 
 interface Options {
   kernelPublicKey?: string;
@@ -31,7 +32,7 @@ const inputSchema = T.Object({
 });
 
 export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName>(
-  handler: (context: Context<TConfig, TEnv, TSupportedEvents>) => Promise<Record<string, unknown> | undefined>,
+  callbackBuilder: CallbackBuilder,
   manifest: Manifest,
   options?: Options
 ) {
@@ -74,8 +75,10 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       env = ctx.env as TEnv;
     }
 
+    const eventName = inputs.eventName as TSupportedEvents;
+
     const context: Context<TConfig, TEnv, TSupportedEvents> = {
-      eventName: inputs.eventName as TSupportedEvents,
+      eventName,
       payload: inputs.eventPayload,
       octokit: new customOctokit({ auth: inputs.authToken }),
       config: config,
@@ -84,7 +87,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
     };
 
     try {
-      const result = await handler(context);
+      const result = await handleProxyCallbacks(proxyCallbacks(context, callbackBuilder), context);
       return ctx.json({ stateId: inputs.stateId, output: result });
     } catch (error) {
       console.error(error);
@@ -99,7 +102,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       }
 
       if (pluginOptions.postCommentOnError && loggerError) {
-        await postComment(context, loggerError);
+        await postWorkerErrorComment(context, loggerError);
       }
 
       throw new HTTPException(500, { message: "Unexpected error" });
@@ -109,15 +112,3 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
   return app;
 }
 
-async function postComment(context: Context, error: LogReturn) {
-  if ("issue" in context.payload && context.payload.repository?.owner?.login) {
-    await context.octokit.rest.issues.createComment({
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      body: `${error.logMessage.diff}\n<!--\n${sanitizeMetadata(error.metadata)}\n-->`,
-    });
-  } else {
-    context.logger.info("Cannot post comment because issue is not found in the payload");
-  }
-}
