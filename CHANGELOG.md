@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.2...v2.5.3) (2024-11-06)
+
+
+### Bug Fixes
+
+* resolve input decoding issue in server.ts ([fe99961](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fe99961d583a5ca683a98905de0b108471c4089a))
+
 ## [2.5.2](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.1...v2.5.2) (2024-11-04)
 
 
