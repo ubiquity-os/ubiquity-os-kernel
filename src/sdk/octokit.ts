@@ -4,6 +4,7 @@ import { paginateRest } from "@octokit/plugin-paginate-rest";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
+import { paginateGraphQL } from "@octokit/plugin-paginate-graphql";
 
 const defaultOptions = {
   throttle: {
@@ -22,6 +23,6 @@ const defaultOptions = {
   },
 };
 
-export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods).defaults((instanceOptions: object) => {
+export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, paginateGraphQL).defaults((instanceOptions: object) => {
   return Object.assign({}, defaultOptions, instanceOptions);
 });
