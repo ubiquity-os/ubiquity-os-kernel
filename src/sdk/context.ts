@@ -2,11 +2,14 @@ import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as Webhook
 import { Logs } from "@ubiquity-os/ubiquity-os-logger";
 import { customOctokit } from "./octokit";
 
-export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName> {
+export type SupportedEventsU = WebhookEventName;
+export type SupportedEvents = {
+  [K in SupportedEventsU]: K extends WebhookEventName ? WebhookEvent<K> : never;
+};
+
+export interface Context<TConfig = unknown, TEnv = unknown, TSupportedEvents extends SupportedEventsU = WebhookEventName> {
   eventName: TSupportedEvents;
-  payload: {
-    [K in TSupportedEvents]: K extends WebhookEventName ? WebhookEvent<K> : never;
-  }[TSupportedEvents]["payload"];
+  payload: SupportedEvents[TSupportedEvents]["payload"];
   octokit: InstanceType<typeof customOctokit>;
   config: TConfig;
   env: TEnv;
