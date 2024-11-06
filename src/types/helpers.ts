@@ -2,11 +2,9 @@ import { Context } from "../sdk";
 import { SupportedEventsU } from "../sdk/context";
 
 export type CallbackResult = { status: 200 | 201 | 204 | 404 | 500; reason: string; content?: string | Record<string, unknown> };
-export type CallbackFunction<
-    TEvent extends SupportedEventsU,
-    TConfig extends unknown = unknown,
-    TEnv extends unknown = unknown
-> = (context: Context<TConfig, TEnv, TEvent>) => Promise<CallbackResult>;
+export type CallbackFunction<TEvent extends SupportedEventsU, TConfig = Record<string, unknown>, TEnv = Record<string, unknown>> = (
+  context: Context<TConfig, TEnv, TEvent>
+) => Promise<CallbackResult>;
 /**
  * The `Context` type is a generic type defined as `Context<TEvent, TPayload>`,
  * where `TEvent` is a string representing the event name (e.g., "issues.labeled")
@@ -25,5 +23,5 @@ export type CallbackFunction<
  */
 
 export type ProxyCallbacks = {
-    [K in SupportedEventsU]: Array<CallbackFunction<K>>;
+  [K in SupportedEventsU]: Array<CallbackFunction<K>>;
 };

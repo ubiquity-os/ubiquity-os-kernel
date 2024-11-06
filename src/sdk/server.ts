@@ -111,4 +111,3 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
 
   return app;
 }
-

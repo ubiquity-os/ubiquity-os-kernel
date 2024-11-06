@@ -27,5 +27,5 @@ async function buildPackageJsons() {
     await createCleanPackageJson(entry);
   }
 
-  await createCleanPackageJson("", true, dirs)
+  await createCleanPackageJson("", true, dirs);
 }
