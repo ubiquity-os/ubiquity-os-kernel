@@ -9,6 +9,8 @@ import { KERNEL_PUBLIC_KEY } from "./constants";
 import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
+import { env as honoEnv } from "hono/adapter";
+import { postComment } from "./comment";
 import { Type as T } from "@sinclair/typebox";
 import { CallbackBuilder, handleProxyCallbacks, proxyCallbacks } from "./proxy-callbacks";
 import { postWorkerErrorComment } from "./errors";
@@ -55,7 +57,13 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       throw new HTTPException(400, { message: "Content-Type must be application/json" });
     }
 
-    const inputs = Value.Decode(inputSchema, await ctx.req.json());
+    const body = await ctx.req.json();
+    const inputSchemaErrors = [...Value.Errors(inputSchema, body)];
+    if (inputSchemaErrors.length) {
+      console.dir(inputSchemaErrors, { depth: null });
+      throw new HTTPException(400, { message: "Invalid body" });
+    }
+    const inputs = Value.Decode(inputSchema, body);
     const signature = inputs.signature;
     if (!(await verifySignature(pluginOptions.kernelPublicKey, inputs, signature))) {
       throw new HTTPException(400, { message: "Invalid signature" });
@@ -63,14 +71,25 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
-      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
+      try {
+        config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.settingsSchema, inputs.settings), { depth: null });
+        throw e;
+      }
     } else {
       config = inputs.settings as TConfig;
     }
 
     let env: TEnv;
+    const honoEnvironment = honoEnv(ctx);
     if (pluginOptions.envSchema) {
-      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, ctx.env));
+      try {
+        env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, honoEnvironment));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.envSchema, honoEnvironment), { depth: null });
+        throw e;
+      }
     } else {
       env = ctx.env as TEnv;
     }

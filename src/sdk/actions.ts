@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { Type as T, TAnySchema } from "@sinclair/typebox";
+import { TAnySchema, Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { LOG_LEVEL, LogLevel, LogReturn, Logs } from "@ubiquity-os/ubiquity-os-logger";
 import { config } from "dotenv";
@@ -58,14 +58,24 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
 
   let config: TConfig;
   if (pluginOptions.settingsSchema) {
-    config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, JSON.parse(inputs.settings)));
+    try {
+      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, JSON.parse(inputs.settings)));
+    } catch (e) {
+      console.dir(...Value.Errors(pluginOptions.settingsSchema, JSON.parse(inputs.settings)), { depth: null });
+      throw e;
+    }
   } else {
     config = JSON.parse(inputs.settings) as TConfig;
   }
 
   let env: TEnv;
   if (pluginOptions.envSchema) {
-    env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, process.env));
+    try {
+      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, process.env));
+    } catch (e) {
+      console.dir(...Value.Errors(pluginOptions.envSchema, process.env), { depth: null });
+      throw e;
+    }
   } else {
     env = process.env as TEnv;
   }
@@ -99,12 +109,12 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
     }
 
     if (pluginOptions.postCommentOnError && loggerError) {
-      await postComment(context, loggerError);
+      await postErrorComment(context, loggerError);
     }
   }
 }
 
-async function postComment(context: Context, error: LogReturn) {
+async function postErrorComment(context: Context, error: LogReturn) {
   if ("issue" in context.payload && context.payload.repository?.owner?.login) {
     await context.octokit.rest.issues.createComment({
       owner: context.payload.repository.owner.login,
@@ -113,7 +123,7 @@ async function postComment(context: Context, error: LogReturn) {
       body: `${error.logMessage.diff}\n<!--\n${getGithubWorkflowRunUrl()}\n${sanitizeMetadata(error.metadata)}\n-->`,
     });
   } else {
-    context.logger.info("Cannot post comment because issue is not found in the payload");
+    context.logger.info("Cannot post error comment because issue is not found in the payload");
   }
 }
 
