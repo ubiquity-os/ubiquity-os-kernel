@@ -9,8 +9,11 @@ import { postHelpCommand } from "./help-command";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`@ubiquityos`) || body.startsWith(`/`)) {
+  if (body.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
+  }
+  if (body.startsWith(`/help`)) {
+    await postHelpCommand(context);
   }
 }
 
@@ -76,26 +79,24 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const config = await getConfig(context);
   const pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[] = [];
   for (let i = 0; i < config.plugins.length; ++i) {
-    const { uses } = config.plugins[i];
-    for (let j = 0; j < uses.length; ++j) {
-      const { plugin } = uses[j];
-      const manifest = await getManifest(context, plugin);
-      if (!manifest?.commands) {
-        continue;
-      }
-      pluginsWithManifest.push({
-        plugin: uses[j],
-        manifest,
+    const plugin = config.plugins[i].uses[0];
+
+    const manifest = await getManifest(context, plugin.plugin);
+    if (!manifest?.commands) {
+      continue;
+    }
+    pluginsWithManifest.push({
+      plugin: plugin,
+      manifest,
+    });
+    for (const command of manifest.commands) {
+      commands.push({
+        type: "function",
+        function: {
+          ...command,
+          strict: true,
+        },
       });
-      for (const command of manifest.commands) {
-        commands.push({
-          type: "function",
-          function: {
-            ...command,
-            strict: true,
-          },
-        });
-      }
     }
   }
 
@@ -106,16 +107,32 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         role: "system",
         content: [
           {
-            text: `You are a GitHub bot named **UbiquityOS**. Your role is to interpret and execute commands based on user comments.
+            text: `
+You are a GitHub bot named **UbiquityOS**. Your role is to interpret and execute commands based on user comments provided in structured JSON format.
+
+### JSON Structure:
+The input will include the following fields:
+- repositoryOwner: The username of the repository owner.
+- repositoryName: The name of the repository where the comment was made.
+- issueNumber: The issue or pull request number where the comment appears.
+- author: The username of the user who posted the comment.
+- comment: The comment text directed at UbiquityOS, including the command and any parameters.
+
+### Example JSON:
+{
+  "repository_owner": "repoOwnerUsername",
+  "repository_name": "example-repo",
+  "issue_number": 42,
+  "author": "user",
+  "comment": "@UbiquityOS please allow @user2 to change priority and time labels."
+}
 
 ### Instructions:
-- **Interpretation Modes**:
-  1. **Tagged Natural Language**: The user mentions you with \`@UbiquityOS\`, asking for an action or information. Infer the intended command and parameters.
-     - Example: \`@UbiquityOS, please allow @user to change priority and time labels.\`
-  2. **Direct Command**: The user starts the comment with a command in \`/command\` format.
-     - Example: \`/allow @user priority time\`
+- **Interpretation Mode**:
+  - **Tagged Natural Language**: Interpret the "comment" field provided in JSON. Users will mention you with "@UbiquityOS", followed by their request. Infer the intended command and parameters based on the "comment" content.
 
-- **Action**: Map the user's intent to one of your available functions. If no matching function is found, respond that no appropriate command was identified.`,
+- **Action**: Map the user's intent to one of your available functions. When responding, use the "author", "repositoryOwner", "repositoryName", and "issueNumber" fields as context if relevant. If no matching function is found, respond that no appropriate command was identified.
+`,
             type: "text",
           },
         ],
@@ -124,7 +141,13 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         role: "user",
         content: [
           {
-            text: context.payload.comment.body,
+            text: JSON.stringify({
+              repositoryOwner: context.payload.repository.owner.login,
+              repositoryName: context.payload.repository.name,
+              issueNumber: context.payload.issue.number,
+              author: context.payload.comment.user?.login,
+              comment: context.payload.comment.body,
+            }),
             type: "text",
           },
         ],
