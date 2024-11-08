@@ -22,6 +22,6 @@ export type CallbackFunction<TEvent extends SupportedEventsU, TConfig = Record<s
  * ```
  */
 
-export type ProxyCallbacks = {
+export type PluginCallbacks = {
   [K in SupportedEventsU]: Array<CallbackFunction<K>>;
 };

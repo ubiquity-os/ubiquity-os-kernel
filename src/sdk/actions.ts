@@ -10,6 +10,7 @@ import { customOctokit } from "./octokit";
 import { sanitizeMetadata } from "./util";
 import { verifySignature } from "./signature";
 import { KERNEL_PUBLIC_KEY } from "./constants";
+import { CallbackBuilder, handlePluginCallbacks } from "./plugin-callbacks";
 
 config();
 
@@ -32,7 +33,7 @@ const inputSchema = T.Object({
 });
 
 export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents extends WebhookEventName = WebhookEventName>(
-  handler: (context: Context<TConfig, TEnv, TSupportedEvents>) => Promise<Record<string, unknown> | undefined>,
+  callbackBuilder: CallbackBuilder,
   options?: Options
 ) {
   const pluginOptions = {
@@ -90,7 +91,7 @@ export async function createActionsPlugin<TConfig = unknown, TEnv = unknown, TSu
   };
 
   try {
-    const result = await handler(context);
+    const result = await handlePluginCallbacks(context, callbackBuilder);
     core.setOutput("result", result);
     await returnDataToKernel(pluginGithubToken, inputs.stateId, result);
   } catch (error) {

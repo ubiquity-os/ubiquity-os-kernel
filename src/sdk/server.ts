@@ -12,7 +12,7 @@ import { verifySignature } from "./signature";
 import { env as honoEnv } from "hono/adapter";
 import { postComment } from "./comment";
 import { Type as T } from "@sinclair/typebox";
-import { CallbackBuilder, handleProxyCallbacks, proxyCallbacks } from "./proxy-callbacks";
+import { CallbackBuilder, handlePluginCallbacks } from "./plugin-callbacks";
 import { postWorkerErrorComment } from "./errors";
 
 interface Options {
@@ -106,7 +106,7 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
     };
 
     try {
-      const result = await handleProxyCallbacks(proxyCallbacks(context, callbackBuilder), context);
+      const result = await handlePluginCallbacks(context, callbackBuilder);
       return ctx.json({ stateId: inputs.stateId, output: result });
     } catch (error) {
       console.error(error);
