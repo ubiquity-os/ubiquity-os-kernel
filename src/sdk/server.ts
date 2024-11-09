@@ -9,7 +9,8 @@ import { KERNEL_PUBLIC_KEY } from "./constants";
 import { Context } from "./context";
 import { customOctokit } from "./octokit";
 import { verifySignature } from "./signature";
-import { sanitizeMetadata } from "./util";
+import { env as honoEnv } from "hono/adapter";
+import { postComment } from "./comment";
 import { Type as T } from "@sinclair/typebox";
 
 interface Options {
@@ -63,18 +64,34 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
       throw new HTTPException(400, { message: "Invalid signature" });
     }
 
+    const inputSchemaErrors = [...Value.Errors(inputSchema, body)];
+    if (inputSchemaErrors.length) {
+      console.dir(inputSchemaErrors, { depth: null });
+      throw new HTTPException(400, { message: "Invalid body" });
+    }
     const inputs = Value.Decode(inputSchema, body);
 
     let config: TConfig;
     if (pluginOptions.settingsSchema) {
-      config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
+      try {
+        config = Value.Decode(pluginOptions.settingsSchema, Value.Default(pluginOptions.settingsSchema, inputs.settings));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.settingsSchema, inputs.settings), { depth: null });
+        throw e;
+      }
     } else {
       config = inputs.settings as TConfig;
     }
 
     let env: TEnv;
+    const honoEnvironment = honoEnv(ctx);
     if (pluginOptions.envSchema) {
-      env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, ctx.env));
+      try {
+        env = Value.Decode(pluginOptions.envSchema, Value.Default(pluginOptions.envSchema, honoEnvironment));
+      } catch (e) {
+        console.dir(...Value.Errors(pluginOptions.envSchema, honoEnvironment), { depth: null });
+        throw e;
+      }
     } else {
       env = ctx.env as TEnv;
     }
@@ -113,17 +130,4 @@ export function createPlugin<TConfig = unknown, TEnv = unknown, TSupportedEvents
   });
 
   return app;
-}
-
-async function postComment(context: Context, error: LogReturn) {
-  if ("issue" in context.payload && context.payload.repository?.owner?.login) {
-    await context.octokit.rest.issues.createComment({
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      body: `${error.logMessage.diff}\n<!--\n${sanitizeMetadata(error.metadata)}\n-->`,
-    });
-  } else {
-    context.logger.info("Cannot post comment because issue is not found in the payload");
-  }
 }

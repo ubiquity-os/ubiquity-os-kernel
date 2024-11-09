@@ -166,11 +166,13 @@ describe("SDK worker tests", () => {
       body: `\`\`\`diff
 ! test error
 \`\`\`
-<!--
+
+<!-- Ubiquity - undefined -  - undefined
 {
   "caller": "error"
 }
--->`,
+-->
+`,
     });
   });
   it("Should accept correct request", async () => {

@@ -80,7 +80,7 @@ export const configSchema = T.Object(
     plugins: handlerSchema,
   },
   {
-    additionalProperties: false,
+    additionalProperties: true,
   }
 );
 
