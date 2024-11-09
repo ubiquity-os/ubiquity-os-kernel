@@ -38,6 +38,7 @@ jest.mock("../src/github/types/plugin", () => {
           authToken: this.authToken,
           ref: this.ref,
           signature: "",
+          command: this.command,
         };
       }
     },
