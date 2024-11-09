@@ -40,33 +40,6 @@ const embeddedCommands: Array<OpenAiFunction> = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "allow",
-      strict: false,
-      parameters: {
-        type: "object",
-        required: ["username", "label_types"],
-        properties: {
-          username: {
-            type: "string",
-            description: "the user that will be allowed to change the label",
-          },
-          label_types: {
-            type: "array",
-            items: {
-              enum: ["time", "priority"],
-              type: "string",
-            },
-            description: "array of label types that user will be allowed to change, it can be empty to remove access from all labels",
-          },
-        },
-        additionalProperties: false,
-      },
-      description: "Sets which label types can the user change",
-    },
-  },
 ];
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
