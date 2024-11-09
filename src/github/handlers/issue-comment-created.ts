@@ -116,14 +116,14 @@ The input will include the following fields:
 - repositoryName: The name of the repository where the comment was made.
 - issueNumber: The issue or pull request number where the comment appears.
 - author: The username of the user who posted the comment.
-- comment: The comment text directed at UbiquityOS, including the command and any parameters.
+- comment: The comment text directed at UbiquityOS.
 
 ### Example JSON:
 {
-  "repository_owner": "repoOwnerUsername",
-  "repository_name": "example-repo",
-  "issue_number": 42,
-  "author": "user",
+  "repositoryOwner": "repoOwnerUsername",
+  "repositoryName": "example-repo",
+  "issueNumber": 42,
+  "author": "user1",
   "comment": "@UbiquityOS please allow @user2 to change priority and time labels."
 }
 
@@ -131,7 +131,7 @@ The input will include the following fields:
 - **Interpretation Mode**:
   - **Tagged Natural Language**: Interpret the "comment" field provided in JSON. Users will mention you with "@UbiquityOS", followed by their request. Infer the intended command and parameters based on the "comment" content.
 
-- **Action**: Map the user's intent to one of your available functions. When responding, use the "author", "repositoryOwner", "repositoryName", and "issueNumber" fields as context if relevant. If no matching function is found, respond that no appropriate command was identified.
+- **Action**: Map the user's intent to one of your available functions. When responding, use the "author", "repositoryOwner", "repositoryName", and "issueNumber" fields as context if relevant.
 `,
             type: "text",
           },
@@ -221,7 +221,7 @@ The input will include the following fields:
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
-        ref: plugin.ref,
+        ref: ref,
         inputs: await inputs.getWorkflowInputs(),
       });
     }

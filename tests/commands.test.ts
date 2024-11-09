@@ -18,13 +18,6 @@ config({ path: ".dev.vars" });
 
 const name = "ubiquity-os-kernel";
 
-const dispatchWorkflow = jest.fn();
-jest.mock("../src/github/utils/workflow-dispatch", () => ({
-  //...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
-  getDefaultBranch: async () => "main",
-  dispatchWorkflow: dispatchWorkflow,
-}));
-
 beforeAll(() => {
   server.listen();
 });
@@ -32,6 +25,7 @@ afterEach(() => {
   server.resetHandlers();
   jest.clearAllMocks();
   jest.resetAllMocks();
+  jest.resetModules();
 });
 afterAll(() => {
   server.close();
@@ -192,8 +186,11 @@ describe("Event related tests", () => {
   });
 
   it("Should call appropriate plugin", async () => {
-    const { getDefaultBranch } = await import("../src/github/utils/workflow-dispatch");
-    console.log(await getDefaultBranch(undefined as unknown as GitHubContext, "", ""));
+    const dispatchWorkflow = jest.fn();
+    jest.mock("../src/github/utils/workflow-dispatch", () => ({
+      getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
+      dispatchWorkflow: dispatchWorkflow,
+    }));
 
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
