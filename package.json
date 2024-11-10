@@ -51,7 +51,7 @@
     "@octokit/types": "^13.5.0",
     "@octokit/webhooks": "13.3.0",
     "@octokit/webhooks-types": "7.5.1",
-    "@sinclair/typebox": "^0.33.20",
+    "@sinclair/typebox": "^0.33.21",
     "@ubiquity-os/plugin-sdk": "^1.0.11",
     "dotenv": "16.4.5",
     "openai": "^4.70.2",

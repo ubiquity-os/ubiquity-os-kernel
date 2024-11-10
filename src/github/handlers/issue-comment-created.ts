@@ -1,4 +1,4 @@
-import { Manifest } from "../../types/manifest";
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
