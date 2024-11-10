@@ -37,6 +37,7 @@ const embeddedCommands: Array<OpenAiFunction> = [
       parameters: {
         type: "object",
         properties: {},
+        additionalProperties: false,
       },
     },
   },
@@ -67,6 +68,13 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         type: "function",
         function: {
           ...command,
+          parameters: command.parameters
+            ? {
+                ...command.parameters,
+                required: Object.keys(command.parameters.properties),
+                additionalProperties: false,
+              }
+            : undefined,
           strict: true,
         },
       });
