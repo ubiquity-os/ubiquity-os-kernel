@@ -6,13 +6,6 @@
   "module": "dist/index.mjs",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/index.mjs"
-    }
-  },
   "files": [
     "dist"
   ],
@@ -37,8 +30,7 @@
     "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
-    "setup-kv": "bun --env-file=.dev.vars deploy/setup-kv-namespace.ts",
-    "sdk:build": "tsup"
+    "setup-kv": "bun --env-file=.dev.vars deploy/setup-kv-namespace.ts"
   },
   "keywords": [
     "typescript",
@@ -48,12 +40,9 @@
     "open-source"
   ],
   "dependencies": {
-    "@actions/core": "1.10.1",
-    "@actions/github": "6.0.0",
     "@cfworker/json-schema": "2.0.1",
     "@octokit/auth-app": "7.1.0",
     "@octokit/core": "6.1.2",
-    "@octokit/plugin-paginate-graphql": "^5.2.4",
     "@octokit/plugin-paginate-rest": "11.3.3",
     "@octokit/plugin-rest-endpoint-methods": "13.2.4",
     "@octokit/plugin-retry": "7.1.1",
@@ -62,10 +51,9 @@
     "@octokit/types": "^13.5.0",
     "@octokit/webhooks": "13.3.0",
     "@octokit/webhooks-types": "7.5.1",
-    "@sinclair/typebox": "^0.33.17",
-    "@ubiquity-os/ubiquity-os-logger": "^1.3.2",
+    "@sinclair/typebox": "^0.33.20",
+		"@ubiquity-os/plugin-sdk": "^1.0.10",
     "dotenv": "16.4.5",
-    "hono": "4.4.13",
     "typebox-validators": "0.3.5",
     "yaml": "2.4.5"
   },
@@ -102,9 +90,8 @@
     "toml": "3.0.0",
     "tomlify-j0.4": "3.0.0",
     "ts-node": "^10.9.2",
-    "tsup": "8.1.0",
     "tsx": "4.16.2",
-    "typescript": "5.6.2",
+    "typescript": "5.6.3",
     "typescript-eslint": "7.16.0",
     "wrangler": "3.79.0"
   },
