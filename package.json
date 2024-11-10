@@ -52,7 +52,7 @@
     "@octokit/webhooks": "13.3.0",
     "@octokit/webhooks-types": "7.5.1",
     "@sinclair/typebox": "^0.33.20",
-		"@ubiquity-os/plugin-sdk": "link:@ubiquity-os/plugin-sdk",
+		"@ubiquity-os/plugin-sdk": "^1.0.10",
     "dotenv": "16.4.5",
     "typebox-validators": "0.3.5",
     "yaml": "2.4.5"
