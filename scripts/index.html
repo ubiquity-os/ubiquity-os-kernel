@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register a Github App</title>
+    <style>
+      body,
+      html {
+        height: 100%;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .form-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        flex-direction: column;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="form-container">
+      <p>Click on the button and follow instructions</p>
+      <form action="https://github.com/settings/apps/new" method="post">
+        <input type="hidden" name="manifest" id="manifest" /><br />
+        <input type="submit" value="Register a GitHub App" />
+      </form>
+    </div>
+
+    <script>
+      const input = document.getElementById("manifest");
+      input.value = `{{ MANIFEST }}`;
+    </script>
+  </body>
+</html>
