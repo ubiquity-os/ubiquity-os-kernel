@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.5.4](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.3...v2.5.4) (2024-11-13)
+
+
+### Bug Fixes
+
+* bumped plugin-sdk ([a65c27a](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a65c27a05110e0fd11b76b51a0b64de2e458fd44))
+* bumped wrangler version ([9f647ab](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9f647aba36cfcd15d341c37c332681d618aa5c6a))
+* remove SDK files and update dependencies ([d47c5f2](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d47c5f28c1a0c68ed9ecd0269d143a411b9ac979))
+* update dependencies in package.json ([f09bf82](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f09bf82088e19d853537d71189e4f0bbd0b409c3))
+* update sdk ([80e6bbc](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/80e6bbcc5ff8823b733938180e4fea0a2addf4a2))
+
 ## [2.5.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.2...v2.5.3) (2024-11-06)
 
 
