@@ -1,7 +1,7 @@
 import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../github-context";
-import { Manifest, manifestSchema, manifestValidator } from "../../types/manifest";
+import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { Value } from "@sinclair/typebox/value";
 
@@ -58,13 +58,13 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
 }
 
 function decodeManifest(manifest: unknown) {
-  const defaultManifest = Value.Default(manifestSchema, manifest);
-  const errors = manifestValidator.testReturningErrors(manifest as Readonly<unknown>);
-  if (errors !== null) {
+  const errors = [...Value.Errors(manifestSchema, manifest)];
+  if (errors.length) {
     for (const error of errors) {
-      console.error(error);
+      console.dir(error, { depth: null });
     }
     throw new Error("Manifest is invalid.");
   }
+  const defaultManifest = Value.Default(manifestSchema, manifest);
   return defaultManifest as Manifest;
 }

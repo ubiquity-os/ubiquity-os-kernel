@@ -4,6 +4,7 @@ import { GitHubContext, SimplifiedContext } from "./github-context";
 import { createAppAuth } from "@octokit/auth-app";
 import { KvStore } from "./utils/kv-store";
 import { PluginChainState } from "./types/plugin";
+import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
 export type Options = {
   environment: "production" | "development";
@@ -49,27 +50,8 @@ export class GitHubEventHandler {
     });
   }
 
-  async importRsaPrivateKey(pem: string) {
-    const pemContents = pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").trim();
-    const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
-
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      binaryDer.buffer as ArrayBuffer,
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        hash: "SHA-256",
-      },
-      true,
-      ["sign"]
-    );
-  }
-
   async signPayload(payload: string) {
-    const data = new TextEncoder().encode(payload);
-    const privateKey = await this.importRsaPrivateKey(this._privateKey);
-    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, data);
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+    return signPayload(payload, this._privateKey);
   }
 
   transformEvent(event: EmitterWebhookEvent) {
