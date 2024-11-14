@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.4...v2.5.5) (2024-11-14)
+
+
+### Bug Fixes
+
+* call plugins synchronously ([8f386a0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8f386a0ab0d76a59379477507756daba8a238008))
+
 ## [2.5.4](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.3...v2.5.4) (2024-11-13)
 
 
