@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.6](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.5...v2.5.6) (2024-11-14)
+
+
+### Bug Fixes
+
+* correct manifest decoding logic ([f76696b](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f76696ba635ace0d24e1c709da5bd34ee0251b6f))
+
 ## [2.5.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.4...v2.5.5) (2024-11-14)
 
 
