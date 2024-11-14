@@ -69,56 +69,50 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  await Promise.all(
-    pluginChains.map(async (pluginChain) => {
-      if (await shouldSkipPlugin(context, pluginChain)) {
-        return;
+  for (const pluginChain of pluginChains) {
+    if (await shouldSkipPlugin(context, pluginChain)) {
+      continue;
+    }
+
+    // invoke the first plugin in the chain
+    const { plugin, with: settings } = pluginChain.uses[0];
+    const isGithubPluginObject = isGithubPlugin(plugin);
+    console.log(`Calling handler ${JSON.stringify(plugin)} for event ${event.name}`);
+
+    const stateId = crypto.randomUUID();
+
+    const state = {
+      eventId: context.id,
+      eventName: context.key,
+      eventPayload: event.payload,
+      currentPlugin: 0,
+      pluginChain: pluginChain.uses,
+      outputs: new Array(pluginChain.uses.length),
+      inputs: new Array(pluginChain.uses.length),
+    };
+
+    const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+    const token = await eventHandler.getToken(event.payload.installation.id);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings, token, ref);
+
+    state.inputs[0] = inputs;
+    await eventHandler.pluginChainState.put(stateId, state);
+
+    // We wrap the dispatch so a failing plugin doesn't break the whole execution
+    try {
+      if (!isGithubPluginObject) {
+        await dispatchWorker(plugin, await inputs.getWorkerInputs());
+      } else {
+        await dispatchWorkflow(context, {
+          owner: plugin.owner,
+          repository: plugin.repo,
+          workflowId: plugin.workflowId,
+          ref: plugin.ref,
+          inputs: await inputs.getWorkflowInputs(),
+        });
       }
-      if (!("installation" in event.payload) || event.payload.installation?.id === undefined) {
-        console.log(`No installation found, cannot invoke plugin`, pluginChain);
-        return;
-      }
-
-      // invoke the first plugin in the chain
-      const { plugin, with: settings } = pluginChain.uses[0];
-      const isGithubPluginObject = isGithubPlugin(plugin);
-      console.log(`Calling handler ${JSON.stringify(plugin)} for event ${event.name}`);
-
-      const stateId = crypto.randomUUID();
-
-      const state = {
-        eventId: context.id,
-        eventName: context.key,
-        eventPayload: event.payload,
-        currentPlugin: 0,
-        pluginChain: pluginChain.uses,
-        outputs: new Array(pluginChain.uses.length),
-        inputs: new Array(pluginChain.uses.length),
-      };
-
-      const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
-      const token = await eventHandler.getToken(event.payload.installation.id);
-      const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings, token, ref);
-
-      state.inputs[0] = inputs;
-      await eventHandler.pluginChainState.put(stateId, state);
-
-      // We wrap the dispatch so a failing plugin doesn't break the whole execution
-      try {
-        if (!isGithubPluginObject) {
-          await dispatchWorker(plugin, await inputs.getWorkerInputs());
-        } else {
-          await dispatchWorkflow(context, {
-            owner: plugin.owner,
-            repository: plugin.repo,
-            workflowId: plugin.workflowId,
-            ref: plugin.ref,
-            inputs: await inputs.getWorkflowInputs(),
-          });
-        }
-      } catch (e) {
-        console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
-      }
-    })
-  );
+    } catch (e) {
+      console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
+    }
+  }
 }
