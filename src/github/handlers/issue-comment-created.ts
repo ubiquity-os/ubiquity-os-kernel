@@ -151,7 +151,7 @@ The input will include the following fields:
   }
 
   const toolCalls = response.choices[0].message.tool_calls;
-  if (!toolCalls || toolCalls.length === 0) {
+  if (!toolCalls?.length) {
     const message = response.choices[0].message.content || "I cannot help you with that.";
     await context.octokit.rest.issues.createComment({
       owner: context.payload.repository.owner.login,
