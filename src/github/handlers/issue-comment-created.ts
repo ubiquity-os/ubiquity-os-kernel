@@ -63,11 +63,11 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       plugin: plugin,
       manifest,
     });
-    for (const command of manifest.commands) {
+    for (const [name, command] of Object.entries(manifest.commands)) {
       commands.push({
         type: "function",
         function: {
-          ...command,
+          name: name,
           parameters: command.parameters
             ? {
                 ...command.parameters,
@@ -178,7 +178,7 @@ The input will include the following fields:
     return;
   }
 
-  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.some((c) => c.name === command.name));
+  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {
     console.log(`No plugin found for command '${command.name}'`);
     return;
