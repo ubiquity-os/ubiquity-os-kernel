@@ -41,18 +41,16 @@ describe("Push related tests", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin",
-          commands: [
-            {
-              name: "foo",
+          commands: {
+            foo: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            {
-              name: "bar",
+            bar: {
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          ],
+          },
         })
       )
     );
@@ -96,13 +94,12 @@ describe("Push related tests", () => {
                     content: btoa(
                       JSON.stringify({
                         name: "plugin",
-                        commands: [
-                          {
-                            name: "action",
+                        commands: {
+                          action: {
                             description: "action",
                             "ubiquity:example": "/action",
                           },
-                        ],
+                        },
                         configuration: {
                           default: {},
                           type: "object",

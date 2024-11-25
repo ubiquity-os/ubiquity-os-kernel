@@ -66,18 +66,16 @@ describe("handleEvent", () => {
         HttpResponse.json({
           name: "plugin",
           "ubiquity:listeners": ["issue_comment.created"],
-          commands: [
-            {
-              name: "foo",
+          commands: {
+            foo: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            {
-              name: "bar",
+            bar: {
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          ],
+          },
         })
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {

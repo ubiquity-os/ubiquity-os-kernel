@@ -44,18 +44,16 @@ describe("Worker tests", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin",
-          commands: [
-            {
-              name: "foo",
+          commands: {
+            foo: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            {
-              name: "bar",
+            bar: {
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          ],
+          },
         })
       )
     );
@@ -160,13 +158,12 @@ describe("Worker tests", () => {
           data = `
           {
             "name": "plugin",
-            "commands": [
-              {
-                "name": "command",
+            "commands": {
+              "command": {
                 "description": "description",
                 "ubiquity:example": "/command"
               }
-            ]
+            }
           }
           `;
         } else if (args.repo !== ".ubiquity-os") {

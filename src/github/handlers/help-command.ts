@@ -7,8 +7,8 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
   const commands: string[] = [];
   const manifest = await getManifest(context, plugin);
   if (manifest?.commands) {
-    for (const command of manifest.commands) {
-      commands.push(`| \`/${getContent(command.name)}\` | ${getContent(command.description)} | \`${getContent(command["ubiquity:example"])}\` |`);
+    for (const [name, command] of Object.entries(manifest.commands)) {
+      commands.push(`| \`/${getContent(name)}\` | ${getContent(command.description)} | \`${getContent(command["ubiquity:example"])}\` |`);
     }
   }
   return commands;

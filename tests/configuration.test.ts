@@ -40,13 +40,12 @@ describe("Configuration tests", () => {
         data = `
           {
             "name": "plugin",
-            "commands": [
-              {
-                "name": "command",
+            "commands": {
+              "command": {
                 "description": "description",
                 "ubiquity:example": "/command"
               }
-            ],
+            },
             "skipBotEvents": false
           }
           `;
@@ -114,13 +113,12 @@ describe("Configuration tests", () => {
     const content: Record<string, object> = {
       withRef: {
         name: "plugin",
-        commands: [
-          {
-            name: "command",
+        commands: {
+          command: {
             description: "description",
             "ubiquity:example": "example",
           },
-        ],
+        },
         configuration: {},
         description: "",
         "ubiquity:listeners": [],
@@ -128,13 +126,12 @@ describe("Configuration tests", () => {
       },
       withoutRef: {
         name: "plugin-no-ref",
-        commands: [
-          {
-            name: "command",
+        commands: {
+          command: {
             description: "description",
             "ubiquity:example": "example",
           },
-        ],
+        },
         configuration: {},
         description: "",
         "ubiquity:listeners": [],
@@ -184,13 +181,12 @@ describe("Configuration tests", () => {
         data = `
           {
             "name": "plugin",
-            "commands": [
-              {
-                "name": "command",
+            "commands": {
+              "command": {
                 "description": "description",
                 "ubiquity:example": "/command"
               }
-            ],
+            },
             "skipBotEvents": false
           }
           `;
@@ -247,13 +243,12 @@ describe("Configuration tests", () => {
         data = `
           {
             "name": "plugin",
-            "commands": [
-              {
-                "name": "command",
+            "commands": {
+              "command": {
                 "description": "description",
                 "ubiquity:example": "/command"
               }
-            ]
+            }
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {

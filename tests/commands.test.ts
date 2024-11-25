@@ -17,6 +17,7 @@ jest.mock("@octokit/auth-app", () => ({}));
 config({ path: ".dev.vars" });
 
 const name = "ubiquity-os-kernel";
+const eventName = "issue_comment.created";
 
 beforeAll(() => {
   server.listen();
@@ -58,9 +59,8 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
         content: btoa(
           JSON.stringify({
             name: "plugin-B",
-            commands: [
-              {
-                name: "hello",
+            commands: {
+              hello: {
                 description: "This command says hello to the username provided in the parameters.",
                 "ubiquity:example": "/hello @pavlovcik",
                 parameters: {
@@ -73,7 +73,7 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
                   },
                 },
               },
-            ],
+            },
           })
         ),
       },
@@ -100,18 +100,16 @@ describe("Event related tests", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin-A",
-          commands: [
-            {
-              name: "foo",
+          commands: {
+            foo: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
-            {
-              name: "bar",
+            bar: {
               description: "bar command",
               "ubiquity:example": "/bar foo",
             },
-          ],
+          },
         })
       )
     );
@@ -128,7 +126,7 @@ describe("Event related tests", () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
       id: "",
-      key: "issue_comment.created",
+      key: eventName,
       octokit: {
         rest: {
           issues,
@@ -202,7 +200,7 @@ describe("Event related tests", () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
       id: "",
-      key: "issue_comment.created",
+      key: eventName,
       octokit: {
         rest: {
           issues,
@@ -268,7 +266,7 @@ describe("Event related tests", () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
       id: "",
-      key: "issue_comment.created",
+      key: eventName,
       octokit: {
         rest: {
           issues,
@@ -350,7 +348,7 @@ describe("Event related tests", () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
       id: "",
-      key: "issue_comment.created",
+      key: eventName,
       octokit: {
         rest: {
           issues,
