@@ -43,9 +43,10 @@ describe("Configuration tests", () => {
             "commands": {
               "command": {
                 "description": "description",
-                "ubiquity:example": "example"
+                "ubiquity:example": "/command"
               }
-            }
+            },
+            "skipBotEvents": false
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {
@@ -54,8 +55,7 @@ describe("Configuration tests", () => {
           - uses:
             - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
               with:
-                settings1: 'enabled'
-            skipBotEvents: false`;
+                settings1: 'enabled'`;
       } else {
         throw new Error("Not Found");
       }
@@ -97,12 +97,12 @@ describe("Configuration tests", () => {
             ref: "fork/pull/1",
           },
           runsOn: [],
+          skipBotEvents: false,
           with: {
             settings1: "enabled",
           },
         },
       ],
-      skipBotEvents: false,
     });
   });
   it("Should retrieve the configuration manifest from the proper branch if specified", async () => {
@@ -122,6 +122,7 @@ describe("Configuration tests", () => {
         configuration: {},
         description: "",
         "ubiquity:listeners": [],
+        skipBotEvents: true,
       },
       withoutRef: {
         name: "plugin-no-ref",
@@ -134,6 +135,7 @@ describe("Configuration tests", () => {
         configuration: {},
         description: "",
         "ubiquity:listeners": [],
+        skipBotEvents: true,
       },
     };
     function getContent({ ref }: Record<string, string>) {
@@ -182,9 +184,10 @@ describe("Configuration tests", () => {
             "commands": {
               "command": {
                 "description": "description",
-                "ubiquity:example": "example"
+                "ubiquity:example": "/command"
               }
-            }
+            },
+            "skipBotEvents": false
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {
@@ -193,8 +196,7 @@ describe("Configuration tests", () => {
           - uses:
             - plugin: ubiquity/test-plugin
               with:
-                settings1: 'enabled'
-            skipBotEvents: false`;
+                settings1: 'enabled'`;
       } else {
         throw new Error("Not Found");
       }
@@ -231,7 +233,7 @@ describe("Configuration tests", () => {
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);
-    expect(cfg.plugins[0].skipBotEvents).toEqual(false);
+    expect(cfg.plugins[0].uses[0].skipBotEvents).toEqual(false);
     await expect(shouldSkipPlugin(context, cfg.plugins[0])).resolves.toEqual(false);
   });
   it("should return dev config if environment is not production", async () => {
@@ -244,7 +246,7 @@ describe("Configuration tests", () => {
             "commands": {
               "command": {
                 "description": "description",
-                "ubiquity:example": "example"
+                "ubiquity:example": "/command"
               }
             }
           }

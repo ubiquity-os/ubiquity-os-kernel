@@ -2,3 +2,4 @@ WEBHOOK_PROXY_URL=https://smee.io/new
 APP_WEBHOOK_SECRET=xxxxxx
 APP_ID=123456
 ENVIRONMENT=development | production
+OPENAI_API_KEY=

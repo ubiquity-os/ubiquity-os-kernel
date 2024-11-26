@@ -61,7 +61,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   } else {
     ref = nextPlugin.plugin;
   }
-  const inputs = new PluginInput(context.eventHandler, pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref);
+  const inputs = new PluginInput(context.eventHandler, pluginOutput.state_id, state.eventName, state.eventPayload, settings, token, ref, null);
 
   state.currentPlugin++;
   state.inputs[state.currentPlugin] = inputs;

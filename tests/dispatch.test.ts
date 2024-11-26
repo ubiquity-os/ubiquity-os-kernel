@@ -38,6 +38,7 @@ jest.mock("../src/github/types/plugin", () => {
           authToken: this.authToken,
           ref: this.ref,
           signature: "",
+          command: this.command,
         };
       }
     },
@@ -159,6 +160,7 @@ describe("handleEvent", () => {
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
       PLUGIN_CHAIN_STATE: {} as KVNamespace,
+      OPENAI_API_KEY: "token",
     });
 
     expect(res).toBeTruthy();
