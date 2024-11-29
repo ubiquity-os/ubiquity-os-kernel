@@ -154,18 +154,40 @@ describe("handleEvent", () => {
     });
 
     const worker = (await import("../src/worker")).default;
-    const res = await worker.fetch(req, {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: secret,
-      APP_ID: "1",
-      APP_PRIVATE_KEY: "1234",
-      PLUGIN_CHAIN_STATE: {} as KVNamespace,
-      OPENAI_API_KEY: "token",
+    // I didn't find a better option to make sure that the non-awaited ctx.waitUntil is resolved
+    // eslint-disable-next-line no-async-promise-executor
+    const waitUntilPromise = new Promise<void>(async (resolve) => {
+      const res = await worker.fetch(
+        req,
+        {
+          ENVIRONMENT: "production",
+          APP_WEBHOOK_SECRET: secret,
+          APP_ID: "1",
+          APP_PRIVATE_KEY: "1234",
+          PLUGIN_CHAIN_STATE: {} as KVNamespace,
+          OPENAI_API_KEY: "token",
+        },
+        {
+          waitUntil<T>(promise: Promise<T>) {
+            promise
+              .then(() => {
+                resolve();
+              })
+              .catch(() => {
+                resolve();
+              });
+          },
+          passThroughOnException() {},
+        }
+      );
+
+      expect(res).toBeTruthy();
     });
 
-    expect(res).toBeTruthy();
-    // 2 calls means the execution didn't break
+    await waitUntilPromise;
+
     expect(dispatchWorker).toHaveBeenCalledTimes(2);
+
     dispatchWorker.mockReset();
   });
 });
