@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.6.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.6...v2.6.0) (2024-11-30)
+
+
+### Features
+
+* manifest commands object ([67de8cf](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/67de8cf4dc1ff08597ed02fcd3f00a72505ab204))
+
+
+### Bug Fixes
+
+* simplify array check ([0421c30](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/0421c306a0a67ceed8a9a0007b14d93a0649bc14))
+* tests ([1fd1fbc](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1fd1fbc33a5982f4dd35877b5aa8a676e95719aa))
+* **workflow:** update worker-deploy and setup-kv scripts ([1c293d8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1c293d8057bfe13282b7d8a6ec2998b43f6ae995))
+
 ## [2.5.6](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.5...v2.5.6) (2024-11-14)
 
 
