@@ -28,7 +28,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
 }
 
 export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0]) {
-  if (pluginChain.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
+  if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
     console.log("Skipping plugin chain because sender is a bot");
     return true;
   }
@@ -93,7 +93,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings, token, ref);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings, token, ref, null);
 
     state.inputs[0] = inputs;
     await eventHandler.pluginChainState.put(stateId, state);

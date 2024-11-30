@@ -61,13 +61,21 @@ describe("Worker tests", () => {
   it("Should fail on missing env variables", async () => {
     const req = new Request("http://localhost:8080");
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
-    const res = await worker.fetch(req, {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: "",
-      APP_ID: "",
-      APP_PRIVATE_KEY: "",
-      PLUGIN_CHAIN_STATE: {} as KVNamespace,
-    });
+    const res = await worker.fetch(
+      req,
+      {
+        ENVIRONMENT: "production",
+        APP_WEBHOOK_SECRET: "",
+        APP_ID: "",
+        APP_PRIVATE_KEY: "",
+        PLUGIN_CHAIN_STATE: {} as KVNamespace,
+        OPENAI_API_KEY: "token",
+      },
+      {
+        waitUntil: function () {},
+        passThroughOnException: function () {},
+      }
+    );
     expect(res.status).toEqual(500);
     consoleSpy.mockReset();
   });
@@ -144,7 +152,7 @@ describe("Worker tests", () => {
       const pluginChain = cfg.plugins;
       expect(pluginChain.length).toBe(1);
       expect(pluginChain[0].uses.length).toBe(1);
-      expect(pluginChain[0].skipBotEvents).toBeTruthy();
+      expect(pluginChain[0].uses[0].skipBotEvents).toBeTruthy();
       expect(pluginChain[0].uses[0].id).toBe("plugin-A");
       expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
       expect(pluginChain[0].uses[0].with).toEqual({});
@@ -160,7 +168,7 @@ describe("Worker tests", () => {
             "commands": {
               "command": {
                 "description": "description",
-                "ubiquity:example": "example"
+                "ubiquity:example": "/command"
               }
             }
           }
@@ -232,16 +240,15 @@ describe("Worker tests", () => {
               workflowId,
             },
             runsOn: [],
+            skipBotEvents: true,
             with: {
               setting1: false,
             },
           },
         ],
-        skipBotEvents: true,
       });
       expect(cfg.plugins.slice(1)).toEqual([
         {
-          skipBotEvents: true,
           uses: [
             {
               plugin: {
@@ -250,6 +257,7 @@ describe("Worker tests", () => {
                 ref: undefined,
                 workflowId: "compute.yml",
               },
+              skipBotEvents: true,
               runsOn: [],
               with: {
                 setting2: true,

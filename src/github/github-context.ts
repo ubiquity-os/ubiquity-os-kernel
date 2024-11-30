@@ -1,6 +1,7 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
 import { customOctokit } from "./github-client";
 import { GitHubEventHandler } from "./github-event-handler";
+import OpenAI from "openai";
 
 export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;
@@ -11,8 +12,14 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   }[TSupportedEvents]["payload"];
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
+  public openAi: OpenAI;
 
-  constructor(eventHandler: InstanceType<typeof GitHubEventHandler>, event: WebhookEvent<TSupportedEvents>, octokit: InstanceType<typeof customOctokit>) {
+  constructor(
+    eventHandler: InstanceType<typeof GitHubEventHandler>,
+    event: WebhookEvent<TSupportedEvents>,
+    octokit: InstanceType<typeof customOctokit>,
+    openAi: OpenAI
+  ) {
     this.eventHandler = eventHandler;
     this.name = event.name;
     this.id = event.id;
@@ -23,6 +30,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
       this.key = this.name;
     }
     this.octokit = octokit;
+    this.openAi = openAi;
   }
 }
 

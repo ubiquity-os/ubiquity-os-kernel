@@ -5,23 +5,28 @@ import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
 import { WebhookEventName } from "@octokit/webhooks-types";
+import OpenAI from "openai";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       validateEnv(env);
       const eventName = getEventName(request);
       const signatureSha256 = getSignature(request);
       const id = getId(request);
+      const openAiClient = new OpenAI({
+        apiKey: env.OPENAI_API_KEY,
+      });
       const eventHandler = new GitHubEventHandler({
         environment: env.ENVIRONMENT,
         webhookSecret: env.APP_WEBHOOK_SECRET,
         appId: env.APP_ID,
         privateKey: env.APP_PRIVATE_KEY,
         pluginChainState: new EmptyStore(),
+        openAiClient,
       });
       bindHandlers(eventHandler);
-      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
+      ctx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
       return handleUncaughtError(error);
