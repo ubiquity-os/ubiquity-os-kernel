@@ -27,13 +27,13 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      #          bun run jest:test
       - name: 'Resolve Project Dependencies Using Bun'
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           bun install
           bun run build
-#          bun run jest:test
           popd
 
       - name: Upload artifact for deployment job
