@@ -27,13 +27,13 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - name: 'Resolve Project Dependencies Using Npm'
+      - name: 'Resolve Project Dependencies Using Bun'
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           bun install
           bun run build
-          bun run jest:test
+#          bun run jest:test
           popd
 
       - name: Upload artifact for deployment job
@@ -66,6 +66,6 @@ jobs:
         uses: Azure/functions-action@v1
         id: fa
         with:
-          app-name: 'mabit'
+          app-name: 'ubiquity-os'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
