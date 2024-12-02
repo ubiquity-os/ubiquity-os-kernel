@@ -6,7 +6,7 @@ name: Build and deploy Node.js project to Azure Function App - ubiquity-os
 on:
   push:
     branches:
-      - development
+      - feat/azure
   workflow_dispatch:
 
 env:
