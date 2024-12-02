@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.7.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.6.0...v2.7.0) (2024-12-02)
+
+
+### Features
+
+* hono ([fef7870](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fef7870afc5cf751e434f49cd04763ee32645e91))
+
+
+### Bug Fixes
+
+* illegal invocation ([f393668](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f39366866b29863b5d7772c1dd60fae45921dbfb))
+* knip ([5b3dfad](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/5b3dfade96b21065664f35db972d9cdcbb2704ea))
+* **worker:** handle exceptions properly in webhooks ([1792982](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/17929825e807c57ed29eb84f7d59ba327ae06010))
+* **worker:** handle exceptions properly in webhooks ([f146a64](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f146a64bff645023f1630c4aee4e5b7c649fc858))
+
 ## [2.6.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.6...v2.6.0) (2024-11-30)
 
 
