@@ -26,8 +26,9 @@ export default {
         openAiClient,
       });
       bindHandlers(eventHandler);
-      ctx.passThroughOnException();
-      ctx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
+      // ctx.passThroughOnException();
+      // ctx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
+      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
       return handleUncaughtError(error);
