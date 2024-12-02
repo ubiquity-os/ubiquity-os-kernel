@@ -36,8 +36,7 @@ app.post("/", async (ctx: Context) => {
 
     // if running in Cloudflare Worker, handle the webhook in the background and return a response immediately
     if (getRuntimeKey() === "workerd") {
-      const waitUntil = ctx.executionCtx.waitUntil;
-      waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
+      ctx.executionCtx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
     } else {
       await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
     }

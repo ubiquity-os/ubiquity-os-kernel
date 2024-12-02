@@ -27,12 +27,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      #          bun run jest:test
       - name: 'Resolve Project Dependencies Using Bun'
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           bun install --frozen-lockfile
+          bun run jest:test
           bun run build
           bun rimraf node_modules
           bun install --frozen-lockfile --production

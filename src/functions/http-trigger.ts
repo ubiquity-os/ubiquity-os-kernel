@@ -1,6 +1,6 @@
 import { app } from "@azure/functions";
 import { azureHonoHandler } from "@marplex/hono-azurefunc-adapter";
-import honoApp from "../app";
+import { app as honoApp } from "../kernel";
 
 app.http("http-trigger", {
   methods: ["GET", "POST"],
