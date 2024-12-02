@@ -48,7 +48,7 @@ function handleUncaughtError(error: unknown) {
   return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: { "content-type": "application/json" } });
 }
 
-function validateEnv(env: Env): void {
+export function validateEnv(env: Env): void {
   if (!Value.Check(envSchema, env)) {
     const errors = [...Value.Errors(envSchema, env)];
     console.error("Invalid environment variables", errors);
@@ -56,7 +56,7 @@ function validateEnv(env: Env): void {
   }
 }
 
-function getEventName(request: Request): WebhookEventName {
+export function getEventName(request: Request): WebhookEventName {
   const eventName = request.headers.get("x-github-event");
   if (!eventName || !emitterEventNames.includes(eventName as WebhookEventName)) {
     throw new Error(`Unsupported or missing "x-github-event" header value: ${eventName}`);
@@ -64,7 +64,7 @@ function getEventName(request: Request): WebhookEventName {
   return eventName as WebhookEventName;
 }
 
-function getSignature(request: Request): string {
+export function getSignature(request: Request): string {
   const signatureSha256 = request.headers.get("x-hub-signature-256");
   if (!signatureSha256) {
     throw new Error(`Missing "x-hub-signature-256" header`);
@@ -72,7 +72,7 @@ function getSignature(request: Request): string {
   return signatureSha256;
 }
 
-function getId(request: Request): string {
+export function getId(request: Request): string {
   const id = request.headers.get("x-github-delivery");
   if (!id) {
     throw new Error(`Missing "x-github-delivery" header`);
