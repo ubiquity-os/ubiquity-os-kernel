@@ -9,11 +9,10 @@ import { postHelpCommand } from "./help-command";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`@ubiquityos`)) {
-    await commandRouter(context);
-  }
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
+  } else if (body.startsWith(`@ubiquityos`)) {
+    await commandRouter(context);
   }
 }
 
