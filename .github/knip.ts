@@ -1,7 +1,7 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
-  entry: ["src/worker.ts", "deploy/setup-kv-namespace.ts"],
+  entry: ["src/kernel.ts", "src/adapters/cloudflare-worker.ts", "deploy/setup-kv-namespace.ts"],
   project: ["src/**/*.ts"],
   ignore: ["jest.config.ts"],
   ignoreBinaries: ["i", "publish"],
