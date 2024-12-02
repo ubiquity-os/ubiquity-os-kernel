@@ -31,7 +31,8 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     });
     if ("content" in data) {
       const content = Buffer.from(data.content, "base64").toString();
-      const manifest = decodeManifest(JSON.parse(content));
+      const contentParsed = JSON.parse(content);
+      const manifest = decodeManifest(contentParsed);
       _manifestCache[manifestKey] = manifest;
       return manifest;
     }
