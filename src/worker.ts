@@ -8,7 +8,7 @@ import { WebhookEventName } from "@octokit/webhooks-types";
 import OpenAI from "openai";
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     try {
       validateEnv(env);
       const eventName = getEventName(request);
@@ -26,7 +26,7 @@ export default {
         openAiClient,
       });
       bindHandlers(eventHandler);
-      ctx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
+      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
       return new Response("ok\n", { status: 200, headers: { "content-type": "text/plain" } });
     } catch (error) {
       return handleUncaughtError(error);

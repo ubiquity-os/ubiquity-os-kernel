@@ -1,15 +1,10 @@
-import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { app } from "@azure/functions";
+import { azureHonoHandler } from "@marplex/hono-azurefunc-adapter";
+import honoApp from "../app";
 
-export async function httpTrigger(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  context.log(`Http function processed request for url "${request.url}"`);
-
-  const name = request.query.get("name") || (await request.text()) || "world";
-
-  return { body: `Hello, ${name}!` };
-}
-
-app.http("httpTrigger1", {
+app.http("http-trigger", {
   methods: ["GET", "POST"],
   authLevel: "anonymous",
-  handler: httpTrigger,
+  route: "{*proxy}",
+  handler: azureHonoHandler(honoApp.fetch),
 });
