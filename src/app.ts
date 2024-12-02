@@ -7,6 +7,8 @@ import OpenAI from "openai";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { EmptyStore } from "./github/utils/kv-store";
 import { bindHandlers } from "./github/handlers";
+import p from "../package.json";
+
 const app = new Hono();
 
 function validateEnv(env: Env): void {
@@ -55,7 +57,11 @@ function handleUncaughtError(error: unknown) {
   return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: { "content-type": "application/json" } });
 }
 
-app.get("/", async (c) => {
+app.get("/", (c) => {
+  return c.text(`Welcome to UbiquityOS Kernel version ${p.version}`);
+});
+
+app.post("/", async (c) => {
   try {
     const env = c.env as Env;
     const request = c.req;
