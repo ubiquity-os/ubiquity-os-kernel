@@ -56,6 +56,7 @@
     "@sinclair/typebox": "0.34.3",
     "@ubiquity-os/plugin-sdk": "^1.1.0",
     "dotenv": "16.4.5",
+    "hono": "^4.6.12",
     "openai": "^4.70.2",
     "typebox-validators": "0.3.5",
     "yaml": "2.4.5"
