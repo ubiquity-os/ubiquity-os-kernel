@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          bun install
+          bun install --frozen-lockfile
           bun run build
           popd
 
@@ -69,3 +69,4 @@ jobs:
           app-name: 'ubiquity-os'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
