@@ -1,13 +1,14 @@
-import { Hono, HonoRequest } from "hono";
-import { Env, envSchema } from "./github/types/env";
-import { Value } from "@sinclair/typebox/value";
-import { WebhookEventName } from "@octokit/webhooks-types";
 import { emitterEventNames } from "@octokit/webhooks";
+import { WebhookEventName } from "@octokit/webhooks-types";
+import { Value } from "@sinclair/typebox/value";
+import { Hono, HonoRequest } from "hono";
+import { env as honoEnv } from "hono/adapter";
 import OpenAI from "openai";
-import { GitHubEventHandler } from "./github/github-event-handler";
-import { EmptyStore } from "./github/utils/kv-store";
-import { bindHandlers } from "./github/handlers";
 import p from "../package.json";
+import { GitHubEventHandler } from "./github/github-event-handler";
+import { bindHandlers } from "./github/handlers";
+import { Env, envSchema } from "./github/types/env";
+import { EmptyStore } from "./github/utils/kv-store";
 
 const app = new Hono();
 
@@ -61,10 +62,10 @@ app.get("/", (c) => {
   return c.text(`Welcome to UbiquityOS Kernel version ${p.version}`);
 });
 
-app.post("/", async (c) => {
+app.post("/", async (context) => {
   try {
-    const env = c.env as Env;
-    const request = c.req;
+    const env: Env = honoEnv(context);
+    const request = context.req;
     validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
@@ -91,7 +92,7 @@ app.post("/", async (c) => {
     return handleUncaughtError(error);
   }
 
-  return c.text("OK");
+  return context.text("OK");
 });
 
 export default app;
