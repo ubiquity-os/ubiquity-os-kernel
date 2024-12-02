@@ -4,7 +4,7 @@
   "private": false,
   "description": "The kernel for UbiquityOS.",
   "module": "dist/index.mjs",
-  "main": "dist/index.js",
+  "main": "dist/src/functions/*.js",
   "typings": "dist/index.d.ts",
   "files": [
     "dist"
@@ -32,7 +32,10 @@
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
     "setup-kv": "bun --env-file=.dev.vars scripts/setup-kv-namespace.ts",
-    "setup": "tsx ./scripts/setup.ts"
+    "setup": "tsx ./scripts/setup.ts",
+    "start": "func start",
+    "prestart": "bun run build",
+    "build": "tsc"
   },
   "keywords": [
     "typescript",
@@ -42,6 +45,7 @@
     "open-source"
   ],
   "dependencies": {
+    "@azure/functions": "^4.6.0",
     "@cfworker/json-schema": "2.0.1",
     "@octokit/auth-app": "7.1.0",
     "@octokit/core": "6.1.2",
