@@ -9,8 +9,13 @@ import OpenAI from "openai";
 import { Context, Hono, HonoRequest } from "hono";
 import { env as honoEnv, getRuntimeKey } from "hono/adapter";
 import { StatusCode } from "hono/utils/http-status";
+import packageJson from "../package.json";
 
 export const app = new Hono();
+
+app.get("/", (c) => {
+  return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
+});
 
 app.post("/", async (ctx: Context) => {
   try {
