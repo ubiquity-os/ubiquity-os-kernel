@@ -101,81 +101,71 @@ describe("handleEvent", () => {
       })
     );
   });
-  //
-  // it("should not stop the plugin chain if dispatch throws an error", async () => {
-  //   jest.mock("../src/github/github-client", () => {
-  //     return {
-  //       customOctokit: jest.fn().mockReturnValue(new Octokit()),
-  //     };
-  //   });
-  //   const dispatchWorker = jest
-  //     .fn()
-  //     .mockImplementationOnce(() => {
-  //       throw new Error("Test induced first call failure");
-  //     })
-  //     .mockImplementationOnce(() => Promise.resolve("success"));
-  //   jest.mock("../src/github/utils/workflow-dispatch", () => ({
-  //     ...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
-  //     dispatchWorker: dispatchWorker,
-  //   }));
-  //   const payload = {
-  //     installation: {
-  //       id: 1,
-  //     },
-  //     sender: {
-  //       type: "User",
-  //     },
-  //     comment: {
-  //       body: "/foo",
-  //     },
-  //     repository: {
-  //       id: 123456,
-  //       name: ".ubiquity-os",
-  //       full_name: "test-user/.ubiquity-os",
-  //       owner: {
-  //         login: "test-user",
-  //         id: 654321,
-  //       },
-  //     },
-  //   };
-  //   const secret = "1234";
-  //   const payloadString = JSON.stringify(payload);
-  //   const signature = calculateSignature(payloadString, secret);
-  //
-  //   const req = new Request("http://localhost:8080", {
-  //     method: "POST",
-  //     headers: {
-  //       "x-github-event": "issue_comment.created",
-  //       "x-hub-signature-256": signature,
-  //       "x-github-delivery": "mocked_delivery_id",
-  //       "content-type": "application/json",
-  //     },
-  //     body: payloadString,
-  //   });
-  //
-  //   const worker = (await import("../src/worker")).default;
-  //   // I didn't find a better option to make sure that the non-awaited ctx.waitUntil is resolved
-  //   // eslint-disable-next-line no-async-promise-executor
-  //   const waitUntilPromise = new Promise<void>(async (resolve) => {
-  //     const res = await worker.fetch(
-  //       req,
-  //       {
-  //         ENVIRONMENT: "production",
-  //         APP_WEBHOOK_SECRET: secret,
-  //         APP_ID: "1",
-  //         APP_PRIVATE_KEY: "1234",
-  //         PLUGIN_CHAIN_STATE: {} as KVNamespace,
-  //         OPENAI_API_KEY: "token",
-  //       }
-  //     );
-  //
-  //     expect(res).toBeTruthy();
-  //   });
-  //
-  //   await waitUntilPromise;
-  //
-  //   expect(dispatchWorker).toHaveBeenCalledTimes(2);
-  //
-  //   dispatchWorker.mockReset();
-  // });
+
+  it("should not stop the plugin chain if dispatch throws an error", async () => {
+    jest.mock("../src/github/github-client", () => {
+      return {
+        customOctokit: jest.fn().mockReturnValue(new Octokit()),
+      };
+    });
+    const dispatchWorker = jest
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("Test induced first call failure");
+      })
+      .mockImplementationOnce(() => Promise.resolve("success"));
+    jest.mock("../src/github/utils/workflow-dispatch", () => ({
+      ...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
+      dispatchWorker: dispatchWorker,
+    }));
+    const payload = {
+      installation: {
+        id: 1,
+      },
+      sender: {
+        type: "User",
+      },
+      comment: {
+        body: "/foo",
+      },
+      repository: {
+        id: 123456,
+        name: ".ubiquity-os",
+        full_name: "test-user/.ubiquity-os",
+        owner: {
+          login: "test-user",
+          id: 654321,
+        },
+      },
+    };
+    const secret = "1234";
+    const payloadString = JSON.stringify(payload);
+    const signature = calculateSignature(payloadString, secret);
+
+    process.env = {
+      ENVIRONMENT: "production",
+      APP_WEBHOOK_SECRET: secret,
+      APP_ID: "1",
+      APP_PRIVATE_KEY: "1234",
+      OPENAI_API_KEY: "token",
+    };
+
+    const app = (await import("../src/kernel")).app;
+    const res = await app.request("http://localhost:8080", {
+      method: "POST",
+      headers: {
+        "x-github-event": "issue_comment.created",
+        "x-hub-signature-256": signature,
+        "x-github-delivery": "mocked_delivery_id",
+        "content-type": "application/json",
+      },
+      body: payloadString,
+    });
+
+    expect(res).toBeTruthy();
+    // 2 calls means the execution didn't break
+    expect(dispatchWorker).toHaveBeenCalledTimes(2);
+
+    dispatchWorker.mockReset();
+  });
 });
