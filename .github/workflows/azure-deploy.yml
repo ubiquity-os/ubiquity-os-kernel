@@ -38,36 +38,36 @@ jobs:
           bun install --frozen-lockfile --production
           popd
 
-      - name: Generate local.settings.json
-        env:
-          GITHUB_SECRETS: ${{ toJson(secrets) }}
-        shell: pwsh
-        run: |
-          $secretsJson = $env:GITHUB_SECRETS | ConvertFrom-Json
-          $settingsObject = @{
-            IsEncrypted = $false
-            Values = @{}
-          }
-
-          # Exclude specific GitHub-related secrets
-          $excludedPrefixes = @("GITHUB_", "ACTIONS_", "AZUREAPPSERVICE_")
-
-          foreach ($secretName in $secretsJson.PSObject.Properties.Name) {
-              $include = $true
-              foreach ($prefix in $excludedPrefixes) {
-                  if ($secretName -like "$prefix*") {
-                      $include = $false
-                      break
-                  }
-              }
-
-              if ($include) {
-                  $settingsObject.Values[$secretName] = $secretsJson.$secretName
-              }
-          }
-
-          $settingsJson = $settingsObject | ConvertTo-Json -Depth 10
-          Set-Content -Path 'local.settings.json' -Value $settingsJson
+#      - name: Generate local.settings.json
+#        env:
+#          GITHUB_SECRETS: ${{ toJson(secrets) }}
+#        shell: pwsh
+#        run: |
+#          $secretsJson = $env:GITHUB_SECRETS | ConvertFrom-Json
+#          $settingsObject = @{
+#            IsEncrypted = $false
+#            Values = @{}
+#          }
+#
+#          # Exclude specific GitHub-related secrets
+#          $excludedPrefixes = @("GITHUB_", "ACTIONS_", "AZUREAPPSERVICE_")
+#
+#          foreach ($secretName in $secretsJson.PSObject.Properties.Name) {
+#              $include = $true
+#              foreach ($prefix in $excludedPrefixes) {
+#                  if ($secretName -like "$prefix*") {
+#                      $include = $false
+#                      break
+#                  }
+#              }
+#
+#              if ($include) {
+#                  $settingsObject.Values[$secretName] = $secretsJson.$secretName
+#              }
+#          }
+#
+#          $settingsJson = $settingsObject | ConvertTo-Json -Depth 10
+#          Set-Content -Path 'local.settings.json' -Value $settingsJson
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
