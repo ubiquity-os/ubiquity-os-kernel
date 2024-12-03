@@ -4,7 +4,7 @@ dotenv.config({ path: ".dev.vars" });
 
 const smee = new SmeeClient({
   source: process.env.WEBHOOK_PROXY_URL || "https://smee.io/new",
-  target: "http://localhost:8787/events",
+  target: "http://localhost:8787",
   logger: console,
 });
 
