@@ -15,7 +15,7 @@ env:
 
 jobs:
   build:
-    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+#    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
 
     runs-on: windows-latest
     steps:
@@ -107,7 +107,7 @@ jobs:
             func azure functionapp publish ubiquity-os --publish-local-settings -i --overwrite-settings -y --publish-settings-only -o
 
   deploy:
-    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+#    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
 
     runs-on: windows-latest
     needs: build
