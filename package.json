@@ -34,7 +34,7 @@
     "setup-kv": "bun --env-file=.dev.vars scripts/setup-kv-namespace.ts",
     "setup": "tsx ./scripts/setup.ts",
 		"start:azure": "run-p proxy build:watch start",
-    "start": "func start",
+    "start": "func start --port 8787",
     "prestart": "bun run build",
     "build": "tsup",
     "build:watch": "tsup --watch",
