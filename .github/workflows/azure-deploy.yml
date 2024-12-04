@@ -54,6 +54,11 @@ jobs:
       id-token: write
 
     steps:
+      - uses: oven-sh/setup-bun@v2
+
+      - name: install CLI
+        run: bun add azure-functions-core-tools
+
       - name: Generate local.settings.json
         env:
           GITHUB_SECRETS: ${{ toJson(secrets) }}
