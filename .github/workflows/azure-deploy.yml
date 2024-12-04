@@ -15,6 +15,8 @@ env:
 
 jobs:
   build:
+    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+
     runs-on: windows-latest
     steps:
       - name: 'Checkout GitHub Action'
@@ -38,6 +40,20 @@ jobs:
           bun install --frozen-lockfile --production
           popd
 
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-app
+          path: .
+
+  update-environment:
+    runs-on: windows-latest
+    needs: build
+
+    permissions:
+      id-token: write
+
+    steps:
       - name: Generate local.settings.json
         env:
           GITHUB_SECRETS: ${{ toJson(secrets) }}
@@ -69,13 +85,23 @@ jobs:
           $settingsJson = $settingsObject | ConvertTo-Json -Depth 10
           Set-Content -Path 'local.settings.json' -Value $settingsJson
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
+      - uses: azure/login@v2
         with:
-          name: node-app
-          path: .
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
+
+      - name: Azure CLI script to upload environment
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az account show
+            func azure functionapp publish ubiquity-os --publish-local-settings -i --overwrite-settings -y --publish-settings-only -o
 
   deploy:
+    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+
     runs-on: windows-latest
     needs: build
 
