@@ -11,12 +11,10 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  NODE_VERSION: '20.x' # set this to the node version to use (supports 8.x, 10.x, 12.x)
+  NODE_VERSION: '20.x'
 
 jobs:
   build:
-#    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
-
     runs-on: windows-latest
     steps:
       - name: 'Checkout GitHub Action'
@@ -54,11 +52,6 @@ jobs:
       id-token: write
 
     steps:
-      - uses: oven-sh/setup-bun@v2
-
-      - name: install CLI
-        run: bun add azure-functions-core-tools
-
       - name: Generate local.settings.json
         env:
           GITHUB_SECRETS: ${{ toJson(secrets) }}
@@ -95,6 +88,7 @@ jobs:
           done
 
           # Output the final settings to local.settings.json
+          echo "$settings"
           echo "$settings" | jq '.' > local.settings.json
 
       - uses: azure/login@v2
@@ -115,8 +109,6 @@ jobs:
               --settings @local.settings.json
 
   deploy:
-#    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
-
     runs-on: windows-latest
     needs: build
 
