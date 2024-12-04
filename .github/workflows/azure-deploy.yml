@@ -47,7 +47,7 @@ jobs:
           path: .
 
   update-environment:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     needs: build
 
     permissions:
@@ -57,33 +57,40 @@ jobs:
       - name: Generate local.settings.json
         env:
           GITHUB_SECRETS: ${{ toJson(secrets) }}
-        shell: pwsh
+        shell: bash
         run: |
-          $secretsJson = $env:GITHUB_SECRETS | ConvertFrom-Json
-          $settingsObject = @{
-            IsEncrypted = $false
-            Values = @{}
-          }
+          # Parse the JSON secrets
+          secrets=$(echo "$GITHUB_SECRETS" | jq -c '.')
 
-          # Exclude specific GitHub-related secrets
-          $excludedPrefixes = @("GITHUB_", "ACTIONS_", "AZUREAPPSERVICE_")
+          # Create the base settings object
+          settings=$(jq -n '{
+            "IsEncrypted": false,
+            "Values": {}
+          }')
 
-          foreach ($secretName in $secretsJson.PSObject.Properties.Name) {
-              $include = $true
-              foreach ($prefix in $excludedPrefixes) {
-                  if ($secretName -like "$prefix*") {
-                      $include = $false
-                      break
-                  }
-              }
+          # Define excluded prefixes
+          excluded_prefixes=("GITHUB_" "ACTIONS_" "AZUREAPPSERVICE_")
 
-              if ($include) {
-                  $settingsObject.Values[$secretName] = $secretsJson.$secretName
-              }
-          }
+          # Iterate through secrets and add non-excluded ones
+          for secret_name in $(echo "$secrets" | jq -r 'keys[]'); do
+            # Check if the secret should be included
+            include=true
+            for prefix in "${excluded_prefixes[@]}"; do
+              if [[ "$secret_name" == "$prefix"* ]]; then
+                include=false
+                break
+              fi
+            done
 
-          $settingsJson = $settingsObject | ConvertTo-Json -Depth 10
-          Set-Content -Path 'local.settings.json' -Value $settingsJson
+            # Add the secret if it passes the filter
+            if [ "$include" = true ]; then
+              secret_value=$(echo "$secrets" | jq -r ".[\"$secret_name\"]")
+              settings=$(echo "$settings" | jq --arg name "$secret_name" --arg value "$secret_value" '.Values[$name] = $value')
+            fi
+          done
+
+          # Output the final settings to local.settings.json
+          echo "$settings" | jq '.' > local.settings.json
 
       - uses: azure/login@v2
         with:
