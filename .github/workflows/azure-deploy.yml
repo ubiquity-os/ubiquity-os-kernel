@@ -109,7 +109,10 @@ jobs:
           azcliversion: latest
           inlineScript: |
             az account show
-            func azure functionapp publish ubiquity-os --publish-local-settings -i --overwrite-settings -y --publish-settings-only -o
+            az functionapp config appsettings set \
+              --name ubiquity-os \
+              --resource-group ubiquity-os_group \
+              --settings @local.settings.json
 
   deploy:
 #    environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
