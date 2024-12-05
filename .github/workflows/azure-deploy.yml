@@ -88,7 +88,6 @@ jobs:
           done
 
           # Output the final settings to local.settings.json
-          echo "$settings"
           echo "$settings" | jq '.' > local.settings.json
 
       - uses: azure/login@v2
