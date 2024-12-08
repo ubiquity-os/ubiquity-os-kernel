@@ -3,8 +3,7 @@
   "version": "2.1.5",
   "private": false,
   "description": "The kernel for UbiquityOS.",
-  "module": "dist/index.mjs",
-  "main": "dist/index.js",
+  "main": "dist/*.js",
   "typings": "dist/index.d.ts",
   "files": [
     "dist"
@@ -14,6 +13,7 @@
   "engines": {
     "node": ">=20.10.0"
   },
+  "type": "module",
   "scripts": {
     "dev": "run-p worker proxy",
     "predev": "tsx predev.ts",
@@ -32,7 +32,13 @@
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
     "setup-kv": "bun --env-file=.dev.vars scripts/setup-kv-namespace.ts",
-    "setup": "tsx ./scripts/setup.ts"
+    "setup": "tsx ./scripts/setup.ts",
+    "start:azure": "run-p proxy build:watch start",
+    "start": "func start --port 8787",
+    "prestart": "bun run build",
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "prebuild": "rimraf dist"
   },
   "keywords": [
     "typescript",
@@ -42,7 +48,9 @@
     "open-source"
   ],
   "dependencies": {
+    "@azure/functions": "^4.6.0",
     "@cfworker/json-schema": "2.0.1",
+    "@marplex/hono-azurefunc-adapter": "^1.0.1",
     "@octokit/auth-app": "7.1.0",
     "@octokit/core": "6.1.2",
     "@octokit/plugin-paginate-rest": "11.3.3",
@@ -54,7 +62,7 @@
     "@octokit/webhooks": "13.3.0",
     "@octokit/webhooks-types": "7.5.1",
     "@sinclair/typebox": "0.34.3",
-    "@ubiquity-os/plugin-sdk": "^1.1.0",
+    "@ubiquity-os/plugin-sdk": "^1.1.1",
     "dotenv": "16.4.5",
     "hono": "^4.6.12",
     "openai": "^4.70.2",
@@ -78,6 +86,7 @@
     "@types/jest": "29.5.12",
     "@types/node": "20.14.10",
     "@types/node-rsa": "^1.1.4",
+    "azure-functions-core-tools": "^4.0.6610",
     "cspell": "8.9.0",
     "esbuild": "0.23.0",
     "eslint": "9.7.0",
@@ -95,10 +104,12 @@
     "open": "^10.1.0",
     "ora": "^8.1.1",
     "prettier": "3.3.3",
+    "rimraf": "^6.0.1",
     "smee-client": "^2.0.4",
     "toml": "3.0.0",
     "tomlify-j0.4": "3.0.0",
     "ts-node": "^10.9.2",
+    "tsup": "^8.3.5",
     "tsx": "4.16.2",
     "typescript": "5.6.3",
     "typescript-eslint": "7.16.0",
