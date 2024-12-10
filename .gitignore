@@ -120,3 +120,4 @@ junit.xml
 
 *.pem
 test-dashboard.md
+local.settings.json
