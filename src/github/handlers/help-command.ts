@@ -27,7 +27,6 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
     const { plugin } = pluginElement.uses[0];
     commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
-  console.log("commands length", commands.length);
   if (!commands.length) {
     console.warn("No commands found, will not post the help command message.");
   } else {
