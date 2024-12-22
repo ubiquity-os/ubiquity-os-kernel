@@ -8,6 +8,7 @@ import { Value } from "@sinclair/typebox/value";
 const _manifestCache: Record<string, Manifest> = {};
 
 export function getPluginsForEvent(plugins: PluginConfiguration["plugins"], event: EmitterWebhookEventName) {
+  console.log("getPluginsForEvent", plugins, event);
   return plugins.filter((plugin) => {
     return plugin.uses?.[0].runsOn?.includes(event);
   });
