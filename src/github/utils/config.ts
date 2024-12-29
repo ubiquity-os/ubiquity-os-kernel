@@ -61,7 +61,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
   console.log(
-    `Will fetch configuration from ${CONFIG_ORG_REPO}/${payload.repository.owner.login}, ${payload.repository.name}/${payload.repository.owner.login}`
+    `Will fetch configuration from ${payload.repository.owner.login}/${CONFIG_ORG_REPO}, ${payload.repository.owner.login}/${payload.repository.name}`
   );
   const configurations = await Promise.all([
     getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login),
