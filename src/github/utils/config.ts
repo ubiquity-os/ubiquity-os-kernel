@@ -148,8 +148,8 @@ async function download({ context, repository, owner }: { context: GitHubContext
     });
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
-    console.log(JSON.stringify(err));
-    if (err && typeof err === "object" && "code" in err) {
+    // In case of a missing config, do not log is as an error
+    if (err && typeof err === "object" && "status" in err && err.status === 404) {
       console.log("No configuration file was found in the repository.", { repository, owner });
     } else {
       console.error(err);
