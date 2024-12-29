@@ -15,7 +15,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
     try {
       await fn(event);
     } catch (error) {
-      console.error("Error in event handler", error);
+      console.error(`Error in event handler`, error, JSON.stringify(event));
     }
   };
 }
