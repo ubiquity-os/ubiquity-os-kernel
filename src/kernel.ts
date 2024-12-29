@@ -37,6 +37,7 @@ app.post("/", async (ctx: Context) => {
       pluginChainState: new EmptyStore(),
       openAiClient,
     });
+    console.log(`POST event instigated by ${ctx.req.url}`);
     bindHandlers(eventHandler);
 
     // if running in Cloudflare Worker, handle the webhook in the background and return a response immediately

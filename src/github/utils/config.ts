@@ -150,7 +150,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
   } catch (err) {
     // In case of a missing config, do not log is as an error
     if (err && typeof err === "object" && "status" in err && err.status === 404) {
-      console.log("No configuration file was found in the repository.", { repository, owner });
+      console.log(`No configuration file was found in the repository ${owner}/${repository}.`);
     } else {
       console.error(err);
     }

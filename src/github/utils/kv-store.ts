@@ -45,7 +45,7 @@ export class EmptyStore<T> implements KvStore<T> {
   }
 
   put(id: string, state: T): Promise<void> {
-    console.log(`put KV ${id} ${state}`);
+    console.log(`put KV ${id} ${JSON.stringify(state)}`);
     return Promise.resolve();
   }
 }

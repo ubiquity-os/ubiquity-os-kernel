@@ -29,7 +29,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
 
 export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0]) {
   if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the ender is a bot`);
+    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
     return true;
   }
   const manifest = await getManifest(context, pluginChain.uses[0].plugin);
