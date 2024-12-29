@@ -65,7 +65,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   const pluginChains = getPluginsForEvent(config.plugins, context.key);
 
   if (pluginChains.length === 0) {
-    console.log(`No handler found for event ${event.name} (${context.key})`, context);
+    console.log(`No handler found for event ${event.name} (${context.key})`);
     return;
   }
 
