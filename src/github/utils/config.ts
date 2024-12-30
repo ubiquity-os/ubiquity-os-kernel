@@ -17,6 +17,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   });
   const { yaml, errors } = parseYaml(rawData);
   const targetRepoConfiguration: PluginConfiguration | null = yaml;
+  console.log(`Will attempt to decode configuration for ${owner}/${repository}`);
   if (targetRepoConfiguration) {
     try {
       const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
@@ -26,12 +27,14 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
           console.error(error);
         }
       }
-      return { config: Value.Decode(configSchema, configSchemaWithDefaults), errors, rawData };
+      const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
+      return { config: decodedConfig, errors, rawData };
     } catch (error) {
       console.error(`Error decoding configuration for ${owner}/${repository}, will ignore.`, error);
       return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
+  console.log(`YAML could not be decoded for ${owner}/${repository}`);
   return { config: null, errors, rawData };
 }
 
