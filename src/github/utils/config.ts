@@ -156,6 +156,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
   }
   const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
+    console.log(`Attempting to fetch configuration for ${owner}/${repository}/${filePath}`);
     const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
