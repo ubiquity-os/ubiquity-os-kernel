@@ -80,7 +80,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(mergedConfiguration);
 
-  console.log(`Found ${mergedConfiguration.plugins.length} configurations for ${payload.repository.owner.login}/${payload.repository.name}`);
+  console.log(`Found ${mergedConfiguration.plugins.length} plugins enabled for ${payload.repository.owner.login}/${payload.repository.name}`);
 
   for (const plugin of mergedConfiguration.plugins) {
     const manifest = await getManifest(context, plugin.uses[0].plugin);
