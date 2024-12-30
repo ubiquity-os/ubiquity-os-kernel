@@ -69,7 +69,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  console.log(`Will call the following chain: ${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join(", ")}`);
+  console.log(`Will call the following chain:\n${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join("\n")}`);
 
   for (const pluginChain of pluginChains) {
     if (await shouldSkipPlugin(context, pluginChain)) {
@@ -102,6 +102,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
+      console.log(`Dispatching event for ${JSON.stringify(plugin)}`);
       if (!isGithubPluginObject) {
         await dispatchWorker(plugin, await inputs.getWorkerInputs());
       } else {
@@ -113,6 +114,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
           inputs: await inputs.getWorkflowInputs(),
         });
       }
+      console.log(`Event dispatched for ${JSON.stringify(plugin)}`);
     } catch (e) {
       console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
     }
