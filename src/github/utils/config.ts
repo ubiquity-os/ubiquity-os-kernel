@@ -68,12 +68,14 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
   ]);
 
+  console.log("Done fetching configurations, will merge them.");
   configurations.forEach((configuration) => {
     if (configuration.config) {
       mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration.config);
     }
   });
 
+  console.log("Will check plugin chains.");
   checkPluginChains(mergedConfiguration);
 
   console.log(`Found ${mergedConfiguration.plugins.length} configurations for ${payload.repository.owner.login}/${payload.repository.name}`);
