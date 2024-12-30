@@ -69,6 +69,8 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
+  console.log(`Will call the following chain: ${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join(", ")}`);
+
   for (const pluginChain of pluginChains) {
     if (await shouldSkipPlugin(context, pluginChain)) {
       continue;
