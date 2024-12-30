@@ -34,7 +34,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
       return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
-  console.log(`YAML could not be decoded for ${owner}/${repository}`);
+  console.error(`YAML could not be decoded for ${owner}/${repository}`);
   return { config: null, errors, rawData };
 }
 
