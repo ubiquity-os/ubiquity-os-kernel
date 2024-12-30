@@ -150,7 +150,10 @@ function checkExpression(value: string, allIds: Set<string>, calledIds: Set<stri
 }
 
 async function download({ context, repository, owner }: { context: GitHubContext; repository: string; owner: string }): Promise<string | null> {
-  if (!repository || !owner) throw new Error("Repo or owner is not defined");
+  if (!repository || !owner) {
+    console.error("Repo or owner is not defined, cannot download the requested file.");
+    return null;
+  }
   const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
     const { data } = await context.octokit.rest.repos.getContent({
@@ -166,7 +169,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     if (err && typeof err === "object" && "status" in err && err.status === 404) {
       console.log(`No configuration file was found at ${owner}/${repository}/${filePath}`);
     } else {
-      console.error(err);
+      console.error("Failed to download the requested file.", err);
     }
     return null;
   }
