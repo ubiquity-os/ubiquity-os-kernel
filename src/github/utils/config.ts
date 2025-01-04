@@ -166,7 +166,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     console.log(`Configuration file found at ${owner}/${repository}/${filePath}`);
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
-    // In case of a missing config, do not log is as an error
+    // In case of a missing config, do not log it as an error
     if (err && typeof err === "object" && "status" in err && err.status === 404) {
       console.log(`No configuration file was found at ${owner}/${repository}/${filePath}`);
     } else {
