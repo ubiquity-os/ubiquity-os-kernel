@@ -1,4 +1,5 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
+import { FILTERED_EVENTS } from "../../types/constants";
 import { GitHubContext } from "../github-context";
 import { GitHubEventHandler } from "../github-event-handler";
 import { getConfig } from "../utils/config";
@@ -49,6 +50,11 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
 
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
   const context = eventHandler.transformEvent(event);
+
+  if (FILTERED_EVENTS.includes(event.name)) {
+    console.log(`Event ${event.name} is in the filtered event list, will be ignored.`);
+    return;
+  }
 
   const config = await getConfig(context);
 
