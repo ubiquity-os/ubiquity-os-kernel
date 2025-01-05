@@ -1,3 +1,3 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 
-export const FILTERED_EVENTS: EmitterWebhookEventName[] = ["workflow_job", "workflow_run"];
+export const FILTERED_EVENTS: EmitterWebhookEventName[] = ["workflow_job", "workflow_run", "workflow_dispatch"];
