@@ -60,6 +60,9 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
+  console.log(
+    `Will fetch configuration from ${payload.repository.owner.login}/${CONFIG_ORG_REPO}, ${payload.repository.owner.login}/${payload.repository.name}`
+  );
   const configurations = await Promise.all([
     getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login),
     getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
@@ -139,16 +142,23 @@ function checkExpression(value: string, allIds: Set<string>, calledIds: Set<stri
 
 async function download({ context, repository, owner }: { context: GitHubContext; repository: string; owner: string }): Promise<string | null> {
   if (!repository || !owner) throw new Error("Repo or owner is not defined");
+  const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
     const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
-      path: context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH,
+      path: filePath,
       mediaType: { format: "raw" },
     });
+    console.log(`Configuration file found at ${owner}/${repository}/${filePath}`);
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
-    console.error(err);
+    // In case of a missing config, do not log is as an error
+    if (err && typeof err === "object" && "status" in err && err.status === 404) {
+      console.log(`No configuration file was found at ${owner}/${repository}/${filePath}`);
+    } else {
+      console.error(err);
+    }
     return null;
   }
 }

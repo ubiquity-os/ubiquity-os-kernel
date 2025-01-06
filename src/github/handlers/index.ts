@@ -15,7 +15,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
     try {
       await fn(event);
     } catch (error) {
-      console.error("Error in event handler", error);
+      console.error(`Error in event handler`, error, JSON.stringify(event));
     }
   };
 }
@@ -29,7 +29,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
 
 export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0]) {
   if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    console.log("Skipping plugin chain because sender is a bot");
+    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
     return true;
   }
   const manifest = await getManifest(context, pluginChain.uses[0].plugin);
@@ -65,7 +65,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   const pluginChains = getPluginsForEvent(config.plugins, context.key);
 
   if (pluginChains.length === 0) {
-    console.log(`No handler found for event ${event.name}`);
+    console.log(`No handler found for event ${event.name} (${context.key})`);
     return;
   }
 
