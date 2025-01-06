@@ -22,6 +22,8 @@ app.post("/", async (ctx: Context) => {
     const env = honoEnv(ctx);
     const request = ctx.req;
 
+    console.log("Headers:", request.header());
+
     validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
@@ -40,11 +42,11 @@ app.post("/", async (ctx: Context) => {
     bindHandlers(eventHandler);
 
     // if running in Cloudflare Worker, handle the webhook in the background and return a response immediately
-    // if (getRuntimeKey() === "workerd") {
-    //   ctx.executionCtx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
-    // } else {
-    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
-    // }
+    if (getRuntimeKey() === "workerd") {
+      ctx.executionCtx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
+    } else {
+      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
+    }
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);
