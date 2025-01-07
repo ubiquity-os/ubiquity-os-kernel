@@ -22,8 +22,6 @@ app.post("/", async (ctx: Context) => {
     const env = honoEnv(ctx);
     const request = ctx.req;
 
-    console.log("Headers:", request.header());
-
     validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);

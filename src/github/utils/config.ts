@@ -162,13 +162,13 @@ async function download({ context, repository, owner }: { context: GitHubContext
   const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
     console.log(`Attempting to fetch configuration for ${owner}/${repository}/${filePath}`);
-    const { data } = await context.octokit.rest.repos.getContent({
+    const { data, headers } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
       path: filePath,
       mediaType: { format: "raw" },
     });
-    console.log(`Configuration file found at ${owner}/${repository}/${filePath}`);
+    console.log(`Configuration file found at ${owner}/${repository}/${filePath}. xRateLimit remaining: ${headers["x-ratelimit-remaining"]}`);
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
     // In case of a missing config, do not log it as an error
