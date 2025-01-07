@@ -15,6 +15,11 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
     repository,
     owner,
   });
+
+  if (!rawData) {
+    return { config: null, errors: null, rawData: null };
+  }
+
   const { yaml, errors } = parseYaml(rawData);
   const targetRepoConfiguration: PluginConfiguration | null = yaml;
   console.log(`Will attempt to decode configuration for ${owner}/${repository}`);
