@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/core";
+import { requestLog } from "@octokit/plugin-request-log";
 import { RequestOptions } from "@octokit/types";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
@@ -46,6 +47,8 @@ function requestLogging(octokit: Octokit) {
   });
 }
 
-export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, requestLogging).defaults((instanceOptions: object) => {
-  return Object.assign({}, defaultOptions, instanceOptions);
-});
+export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, requestLogging, requestLog).defaults(
+  (instanceOptions: object) => {
+    return Object.assign({}, defaultOptions, instanceOptions);
+  }
+);
