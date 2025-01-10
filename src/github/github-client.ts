@@ -25,30 +25,28 @@ const defaultOptions = {
   },
 };
 
-function requestLogging(octokit: Octokit) {
-  octokit.hook.error("request", (error, options) => {
-    if ("status" in error) {
-      const { method, url, body } = octokit.request.endpoint.parse(options);
-      const msg = `GitHub request: ${method} ${url} - ${error.status}`;
+// function requestLogging(octokit: Octokit) {
+//   octokit.hook.error("request", (error, options) => {
+//     if ("status" in error) {
+//       const { method, url, body } = octokit.request.endpoint.parse(options);
+//       const msg = `GitHub request: ${method} ${url} - ${error.status}`;
+//
+//       // @ts-expect-error log.debug is a pino log method and accepts a fields object
+//       octokit.log.debug(body || {}, msg);
+//     }
+//
+//     throw error;
+//   });
+//
+//   octokit.hook.after("request", (result, options) => {
+//     const { method, url, body } = octokit.request.endpoint.parse(options);
+//     const msg = `GitHub request: ${method} ${url} - ${result.status}`;
+//
+//     // @ts-expect-error log.debug is a pino log method and accepts a fields object
+//     octokit.log.debug(body || {}, msg);
+//   });
+// }
 
-      // @ts-expect-error log.debug is a pino log method and accepts a fields object
-      octokit.log.debug(body || {}, msg);
-    }
-
-    throw error;
-  });
-
-  octokit.hook.after("request", (result, options) => {
-    const { method, url, body } = octokit.request.endpoint.parse(options);
-    const msg = `GitHub request: ${method} ${url} - ${result.status}`;
-
-    // @ts-expect-error log.debug is a pino log method and accepts a fields object
-    octokit.log.debug(body || {}, msg);
-  });
-}
-
-export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, requestLogging, requestLog).defaults(
-  (instanceOptions: object) => {
-    return Object.assign({}, defaultOptions, instanceOptions);
-  }
-);
+export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, requestLog).defaults((instanceOptions: object) => {
+  return Object.assign({}, defaultOptions, instanceOptions);
+});
