@@ -1,6 +1,6 @@
 name = "ubiquity-os-kernel"
 main = "src/adapters/cloudflare-worker.ts"
-compatibility_date = "2023-12-06"
+compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # Prefer this syntax due to a bug in Wrangler: https://github.com/cloudflare/workers-sdk/issues/5634
