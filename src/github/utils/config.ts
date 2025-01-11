@@ -17,6 +17,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   });
 
   if (!rawData) {
+    console.error(`No raw data for configuration at ${owner}/${repository}`);
     return { config: null, errors: null, rawData: null };
   }
 
