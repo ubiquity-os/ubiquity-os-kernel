@@ -3,7 +3,7 @@ import { requestLog } from "@octokit/plugin-request-log";
 import { RequestOptions } from "@octokit/types";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
-import { retry } from "@octokit/plugin-retry";
+// import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
 import { createAppAuth } from "@octokit/auth-app";
 
@@ -47,6 +47,6 @@ const defaultOptions = {
 //   });
 // }
 
-export const customOctokit = Octokit.plugin(throttling, retry, paginateRest, restEndpointMethods, requestLog).defaults((instanceOptions: object) => {
+export const customOctokit = Octokit.plugin(throttling, paginateRest, restEndpointMethods, requestLog).defaults((instanceOptions: object) => {
   return Object.assign({}, defaultOptions, instanceOptions);
 });
