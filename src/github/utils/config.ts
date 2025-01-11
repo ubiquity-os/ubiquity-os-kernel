@@ -17,7 +17,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   });
 
   if (!rawData) {
-    console.error(`No raw data for configuration at ${owner}/${repository}`);
+    console.log(`No raw data for configuration at ${owner}/${repository}`);
     return { config: null, errors: null, rawData: null };
   }
 
@@ -186,11 +186,13 @@ export function parseYaml(data: null | string) {
   try {
     if (data) {
       const parsedData = YAML.parse(data);
+      console.log("Parsed YAML data");
       return { yaml: parsedData ?? null, errors: null };
     }
   } catch (error) {
     console.error("Error parsing YAML", error);
     return { errors: [error] as YAMLError[], yaml: null };
   }
+  console.log("Could not parse YAML");
   return { yaml: null, errors: null };
 }
