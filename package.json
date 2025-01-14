@@ -69,7 +69,7 @@
     "hono": "^4.6.12",
     "openai": "^4.70.2",
     "typebox-validators": "0.3.5",
-    "yaml": "2.4.5"
+    "yaml": "^2.7.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20240117.0",
