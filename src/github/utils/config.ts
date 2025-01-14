@@ -16,6 +16,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
     owner,
   });
 
+  console.log(`Downloaded file for ${owner}/${repository}`);
   if (!rawData) {
     console.log(`No raw data for configuration at ${owner}/${repository}`);
     return { config: null, errors: null, rawData: null };
@@ -183,6 +184,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
 }
 
 export function parseYaml(data: null | string) {
+  console.log("Will attempt to parse YAML data:", data);
   try {
     if (data) {
       const parsedData = YAML.parse(data);
