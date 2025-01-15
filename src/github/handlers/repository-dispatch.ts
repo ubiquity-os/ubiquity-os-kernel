@@ -17,7 +17,7 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   try {
     pluginOutput = Value.Decode(pluginOutputSchema, context.payload.client_payload);
   } catch (error) {
-    console.error("Cannot decode plugin output", error);
+    console.error(`Cannot decode plugin output from ${context.payload.repository.full_name}`, error);
     throw error;
   }
   console.log("Plugin output", pluginOutput);

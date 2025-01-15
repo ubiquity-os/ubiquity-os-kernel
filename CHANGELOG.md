@@ -1,6 +1,6 @@
 # Changelog
 
-## [4.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v3.0.0...v4.0.0) (2024-12-21)
+## [5.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v4.0.0...v5.0.0) (2024-12-29)
 
 
 ### ⚠ BREAKING CHANGES
@@ -16,8 +16,10 @@
 * actions sdk ([c4160c6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c4160c6d095a0354f59666c5f8e90cfceaab1a4c))
 * add app id and bot user id ([d292f5a](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d292f5abf93301aaee0d508a0166d891ac36fd18))
 * add environment variable to configuration ([c3dc29d](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c3dc29de2c3cf00c3d5e369f260974181f8ee46c))
+* add hello-world plugin example ([957f0bb](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/957f0bb313c5c5b8f4376fc9b09d4a71b65cbcc5))
 * add signature to action plugins ([a682ce0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a682ce0d64438bc82a60eaba251a4bc0b8094c49))
 * add tests ([2be91f6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/2be91f648bb2c98e73549e5a7ed7fd5c5025098d))
+* add tests for defaults ([b7bd2f9](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/b7bd2f94cf82e42b50411346b8687875f9105177))
 * added branch deployment ([51f1276](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/51f1276aac4a4c382876a83e597d4610bcbbb65b))
 * added manifest to hello-world-plugin.ts ([d93b5c3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d93b5c33ca0913a09a78034c7de7100f232a46c6))
 * added ref on manifest.json retrieval for workers ([bd1f58f](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/bd1f58fac4fc2e591411e3696baab22cb0b247e1))
@@ -46,10 +48,14 @@
 * more context and tests ([e90a93d](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/e90a93d4313703b88becd25c2918c154ae0be1fc))
 * multiple commands can be handled for skip ([7b3e111](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/7b3e11100ce055961309c1faed38f10cf14f82f6))
 * payload is fetched from KV ([de80953](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/de80953852a459d84f34ff6ef9d79b8b57dc3a71))
+* remove configuration package ([091a395](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/091a395b87405fd6160023548754048b9f188d05))
 * sdk ([b42f9b6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/b42f9b6c7fff1a37a840c686311229251dda5154))
 * serve manifest ([34adce1](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/34adce187ac254db3b3cb2dfb52f044c7809c19b))
+* sign function ([aab2c8c](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/aab2c8cbb657ca0a998977641610408242fc3163))
+* signature in payload ([6cfd934](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/6cfd9348c4df56e2e4c483b03f73d8e09697695d))
 * test for skipBotEvents ([128e93e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/128e93efc9a28533834d009d582f62894a2a4927))
 * ubiquity logger ([4053df7](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4053df7252759b74359bf05fdc87fd1d92be0875))
+* update packages ([16a346a](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/16a346ab634c45798cebafe9f2e71101350593b3))
 * use empty store ([af5da64](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/af5da64136811c8a1d5766cf2e851a282f86af63))
 
 
@@ -61,14 +67,17 @@
 * add paginateGraphQL plugin to customOctokit ([a3e1202](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a3e1202beb2fd55f5ff79e33fbc4f538ff145dfb))
 * added MD escape for content ([05c505c](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/05c505ceac36c206b0c25145dc123595940fb9a2))
 * added tests related to help command ([bfa8fe8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/bfa8fe865158478923d8d1624f1cd565ea3ab410))
+* bug with default ([95b1bcb](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/95b1bcbf999353655963708983044783fe50531b))
 * bumped plugin-sdk ([a65c27a](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a65c27a05110e0fd11b76b51a0b64de2e458fd44))
 * bumped wrangler version ([9f647ab](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9f647aba36cfcd15d341c37c332681d618aa5c6a))
 * call plugins synchronously ([8f386a0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8f386a0ab0d76a59379477507756daba8a238008))
 * change file name ([561077e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/561077e5713a202bfff476948d46ac2d3e1556be))
 * ci ([026ed42](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/026ed429e5ea1ca164d46a138042cb26e8f3b259))
 * ci test ([199c646](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/199c646085e13c93ea101581f6de5d157e759f60))
+* cleaner approach via whilefoo ([7bf804c](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/7bf804cd5b5fa64c2c809bcf6ab0b368da25e8af))
 * correct manifest decoding logic ([f76696b](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f76696ba635ace0d24e1c709da5bd34ee0251b6f))
 * correct variable used in error logging ([37ca024](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/37ca024c55cef96fa0624723e8c4f31891873518))
+* cspell ([ddedba0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/ddedba0b073067fc4443dd23815b7cccd7cbc79f))
 * empty store ([9eb1014](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9eb10143182c70873d7ed7c92c7659eaf3fb1ad9))
 * enabled nodejs compat ([bc05c58](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/bc05c5815161dfc78a825ef9367d55c56ce6e30c))
 * enabled nodejs compat ([8b27baa](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8b27baa661b8162de23378ac2e9f684282dfff93))
@@ -78,6 +87,7 @@
 * export Manifest type from SDK ([2b090cd](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/2b090cd26d8be7938ca9f33f8152e05506ce143e))
 * file name ([98fdee7](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/98fdee7f84ec3ec4aa57ebdd990cf2172a694bb5))
 * fixed proxy target url ([7079aba](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/7079abab83b8810c64761373adf4eeda118f5a67))
+* generic typo ([99559ff](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/99559ff7a1e4b228f978e4266b5a6898c5eeeacb))
 * illegal invocation ([f393668](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f39366866b29863b5d7772c1dd60fae45921dbfb))
 * import buffer from node namespace ([bd9c210](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/bd9c21053c4131121150a1fd1277d4e9fc57307e))
 * imports ([01854e7](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/01854e7d3e1a9ad824b6a34d13e7c2e77b276af4))
@@ -88,12 +98,14 @@
 * lockfile updates ([74c4fb3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/74c4fb32997aadbc72b3a85395a713ad68beb013))
 * log if comment can't be created ([ba98cb6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/ba98cb691e168b5d563ac45611cd10cc08216f93))
 * manifest commands are properly checked for skipping ([b4e8fb6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/b4e8fb6642dd3a759583c1998b1a351b4f3f0e56))
+* merge now happens on plugins keys ([f548451](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f548451c184de6b5684a7911eb7c14835beaeaae))
 * packages ([7277580](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/7277580ae867ec22c01e73317d3ec4cffbfce325))
 * pin version ([4cd4ae6](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/4cd4ae6edf7aed0d8ffa13a93459ea0136794156))
 * **push-event:** handle changes to both dev and prod config ([9435e12](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9435e1222d7c5726f67c2e7e77df2c15aef7cd27))
 * regex to match action now accepts higher depth ([668062f](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/668062fcee5d3aab60cc97ac7434f57b4efcbb35))
 * remove broken test ([472e929](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/472e929324319ee7d7282cb8fc960d63445ec737))
 * remove SDK files and update dependencies ([d47c5f2](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d47c5f28c1a0c68ed9ecd0269d143a411b9ac979))
+* remove test ([44d49d7](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/44d49d7474b3f1eaa27d3177e2a74fd4d3ff4c10))
 * remove test command ([fcb4078](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fcb4078241964c05c6b011bc44fa1415feb5c8b3))
 * remove ubiquibot phrasing ([b22d978](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/b22d97842415be571c1b210a61cf5b9dd0aea913))
 * removed GitHub type from the configuration as it is deduced using the plugin element string ([570b68e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/570b68e18639e9c38a90872cfb8cbfbbdf661481))
@@ -114,6 +126,7 @@
 * trimming body to find commands ([fd17b58](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fd17b5814da8ca35812738a7a3bf06ab8bee18dd))
 * tsup ([e0ccba3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/e0ccba36bc84febb11e00146aa2ea1c051e6fe0d))
 * types ([bfe4651](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/bfe46515a257ff6c41b97581d25f4c125046f60f))
+* union too complex solve ([39cd3e8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/39cd3e84b6ffe0b86bd79a65cec5262035294ddc))
 * update comment body to use diff instead of raw log ([1ccbac3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1ccbac3ad3083f0527fc62290d00b0f0470ed86f))
 * update dependencies in package.json ([f09bf82](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f09bf82088e19d853537d71189e4f0bbd0b409c3))
 * update eslint ignores ([758145b](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/758145bf998e66560ae105e0353b8a5ede05f19f))
@@ -135,117 +148,6 @@
 ### Miscellaneous Chores
 
 * renamed kernel toml ([1c42c47](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1c42c47fd1f8916d71b90cd5cbff846e029e16ef))
-
-## [2.6.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.6...v2.6.0) (2024-11-30)
-
-
-### Features
-
-* manifest commands object ([67de8cf](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/67de8cf4dc1ff08597ed02fcd3f00a72505ab204))
-
-
-### Bug Fixes
-
-* simplify array check ([0421c30](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/0421c306a0a67ceed8a9a0007b14d93a0649bc14))
-* tests ([1fd1fbc](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1fd1fbc33a5982f4dd35877b5aa8a676e95719aa))
-* **workflow:** update worker-deploy and setup-kv scripts ([1c293d8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/1c293d8057bfe13282b7d8a6ec2998b43f6ae995))
-
-## [2.5.6](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.5...v2.5.6) (2024-11-14)
-
-
-### Bug Fixes
-
-* correct manifest decoding logic ([f76696b](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f76696ba635ace0d24e1c709da5bd34ee0251b6f))
-
-## [2.5.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.4...v2.5.5) (2024-11-14)
-
-
-### Bug Fixes
-
-* call plugins synchronously ([8f386a0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8f386a0ab0d76a59379477507756daba8a238008))
-
-## [2.5.4](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.3...v2.5.4) (2024-11-13)
-
-
-### Bug Fixes
-
-* bumped plugin-sdk ([a65c27a](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a65c27a05110e0fd11b76b51a0b64de2e458fd44))
-* bumped wrangler version ([9f647ab](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9f647aba36cfcd15d341c37c332681d618aa5c6a))
-* remove SDK files and update dependencies ([d47c5f2](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d47c5f28c1a0c68ed9ecd0269d143a411b9ac979))
-* update dependencies in package.json ([f09bf82](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/f09bf82088e19d853537d71189e4f0bbd0b409c3))
-* update sdk ([80e6bbc](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/80e6bbcc5ff8823b733938180e4fea0a2addf4a2))
-
-## [2.5.3](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.2...v2.5.3) (2024-11-06)
-
-
-### Bug Fixes
-
-* resolve input decoding issue in server.ts ([fe99961](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fe99961d583a5ca683a98905de0b108471c4089a))
-
-## [2.5.2](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.1...v2.5.2) (2024-11-04)
-
-
-### Bug Fixes
-
-* skip posting help comment when no commands found ([a71eb67](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a71eb673678b4eb438dd4c6d78f17a78f40f4503))
-* update public key to match new private key ([6986998](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/69869988257fbf63ebe37c4c033ab75bc7d2d2ab))
-
-## [2.5.1](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.5.0...v2.5.1) (2024-10-28)
-
-
-### Bug Fixes
-
-* lockfile updates ([74c4fb3](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/74c4fb32997aadbc72b3a85395a713ad68beb013))
-
-## [2.5.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.4.0...v2.5.0) (2024-10-28)
-
-
-### Features
-
-* fix signature and add plugin github token ([6941ff8](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/6941ff841db7f9a616f9e92e86f4a0dc120ea46c))
-* make createPlugin sync function ([ff36f56](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/ff36f5665d7661a253f20ef5598d712bbc26ac23))
-* use empty store ([af5da64](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/af5da64136811c8a1d5766cf2e851a282f86af63))
-
-
-### Bug Fixes
-
-* empty store ([9eb1014](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9eb10143182c70873d7ed7c92c7659eaf3fb1ad9))
-
-## [2.4.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.3.0...v2.4.0) (2024-10-21)
-
-
-### Features
-
-* add signature to action plugins ([a682ce0](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a682ce0d64438bc82a60eaba251a4bc0b8094c49))
-
-
-### Bug Fixes
-
-* add error handling to plugin dispatch ([a3acebf](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a3acebff41da8284adaa9669f4ca987969fe506d))
-* update module paths and tsup config for modern output ([c517513](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c5175131d77f8647ecc8550aaa16c0a51d3e8e65))
-* update module paths and tsup config for modern output ([3b1f303](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/3b1f3036a3fdc672f3da357171949ae0508ec157))
-
-## [2.3.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.2.0...v2.3.0) (2024-10-16)
-
-
-### Features
-
-* export additional config constants ([a2ca525](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/a2ca5258e2a233b7bc54d49ee2b58ca25776dbbe))
-
-
-### Bug Fixes
-
-* enhance error log context and config path handling ([9a4bede](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9a4beded34fda1226372bb901b262e3a072c7ee1))
-* **push-event:** handle changes to both dev and prod config ([9435e12](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/9435e1222d7c5726f67c2e7e77df2c15aef7cd27))
-* replace process.env with ctx.env in server.ts ([d376750](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/d376750105fbebe087a5f013c426002a58d8af65))
-* serialize plugin and value in error messages ([7841107](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/78411073714163f0fddde09b3b3a16705705f955))
-
-## [2.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.5...v2.2.0) (2024-10-11)
-
-
-### Features
-
-* add environment variable to configuration ([c3dc29d](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/c3dc29de2c3cf00c3d5e369f260974181f8ee46c))
 
 ## [2.1.5](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v2.1.4...v2.1.5) (2024-10-11)
 

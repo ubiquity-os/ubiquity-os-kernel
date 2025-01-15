@@ -38,7 +38,7 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
       return manifest;
     }
   } catch (e) {
-    console.warn(`Could not find a manifest for Action ${owner}/${repo}: ${e}`);
+    console.error(`Could not find a manifest for Action ${owner}/${repo}: ${e}`);
   }
   return null;
 }
@@ -55,7 +55,7 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
     _manifestCache[url] = manifest;
     return manifest;
   } catch (e) {
-    console.warn(`Could not find a manifest for Worker ${manifestUrl}: ${e}`);
+    console.error(`Could not find a manifest for Worker ${manifestUrl}: ${e}`);
   }
   return null;
 }
