@@ -1,5 +1,6 @@
 import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
-import YAML, { YAMLError } from "yaml";
+import YAML from "js-yaml";
+import { YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
@@ -23,7 +24,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   }
 
   const { yaml, errors } = parseYaml(rawData);
-  const targetRepoConfiguration: PluginConfiguration | null = yaml;
+  const targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
   console.log(`Will attempt to decode configuration for ${owner}/${repository}`);
   if (targetRepoConfiguration) {
     try {
@@ -188,7 +189,7 @@ export function parseYaml(data: null | string) {
   try {
     if (data) {
       console.log("Before parsing", data);
-      const parsedData = YAML.parse(data);
+      const parsedData = YAML.load(data);
       console.log("Parsed YAML data", parsedData);
       return { yaml: parsedData ?? null, errors: null };
     }
