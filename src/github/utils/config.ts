@@ -74,18 +74,17 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   console.log(
     `Will fetch configuration from ${payload.repository.owner.login}/${CONFIG_ORG_REPO}, ${payload.repository.owner.login}/${payload.repository.name}`
   );
-  const configurations = await Promise.all([
-    getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login),
-    getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login),
-  ]);
+  const orgConfig = await getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login);
+  const repoConfig = await getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login);
 
   console.log(`Done fetching configurations for ${payload.repository.owner.login}/${payload.repository.name}, will merge them.`);
 
-  configurations.forEach((configuration) => {
-    if (configuration.config) {
-      mergedConfiguration = mergeConfigurations(mergedConfiguration, configuration.config);
-    }
-  });
+  if (orgConfig.config) {
+    mergedConfiguration = mergeConfigurations(mergedConfiguration, orgConfig.config);
+  }
+  if (repoConfig.config) {
+    mergedConfiguration = mergeConfigurations(mergedConfiguration, repoConfig.config);
+  }
 
   console.log(`Will check plugin chains for ${payload.repository.owner.login}/${payload.repository.name}.`);
 
