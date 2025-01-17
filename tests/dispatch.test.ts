@@ -29,7 +29,7 @@ jest.mock("../src/github/types/plugin", () => {
   return {
     ...originalModule,
     PluginInput: class extends originalModule.PluginInput {
-      async getWorkerInputs() {
+      async getInputs() {
         return {
           stateId: this.stateId,
           eventName: this.eventName,
