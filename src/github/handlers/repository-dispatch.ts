@@ -73,10 +73,10 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
       repository: nextPlugin.plugin.repo,
       ref: nextPlugin.plugin.ref,
       workflowId: nextPlugin.plugin.workflowId,
-      inputs: await inputs.getWorkflowInputs(),
+      inputs: await inputs.getInputs(),
     });
   } else {
-    await dispatchWorker(nextPlugin.plugin, await inputs.getWorkerInputs());
+    await dispatchWorker(nextPlugin.plugin, await inputs.getInputs());
   }
 }
 

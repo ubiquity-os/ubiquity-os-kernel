@@ -104,14 +104,14 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     try {
       console.log(`Dispatching event for ${JSON.stringify(plugin)}`);
       if (!isGithubPluginObject) {
-        await dispatchWorker(plugin, await inputs.getWorkerInputs());
+        await dispatchWorker(plugin, await inputs.getInputs());
       } else {
         await dispatchWorkflow(context, {
           owner: plugin.owner,
           repository: plugin.repo,
           workflowId: plugin.workflowId,
           ref: plugin.ref,
-          inputs: await inputs.getWorkflowInputs(),
+          inputs: await inputs.getInputs(),
         });
       }
       console.log(`Event dispatched for ${JSON.stringify(plugin)}`);
