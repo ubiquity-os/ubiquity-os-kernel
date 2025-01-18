@@ -87,7 +87,6 @@
     "@swc/jest": "0.2.36",
     "@types/console-log-level": "^1.4.5",
     "@types/jest": "29.5.12",
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "20.14.10",
     "@types/node-rsa": "^1.1.4",
     "azure-functions-core-tools": "^4.0.6610",
