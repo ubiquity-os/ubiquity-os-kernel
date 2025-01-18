@@ -54,6 +54,7 @@ describe("Configuration tests", () => {
         plugins:
           - uses:
             - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
+              skipBotEvents: false
               with:
                 settings1: 'enabled'`;
       } else {
@@ -187,7 +188,6 @@ describe("Configuration tests", () => {
                 "ubiquity:example": "/command"
               }
             },
-            "skipBotEvents": false
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {
@@ -195,6 +195,7 @@ describe("Configuration tests", () => {
         plugins:
           - uses:
             - plugin: ubiquity/test-plugin
+              skipBotEvents: false
               with:
                 settings1: 'enabled'`;
       } else {
