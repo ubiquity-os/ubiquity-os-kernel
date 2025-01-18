@@ -186,7 +186,6 @@ export function parseYaml(data: null | string) {
   console.log("Will attempt to parse YAML data:", data);
   try {
     if (data) {
-      console.log("Before parsing", data);
       const parsedData = YAML.parse(data);
       console.log("Parsed YAML data", parsedData);
       return { yaml: parsedData ?? null, errors: null };
