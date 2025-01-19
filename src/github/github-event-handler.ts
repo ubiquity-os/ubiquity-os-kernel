@@ -1,12 +1,13 @@
-import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { createAppAuth } from "@octokit/auth-app";
+import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
+import logger from "console-log-level";
 import OpenAI from "openai";
 
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
-import { KvStore } from "./utils/kv-store";
 import { PluginChainState } from "./types/plugin";
+import { KvStore } from "./utils/kv-store";
 
 export type Options = {
   environment: "production" | "development";
@@ -71,6 +72,10 @@ export class GitHubEventHandler {
 
   getAuthenticatedOctokit(installationId: number) {
     return new customOctokit({
+      request: {
+        fetch: fetch.bind(globalThis),
+      },
+      log: logger({ level: "debug" }),
       auth: {
         appId: this._appId,
         privateKey: this._privateKey,
@@ -81,6 +86,10 @@ export class GitHubEventHandler {
 
   getUnauthenticatedOctokit() {
     return new customOctokit({
+      request: {
+        fetch: fetch.bind(globalThis),
+      },
+      log: logger({ level: "debug" }),
       auth: {
         appId: this._appId,
         privateKey: this._privateKey,
