@@ -93,8 +93,9 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   for (const plugin of mergedConfiguration.plugins) {
     const manifest = await getManifest(context, plugin.uses[0].plugin);
-    if (manifest && !plugin.uses[0].runsOn.length) {
+    if (manifest) {
       plugin.uses[0].runsOn = manifest["ubiquity:listeners"] ?? [];
+      plugin.uses[0].skipBotEvents = manifest.skipBotEvents ?? plugin.uses[0].skipBotEvents;
     }
   }
   return mergedConfiguration;
