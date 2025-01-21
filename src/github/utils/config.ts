@@ -1,5 +1,6 @@
 import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
-import YAML, { YAMLError } from "yaml";
+import { YAMLError } from "yaml";
+import YAML from "js-yaml";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
@@ -186,7 +187,7 @@ export function parseYaml(data: null | string) {
   console.log("Will attempt to parse YAML data:", data);
   try {
     if (data) {
-      const parsedData = YAML.parse(data);
+      const parsedData = YAML.load(data);
       console.log("Parsed YAML data", parsedData);
       return { yaml: parsedData ?? null, errors: null };
     }
