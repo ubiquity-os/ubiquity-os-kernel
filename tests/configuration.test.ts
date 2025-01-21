@@ -188,6 +188,7 @@ describe("Configuration tests", () => {
                 "ubiquity:example": "/command"
               }
             },
+            "skipBotEvents": true
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {
