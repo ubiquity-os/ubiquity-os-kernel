@@ -195,14 +195,14 @@ The input will include the following fields:
 
   try {
     if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, await inputs.getWorkerInputs());
+      await dispatchWorker(plugin, await inputs.getInputs());
     } else {
       await dispatchWorkflow(context, {
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
         ref: ref,
-        inputs: await inputs.getWorkflowInputs(),
+        inputs: await inputs.getInputs(),
       });
     }
   } catch (e) {

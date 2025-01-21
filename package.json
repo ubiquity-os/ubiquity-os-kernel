@@ -67,6 +67,7 @@
     "console-log-level": "^1.4.1",
     "dotenv": "16.4.5",
     "hono": "^4.6.12",
+    "js-yaml": "^4.1.0",
     "openai": "^4.70.2",
     "typebox-validators": "0.3.5",
     "yaml": "^2.7.0"
@@ -87,6 +88,7 @@
     "@swc/jest": "0.2.36",
     "@types/console-log-level": "^1.4.5",
     "@types/jest": "29.5.12",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "20.14.10",
     "@types/node-rsa": "^1.1.4",
     "azure-functions-core-tools": "^4.0.6610",
