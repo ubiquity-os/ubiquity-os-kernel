@@ -97,8 +97,8 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
       if (!plugin.uses[0].runsOn.length) {
         plugin.uses[0].runsOn = manifest["ubiquity:listeners"] ?? [];
       }
-      if (manifest.skipBotEvents !== undefined) {
-        plugin.uses[0].skipBotEvents = manifest.skipBotEvents ?? plugin.uses[0].skipBotEvents;
+      if (plugin.uses[0].skipBotEvents === undefined) {
+        plugin.uses[0].skipBotEvents = manifest.skipBotEvents ?? true;
       }
     }
   }
