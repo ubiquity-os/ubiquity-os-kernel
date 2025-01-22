@@ -94,7 +94,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   for (const plugin of mergedConfiguration.plugins) {
     const manifest = await getManifest(context, plugin.uses[0].plugin);
-    console.log("+++++ Fetch manifest", JSON.stringify(manifest));
+    console.log("+++++ Fetch manifest", JSON.stringify(manifest), plugin.uses[0]);
     if (manifest) {
       if (!plugin.uses[0].runsOn.length) {
         plugin.uses[0].runsOn = manifest["ubiquity:listeners"] ?? [];
