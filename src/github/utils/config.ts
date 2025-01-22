@@ -94,12 +94,14 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   for (const plugin of mergedConfiguration.plugins) {
     const manifest = await getManifest(context, plugin.uses[0].plugin);
+    console.log("+++++ Fetch manifest", JSON.stringify(manifest));
     if (manifest) {
       if (!plugin.uses[0].runsOn.length) {
         plugin.uses[0].runsOn = manifest["ubiquity:listeners"] ?? [];
       }
       if (plugin.uses[0].skipBotEvents === undefined) {
         plugin.uses[0].skipBotEvents = manifest.skipBotEvents ?? true;
+        console.log("Overridden skipBotEvents", plugin.uses[0].skipBotEvents);
       }
     }
   }
