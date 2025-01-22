@@ -60,7 +60,7 @@ const pluginChainSchema = T.Array(
     plugin: githubPluginType(),
     with: T.Record(T.String(), T.Unknown(), { default: {} }),
     runsOn: T.Array(emitterType, { default: [] }),
-    skipBotEvents: T.Boolean({ default: true }),
+    skipBotEvents: T.Optional(T.Boolean({ default: true })),
   }),
   { minItems: 1, default: [] }
 );
