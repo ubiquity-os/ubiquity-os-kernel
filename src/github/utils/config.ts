@@ -188,7 +188,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
 }
 
 export function parseYaml(data: null | string) {
-  console.log("Will attempt to parse YAML data:", data);
+  console.log("Will attempt to parse YAML data...");
   try {
     if (data) {
       const parsedData = YAML.load(data);
