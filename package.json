@@ -63,7 +63,7 @@
     "@octokit/webhooks": "13.3.0",
     "@octokit/webhooks-types": "7.5.1",
     "@sinclair/typebox": "0.34.3",
-    "@ubiquity-os/plugin-sdk": "^1.1.1",
+    "@ubiquity-os/plugin-sdk": "^3.0.0",
     "console-log-level": "^1.4.1",
     "dotenv": "16.4.5",
     "hono": "^4.6.12",
