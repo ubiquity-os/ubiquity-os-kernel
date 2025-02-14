@@ -70,6 +70,7 @@
     "js-yaml": "^4.1.0",
     "openai": "^4.70.2",
     "typebox-validators": "0.3.5",
+    "voyageai": "^0.0.3-1",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

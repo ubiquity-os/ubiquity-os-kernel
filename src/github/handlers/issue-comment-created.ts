@@ -1,11 +1,12 @@
-import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
+import { findSimilarExamples, initializeExamples } from "../utils/examples";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
+import { Manifest } from "../../types/temp";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -42,6 +43,131 @@ const embeddedCommands: Array<OpenAiFunction> = [
   },
 ];
 
+async function buildPrompt(context: GitHubContext<"issue_comment.created">, commands: Array<OpenAiFunction>, manifests: Manifest[], similarExamples: string[]) {
+  // Gather command descriptions and examples
+  const availableCommands = commands.map((cmd) => ({
+    name: cmd.function.name,
+    description: cmd.function.description || "",
+    parameters: cmd.function.parameters,
+  }));
+
+  // Find matching examples and their command info from manifests
+  const detailedExamples = manifests.flatMap((manifest) => {
+    if (!manifest.commands) return [];
+
+    return Object.entries(manifest.commands).flatMap(([commandName, command]) => {
+      // Get all matching examples for this command
+      const allExamples = [];
+
+      // Add ubiquity:example first if it exists
+      if (command["ubiquity:example"]) {
+        allExamples.push({
+          commandInvocation: command["ubiquity:example"],
+          commandName,
+          description: command.description,
+          expectedToolCallResult: {
+            function: commandName,
+            parameters: command.parameters || {},
+          },
+        });
+      }
+
+      // Add any matching examples from the similar examples list
+      const matchingExamples = command.examples?.filter((example) => similarExamples.includes(example.commandInvocation)) ?? [];
+
+      allExamples.push(
+        ...matchingExamples.map((ex) => ({
+          ...ex,
+          commandName,
+          description: command.description,
+        }))
+      );
+
+      return allExamples;
+    });
+  });
+
+  // Format matched examples with their command info
+  const examplesSection = detailedExamples
+    .map((example) => {
+      const descriptionLine = example.description ? `Description: ${example.description}` : "";
+      return `Example: ${example.commandInvocation}
+Command: ${example.commandName}
+${descriptionLine}
+Tool Call:
+{
+  "function": "${example.expectedToolCallResult.function}",
+  "parameters": ${JSON.stringify(example.expectedToolCallResult.parameters, null, 2)}
+}`;
+    })
+    .join("\n\n");
+
+  // Format available commands section
+  const commandsSection = availableCommands
+    .map((cmd) => {
+      const commandDesc = cmd.description ? ` - ${cmd.description}` : "";
+      return `${cmd.name}${commandDesc}
+Parameters: ${JSON.stringify(cmd.parameters || {}, null, 2)}`;
+    })
+    .join("\n\n");
+
+  const systemMessage = `You are UbiquityOS, a GitHub bot that executes commands through function calls.
+
+Available Commands:
+${commandsSection}
+
+Similar Command Examples:
+${examplesSection}
+
+Input Format:
+{
+  "repositoryOwner": "string", // Repository owner's username
+  "repositoryName": "string",  // Repository name
+  "issueNumber": "number",     // Issue or PR number
+  "author": "string",         // Comment author's username
+  "comment": "string"         // The command text
+}
+
+Guidelines:
+1. Users invoke you with "@UbiquityOS" + command text
+2. Extract parameters from natural language
+3. Return tool call matching closest example
+4. Use relevant context from input JSON`;
+
+  const userContent = JSON.stringify(
+    {
+      repositoryOwner: context.payload.repository.owner.login,
+      repositoryName: context.payload.repository.name,
+      issueNumber: context.payload.issue.number,
+      author: context.payload.comment.user?.login,
+      comment: context.payload.comment.body,
+    },
+    null,
+    2
+  );
+
+  return {
+    model: "openai/gpt-4o",
+    messages: [
+      {
+        role: "system" as const,
+        content: systemMessage,
+      },
+      {
+        role: "user" as const,
+        content: userContent,
+      },
+    ],
+    temperature: 1,
+    max_tokens: 2048,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    tools: commands,
+    parallel_tool_calls: false,
+  };
+}
+
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     console.log(`No installation found, cannot invoke command`);
@@ -51,6 +177,13 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const commands = [...embeddedCommands];
   const config = await getConfig(context);
   const pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[] = [];
+
+  // Initialize examples from manifests
+  const manifests = await Promise.all(config.plugins.map(async (plugin) => await getManifest(context, plugin.uses[0].plugin)));
+
+  const validManifests = manifests.filter((manifest): manifest is Manifest => manifest !== null);
+  await initializeExamples(validManifests, context.voyageAiClient);
+
   for (let i = 0; i < config.plugins.length; ++i) {
     const plugin = config.plugins[i].uses[0];
 
@@ -67,6 +200,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         type: "function",
         function: {
           name: name,
+          description: command.description,
           parameters: command.parameters
             ? {
                 ...command.parameters,
@@ -80,70 +214,15 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     }
   }
 
-  const response = await context.openAi.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: [
-          {
-            text: `
-You are a GitHub bot named **UbiquityOS**. Your role is to interpret and execute commands based on user comments provided in structured JSON format.
+  // Get similar examples for the current input
+  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim());
+  console.log(`Commands: ${JSON.stringify(commands)}`);
+  console.log(`Similar examples: ${JSON.stringify(similarExamples)}`);
 
-### JSON Structure:
-The input will include the following fields:
-- repositoryOwner: The username of the repository owner.
-- repositoryName: The name of the repository where the comment was made.
-- issueNumber: The issue or pull request number where the comment appears.
-- author: The username of the user who posted the comment.
-- comment: The comment text directed at UbiquityOS.
+  const promptConfig = await buildPrompt(context, commands, validManifests, similarExamples);
+  console.log("Generated prompt:", JSON.stringify(promptConfig, null, 2));
 
-### Example JSON:
-{
-  "repositoryOwner": "repoOwnerUsername",
-  "repositoryName": "example-repo",
-  "issueNumber": 42,
-  "author": "user1",
-  "comment": "@UbiquityOS please allow @user2 to change priority and time labels."
-}
-
-### Instructions:
-- **Interpretation Mode**:
-  - **Tagged Natural Language**: Interpret the "comment" field provided in JSON. Users will mention you with "@UbiquityOS", followed by their request. Infer the intended command and parameters based on the "comment" content.
-
-- **Action**: Map the user's intent to one of your available functions. When responding, use the "author", "repositoryOwner", "repositoryName", and "issueNumber" fields as context if relevant.
-`,
-            type: "text",
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            text: JSON.stringify({
-              repositoryOwner: context.payload.repository.owner.login,
-              repositoryName: context.payload.repository.name,
-              issueNumber: context.payload.issue.number,
-              author: context.payload.comment.user?.login,
-              comment: context.payload.comment.body,
-            }),
-            type: "text",
-          },
-        ],
-      },
-    ],
-    temperature: 1,
-    max_tokens: 2048,
-    top_p: 1,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    tools: commands,
-    parallel_tool_calls: false,
-    response_format: {
-      type: "text",
-    },
-  });
+  const response = await context.openAi.chat.completions.create(promptConfig);
 
   if (response.choices.length === 0) {
     return;

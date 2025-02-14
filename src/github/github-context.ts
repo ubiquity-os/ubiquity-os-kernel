@@ -2,6 +2,7 @@ import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as Webhook
 import { customOctokit } from "./github-client";
 import { GitHubEventHandler } from "./github-event-handler";
 import OpenAI from "openai";
+import { VoyageAIClient } from "voyageai";
 
 export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;
@@ -13,12 +14,14 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
   public openAi: OpenAI;
+  public voyageAiClient: VoyageAIClient;
 
   constructor(
     eventHandler: InstanceType<typeof GitHubEventHandler>,
     event: WebhookEvent<TSupportedEvents>,
     octokit: InstanceType<typeof customOctokit>,
-    openAi: OpenAI
+    openAi: OpenAI,
+    voyageAiClient: VoyageAIClient
   ) {
     this.eventHandler = eventHandler;
     this.name = event.name;
@@ -31,6 +34,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     }
     this.octokit = octokit;
     this.openAi = openAi;
+    this.voyageAiClient = voyageAiClient;
   }
 }
 

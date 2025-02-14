@@ -1,9 +1,9 @@
 import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../github-context";
-import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { Value } from "@sinclair/typebox/value";
+import { Manifest, manifestSchema } from "../../types/temp";
 
 const _manifestCache: Record<string, Manifest> = {};
 
