@@ -174,7 +174,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
       path: filePath,
       mediaType: { format: "raw" },
     });
-    console.log(`Configuration file found at ${owner}/${repository}/${filePath}. xRateLimit remaining: ${headers?.["x-ratelimit-remaining"]}.`);
+    console.log(`Configuration file found at ${owner}/${repository}/${filePath}. xRateLimit remaining: ${headers?.["x-ratelimit-remaining"]}. Data:`, data);
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
     // In case of a missing config, do not log it as an error
@@ -188,7 +188,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
 }
 
 export function parseYaml(data: null | string) {
-  console.log("Will attempt to parse YAML data...");
+  console.log("Will attempt to parse YAML data:", data);
   try {
     if (data) {
       const parsedData = YAML.load(data);

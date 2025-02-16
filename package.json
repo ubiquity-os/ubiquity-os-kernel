@@ -1,6 +1,6 @@
 {
   "name": "@ubiquity-os/ubiquity-os-kernel",
-  "version": "7.0.0",
+  "version": "2.5.3",
   "private": false,
   "description": "The kernel for UbiquityOS.",
   "main": "dist/*.js",
