@@ -1,13 +1,12 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
-import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 import logger from "console-log-level";
 import OpenAI from "openai";
 
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 import { PluginChainState } from "./types/plugin";
-import { KvStore } from "./utils/kv-store";
+import { signPayload as _signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
 export type Options = {
   environment: "production" | "development";
@@ -48,26 +47,20 @@ export class GitHubEventHandler {
     this.onAny = this.webhooks.onAny;
     this.onError = this.webhooks.onError;
 
-    this.onAny((event) => {
-      console.log(`Event ${event.name} received (id: ${event.id})`);
-    });
-    this.onError((error) => {
-      console.error(error);
-    });
+    this.onAny((event) => console.log(`Event ${event.name} received (id: ${event.id})`));
+    this.onError(console.error);
   }
 
   async signPayload(payload: string) {
-    return signPayload(payload, this._privateKey);
+    return _signPayload(payload, this._privateKey);
   }
 
   transformEvent(event: EmitterWebhookEvent) {
+    let octokit = this.getUnauthenticatedOctokit();
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
-      const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._openAiClient);
-    } else {
-      const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._openAiClient);
+      octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
     }
+    return new GitHubContext(this, event, octokit);
   }
 
   getAuthenticatedOctokit(installationId: number) {
@@ -102,7 +95,7 @@ export class GitHubEventHandler {
       appId: this._appId,
       privateKey: this._privateKey,
     });
-    const token = await auth({ type: "installation", installationId });
-    return token.token;
+    const { token } = await auth({ type: "installation", installationId });
+    return token;
   }
 }
