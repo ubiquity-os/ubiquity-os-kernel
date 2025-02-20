@@ -9,7 +9,7 @@ import { postHelpCommand } from "./help-command";
 import { mapAuthorToBot } from "./map-author-to-bot";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const { body, user } = context.payload.comment
+  const { body, user } = context.payload.comment;
   const text = body.toLowerCase().trim();
 
   if (text.startsWith(`/help`)) {
@@ -74,10 +74,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           name: name,
           parameters: command.parameters
             ? {
-              ...command.parameters,
-              required: Object.keys(command.parameters.properties),
-              additionalProperties: false,
-            }
+                ...command.parameters,
+                required: Object.keys(command.parameters.properties),
+                additionalProperties: false,
+              }
             : undefined,
           strict: true,
         },
@@ -85,13 +85,13 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     }
   }
 
-  return await processCommandRouterLlmCall(context, commands, pluginsWithManifest)
+  return await processCommandRouterLlmCall(context, commands, pluginsWithManifest);
 }
 
 export async function processCommandRouterLlmCall(
   context: GitHubContext<"issue_comment.created">,
   commands: Array<OpenAiFunction>,
-  pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[],
+  pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[]
 ) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     console.log(`No installation found, cannot invoke command`);
@@ -226,5 +226,4 @@ The input will include the following fields:
   } catch (e) {
     console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
   }
-
 }

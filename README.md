@@ -77,6 +77,7 @@ bun dev
      ```
 
 6. **Deploy the Kernel:**
+
    - Execute `bun run deploy-dev` to deploy the kernel.
 
 7. **Setup database (optional)**
