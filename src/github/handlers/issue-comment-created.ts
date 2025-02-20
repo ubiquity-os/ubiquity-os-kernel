@@ -6,13 +6,18 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
+import { mapAuthorToBot } from "./map-author-to-bot";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`/help`)) {
+  const { body, user } = context.payload.comment
+  const text = body.toLowerCase().trim();
+
+  if (text.startsWith(`/help`)) {
     await postHelpCommand(context);
-  } else if (body.startsWith(`@ubiquityos`)) {
+  } else if (text.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
+  } else if (user?.type === "User") {
+    await mapAuthorToBot(context);
   }
 }
 
@@ -69,15 +74,28 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           name: name,
           parameters: command.parameters
             ? {
-                ...command.parameters,
-                required: Object.keys(command.parameters.properties),
-                additionalProperties: false,
-              }
+              ...command.parameters,
+              required: Object.keys(command.parameters.properties),
+              additionalProperties: false,
+            }
             : undefined,
           strict: true,
         },
       });
     }
+  }
+
+  return await processCommandRouterLlmCall(context, commands, pluginsWithManifest)
+}
+
+export async function processCommandRouterLlmCall(
+  context: GitHubContext<"issue_comment.created">,
+  commands: Array<OpenAiFunction>,
+  pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[],
+) {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    console.log(`No installation found, cannot invoke command`);
+    return;
   }
 
   const response = await context.openAi.chat.completions.create({
@@ -208,4 +226,5 @@ The input will include the following fields:
   } catch (e) {
     console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
   }
+
 }
