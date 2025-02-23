@@ -17,6 +17,17 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 }
 
+interface CommandParameterProperty {
+  description?: string;
+  type: string;
+  default?: string;
+}
+
+interface CommandParameters {
+  type: string;
+  properties: Record<string, CommandParameterProperty>;
+}
+
 interface OpenAiFunction {
   type: "function";
   function: {
@@ -203,8 +214,19 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           description: command.description,
           parameters: command.parameters
             ? {
-                ...command.parameters,
-                required: Object.keys(command.parameters.properties),
+                type: "object",
+                properties: Object.fromEntries(
+                  Object.entries((command.parameters as CommandParameters).properties).map(([key, prop]) => [
+                    key,
+                    {
+                      type: (prop as CommandParameterProperty).type,
+                      description: (prop as CommandParameterProperty).description,
+                    },
+                  ])
+                ),
+                required: Object.keys((command.parameters as CommandParameters).properties).filter(
+                  (key) => !(command.parameters as CommandParameters).properties[key].default
+                ),
                 additionalProperties: false,
               }
             : undefined,
@@ -216,11 +238,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   // Get similar examples for the current input
   const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim());
-  console.log(`Commands: ${JSON.stringify(commands)}`);
-  console.log(`Similar examples: ${JSON.stringify(similarExamples)}`);
 
   const promptConfig = await buildPrompt(context, commands, validManifests, similarExamples);
-  console.log("Generated prompt:", JSON.stringify(promptConfig, null, 2));
 
   const response = await context.openAi.chat.completions.create(promptConfig);
 
