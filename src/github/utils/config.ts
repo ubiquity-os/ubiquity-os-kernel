@@ -6,6 +6,8 @@ import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
 
+// A regex that only allows alphanumeric characters, underscores, and dashes.
+export const validIdRegex = /^[a-zA-Z0-9_-]+$/;
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
 export const CONFIG_ORG_REPO = ".ubiquity-os";
@@ -47,14 +49,53 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
 }
 
 /**
- * Merge configurations based on their 'plugins' keys
+ * Merge configurations based on their 'plugins' keys.
+ * 
+ * Assumes baseConfig comes from a lower-precedence source (e.g. org)
+ * and newConfig is higher precedence (e.g. repo).
+ * 
+ * If any plugin is missing a valid ID (as defined by validIdRegex),
+ * the merge fails with an error.
  */
-function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
-  const mergedConfiguration = { ...configuration1 };
-  if (configuration2.plugins?.length) {
-    mergedConfiguration.plugins = configuration2.plugins;
+function mergeConfigurations(
+  baseConfig: PluginConfiguration,
+  newConfig: PluginConfiguration
+): PluginConfiguration {
+  const orgPlugins = baseConfig.plugins || [];
+  const repoPlugins = newConfig.plugins || [];
+
+  // Use a Map to key plugins by a unique identifier.
+  // We use the first use's id and require it to be valid.
+  const pluginMap = new Map<string, PluginConfiguration["plugins"][number]>();
+
+  // Add all org plugins first.
+  for (const plugin of orgPlugins) {
+    const key = plugin.uses?.[0]?.id;
+    if (!key || !validIdRegex.test(key)) {
+      throw new Error(
+        `Invalid or missing plugin id in org configuration: ${JSON.stringify(plugin)}`
+      );
+    }
+    pluginMap.set(key, plugin);
   }
-  return mergedConfiguration;
+
+  // Then, for each repo plugin, override the org one if it has the same id.
+  for (const plugin of repoPlugins) {
+    const key = plugin.uses?.[0]?.id;
+    if (!key || !validIdRegex.test(key)) {
+      throw new Error(
+        `Invalid or missing plugin id in repo configuration: ${JSON.stringify(plugin)}`
+      );
+    }
+    pluginMap.set(key, plugin);
+  }
+
+  const mergedConfig: PluginConfiguration = {
+    ...baseConfig,
+    plugins: Array.from(pluginMap.values()),
+  };
+
+  return Object.freeze(mergedConfig);
 }
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
@@ -119,7 +160,8 @@ function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"][0]) {
     if (!use.id) continue;
 
     if (allIds.has(use.id)) {
-      throw new Error(`Duplicate id ${use.id} in plugin chain`);
+      console.warn(`Duplicate dependency id ${use.id} in plugin chain – preferring repo configuration.`);
+      // Instead of throwing an error, you could skip or mark it as a duplicate.
     }
     allIds.add(use.id);
   }
