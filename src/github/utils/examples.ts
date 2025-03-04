@@ -1,5 +1,5 @@
 import { VoyageAIClient } from "voyageai";
-import { Manifest } from "../../types/temp";
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { EmbedRequestInputType } from "voyageai/api";
 
 interface Example {
@@ -12,7 +12,6 @@ let examples: Example[] = [];
 export async function initializeExamples(manifests: Manifest[], voyageAiClient: VoyageAIClient) {
   const examplesFromManifests = manifests.flatMap((manifest: Manifest) => {
     if (!manifest.commands) return [];
-
     return Object.values(manifest.commands).flatMap((command) => command.examples?.map((example) => example.commandInvocation) ?? []);
   });
 

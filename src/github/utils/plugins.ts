@@ -3,7 +3,7 @@ import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../github-context";
 import { Buffer } from "node:buffer";
 import { Value } from "@sinclair/typebox/value";
-import { Manifest, manifestSchema } from "../../types/temp";
+import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 
 const _manifestCache: Record<string, Manifest> = {};
 

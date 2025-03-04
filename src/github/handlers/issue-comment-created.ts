@@ -6,7 +6,7 @@ import { getManifest } from "../utils/plugins";
 import { findSimilarExamples, initializeExamples } from "../utils/examples";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
-import { Manifest } from "../../types/temp";
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
