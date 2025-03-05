@@ -78,10 +78,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           name: name,
           parameters: command.parameters
             ? {
-              ...command.parameters,
-              required: Object.keys(command.parameters.properties),
-              additionalProperties: false,
-            }
+                ...command.parameters,
+                required: Object.keys(command.parameters.properties),
+                additionalProperties: false,
+              }
             : undefined,
           strict: true,
         },

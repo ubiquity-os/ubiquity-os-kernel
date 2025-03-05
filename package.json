@@ -84,6 +84,7 @@
     "@jest/globals": "29.7.0",
     "@mswjs/data": "0.16.1",
     "@mswjs/http-middleware": "0.10.1",
+    "@octokit/graphql-schema": "^15.26.0",
     "@swc/core": "1.6.5",
     "@swc/jest": "0.2.36",
     "@types/console-log-level": "^1.4.5",

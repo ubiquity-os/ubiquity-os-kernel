@@ -4,6 +4,7 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { processCommand } from "./issue-comment-created";
 import { CommandCall } from "../../types/command";
+import { collectLinkedIssues } from "../utils/collect-linked-pulls";
 
 export async function mapAuthorToBot(context: GitHubContext<"issue_comment.created">, taskAuthor: string) {
   const helpCheck = await requestingHelpCheck(context, taskAuthor);
@@ -24,24 +25,23 @@ export async function mapAuthorToBot(context: GitHubContext<"issue_comment.creat
       })?.uses[0];
 
       if (askPlugin) {
-        const manifest = await getManifest(context, askPlugin.plugin) as Manifest;
+        const manifest = (await getManifest(context, askPlugin.plugin)) as Manifest;
         if (!manifest || !manifest.commands) {
           console.log("No manifest found for ask plugin");
           return;
         }
 
+        const question = `**Do not tag the author** in your response to this question unless you absolutely cannot help the user.\n\n${context.payload.comment.body}`;
         const cmdCall: CommandCall = {
-          name: manifest.name,
+          name: "ask",
           parameters: {
-            ...manifest.commands.ask.parameters,
-            required: Object.keys(manifest.commands.ask.parameters?.properties),
-            additionalProperties: false,
+            question,
           },
         };
 
-        await processCommand(context, { plugin: askPlugin, manifest }, cmdCall)
+        await processCommand(context, { plugin: askPlugin, manifest }, cmdCall);
       } else {
-        console.log("No ask plugin found in config");
+        console.error("No ask plugin found in config");
       }
     }
   } catch (e) {
@@ -95,7 +95,7 @@ async function requestingHelpCheck(context: GitHubContext<"issue_comment.created
     frequency_penalty: 0,
     presence_penalty: 0,
     response_format: {
-      type: "text",
+      type: "json_object",
     },
   });
 
@@ -114,105 +114,29 @@ export async function findTaskAuthor(context: GitHubContext<"issue_comment.creat
     issue_number: context.payload.issue.number,
   });
 
-  const isPr = "pull_request" in issue.data;
-
   // if its a PR we want the author of the task, not the PR author
 
-  if (!isPr) {
+  if (!("pull_request" in issue.data)) {
     if (!issue.data.user) {
       console.log("No task author found for issue", {
         url: issue.data.html_url,
       });
       return;
     }
-    return issue.data.user.login;
+    return issue.data.user?.login;
   }
 
-  const pr = await context.octokit.rest.pulls.get({
-    owner: context.payload.repository.owner.login,
-    repo: context.payload.repository.name,
-    pull_number: context.payload.issue.number,
-  });
-
-  if (!pr.data.body) {
-    console.log("No body found for PR, could not map Author to UbiquityOS", {
-      url: pr.data.html_url,
+  const task = await collectLinkedIssues(context);
+  if (!task) {
+    console.log("No task found for PR", {
+      url: issue.data.html_url,
     });
     return;
   }
 
-  // we need to track the task which this PR is going to close
-  const hashMatch = pr.data.body.match(/#(\d+)/);
-  const urlMatch = pr.data.body.match(/https:\/\/github.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
-
-  if (!hashMatch && !urlMatch) {
-    console.log("No task reference found in PR body, could not map Author to UbiquityOS", {
-      url: pr.data.html_url,
-    });
-    return;
-  }
-
-  let taskNumber;
-  let taskFetchCtx: null | { owner: string; repo: string; issueNumber: number } = null;
-
-  if (hashMatch) {
-    taskNumber = parseInt(hashMatch[1]);
-    if (!taskNumber) {
-      console.log("No task number found in PR body, could not map Author to UbiquityOS", {
-        url: pr.data.html_url,
-      });
-      return;
-    }
-    taskFetchCtx = {
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issueNumber: taskNumber,
-    };
-  } else if (urlMatch) {
-    // this could be cross repo, cross org, etc
-    taskNumber = parseInt(urlMatch[3]);
-    if (!taskNumber) {
-      console.log("No task number found in PR body, could not map Author to UbiquityOS", {
-        url: pr.data.html_url,
-      });
-      return;
-    }
-
-    taskFetchCtx = {
-      owner: urlMatch[1],
-      repo: urlMatch[2],
-      issueNumber: taskNumber,
-    };
-  } else {
-    console.log("No task reference found in PR body, could not map Author to UbiquityOS", {
-      url: pr.data.html_url,
-    });
-    return;
-  }
-
-  const task = await context.octokit.rest.issues.get({
-    owner: taskFetchCtx.owner,
-    repo: taskFetchCtx.repo,
-    issue_number: taskFetchCtx.issueNumber,
-  });
-
-  if (!task.data.user) {
-    console.log("No task author found for issue", {
-      url: task.data.html_url,
-    });
-    return;
-  }
-
-  return task.data.user.login;
+  return task.author.login;
 }
 
-export async function preCheckForMappingAuthorToBot(
-  context: GitHubContext<"issue_comment.created">,
-  taskAuthor: string
-) {
-  if (!context.payload.comment.body.startsWith(`@${taskAuthor}`)) {
-    return false;
-  }
-
-  return true;
+export async function preCheckForMappingAuthorToBot(context: GitHubContext<"issue_comment.created">, taskAuthor: string) {
+  return !context.payload.comment.body.startsWith(`@${taskAuthor}`);
 }
