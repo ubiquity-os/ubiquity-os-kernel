@@ -160,6 +160,17 @@ describe("Event related tests", () => {
           },
         },
       },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
+      },
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -234,6 +245,17 @@ describe("Event related tests", () => {
           },
         },
       },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
+      },
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -291,6 +313,17 @@ describe("Event related tests", () => {
             },
           },
         },
+      },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
       },
       eventHandler: eventHandler,
       payload: {

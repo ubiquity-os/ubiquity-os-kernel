@@ -21,6 +21,7 @@ declare global {
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
       OPENAI_API_KEY: string;
+      VOYAGEAI_API_KEY: string;
     }
   }
 }

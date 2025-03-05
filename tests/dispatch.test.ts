@@ -148,6 +148,7 @@ describe("handleEvent", () => {
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
       OPENAI_API_KEY: "token",
+      VOYAGEAI_API_KEY: "token",
     };
 
     const app = (await import("../src/kernel")).app;

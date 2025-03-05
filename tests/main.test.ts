@@ -66,6 +66,7 @@ describe("Worker tests", () => {
       APP_ID: "",
       APP_PRIVATE_KEY: "",
       OPENAI_API_KEY: "token",
+      VOYAGEAI_API_KEY: "token",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",
