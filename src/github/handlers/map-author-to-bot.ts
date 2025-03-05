@@ -1,54 +1,51 @@
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
-import { processCommandRouterLlmCall } from "./issue-comment-created";
+import { processCommand } from "./issue-comment-created";
+import { CommandCall } from "../../types/command";
 
-export async function mapAuthorToBot(context: GitHubContext<"issue_comment.created">) {
-  const taskAuthor = await findTaskAuthor(context);
-  const helpCheck = taskAuthor ? await requestingHelpCheck(context, taskAuthor) : false;
+export async function mapAuthorToBot(context: GitHubContext<"issue_comment.created">, taskAuthor: string) {
+  const helpCheck = await requestingHelpCheck(context, taskAuthor);
 
-  if (helpCheck && JSON.parse(helpCheck).isRequestingHelp) {
-    const config = await getConfig(context);
+  try {
+    if (helpCheck && JSON.parse(helpCheck).isRequestingHelp) {
+      const config = await getConfig(context);
 
-    // how do we handle this better?
-    const isLocal = process.env.NODE_ENV === "local" || true;
-    const askPlugin = config.plugins.find((plgn) => {
-      const plugin = String(plgn.uses[0].plugin);
-      if (isLocal) {
-        return plugin.includes("localhost") || plugin.includes("ngrok");
-      }
+      // how do we handle this better?
+      const isLocal = process.env.NODE_ENV === "local" || true;
+      const askPlugin = config.plugins.find((plgn) => {
+        const plugin = String(plgn.uses[0].plugin);
+        if (isLocal) {
+          return plugin.includes("localhost") || plugin.includes("ngrok");
+        }
 
-      return !plugin.includes("localhost") && !plugin.includes("ngrok") && plugin.includes("command-ask");
-    })?.uses[0];
-    const toolCalls: Array<{ type: "function"; function: { name: string; parameters?: Record<string, unknown>; strict?: boolean | null } }> = [];
+        return !plugin.includes("localhost") && !plugin.includes("ngrok") && plugin.includes("command-ask");
+      })?.uses[0];
 
-    if (askPlugin) {
-      const manifest = await getManifest(context, askPlugin.plugin);
-      if (!manifest?.commands) {
-        return;
-      }
+      if (askPlugin) {
+        const manifest = await getManifest(context, askPlugin.plugin) as Manifest;
+        if (!manifest || !manifest.commands) {
+          console.log("No manifest found for ask plugin");
+          return;
+        }
 
-      for (const [name, command] of Object.entries(manifest.commands)) {
-        toolCalls.push({
-          type: "function",
-          function: {
-            name: name,
-            parameters: command.parameters
-              ? {
-                  ...command.parameters,
-                  required: Object.keys(command.parameters.properties),
-                  additionalProperties: false,
-                }
-              : undefined,
-            strict: true,
+        const cmdCall: CommandCall = {
+          name: manifest.name,
+          parameters: {
+            ...manifest.commands.ask.parameters,
+            required: Object.keys(manifest.commands.ask.parameters?.properties),
+            additionalProperties: false,
           },
-        });
-      }
+        };
 
-      await processCommandRouterLlmCall(context, toolCalls, [{ plugin: askPlugin, manifest }]);
-    } else {
-      console.log("No ask plugin found in config");
+        await processCommand(context, { plugin: askPlugin, manifest }, cmdCall)
+      } else {
+        console.log("No ask plugin found in config");
+      }
     }
+  } catch (e) {
+    console.error("Error in mapAuthorToBot", e);
   }
 }
 
@@ -109,7 +106,7 @@ async function requestingHelpCheck(context: GitHubContext<"issue_comment.created
   return llmResponse.choices[0].message.content;
 }
 
-async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
+export async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
   // need to get the author of the task
   const issue = await context.octokit.rest.issues.get({
     owner: context.payload.repository.owner.login,
@@ -166,7 +163,7 @@ async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
       });
       return;
     }
-    taskFetchCtx ??= {
+    taskFetchCtx = {
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issueNumber: taskNumber,
@@ -181,7 +178,7 @@ async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
       return;
     }
 
-    taskFetchCtx ??= {
+    taskFetchCtx = {
       owner: urlMatch[1],
       repo: urlMatch[2],
       issueNumber: taskNumber,
@@ -207,4 +204,15 @@ async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
   }
 
   return task.data.user.login;
+}
+
+export async function preCheckForMappingAuthorToBot(
+  context: GitHubContext<"issue_comment.created">,
+  taskAuthor: string
+) {
+  if (!context.payload.comment.body.startsWith(`@${taskAuthor}`)) {
+    return false;
+  }
+
+  return true;
 }

@@ -6,7 +6,8 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
-import { mapAuthorToBot } from "./map-author-to-bot";
+import { findTaskAuthor, mapAuthorToBot, preCheckForMappingAuthorToBot } from "./map-author-to-bot";
+import { CommandCall } from "../../types/command";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const { body, user } = context.payload.comment;
@@ -17,7 +18,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   } else if (text.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
   } else if (user?.type === "User") {
-    await mapAuthorToBot(context);
+    const taskAuthor = await findTaskAuthor(context);
+    if (taskAuthor && (await preCheckForMappingAuthorToBot(context, taskAuthor))) {
+      await mapAuthorToBot(context, taskAuthor);
+    }
   }
 }
 
@@ -74,10 +78,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           name: name,
           parameters: command.parameters
             ? {
-                ...command.parameters,
-                required: Object.keys(command.parameters.properties),
-                additionalProperties: false,
-              }
+              ...command.parameters,
+              required: Object.keys(command.parameters.properties),
+              additionalProperties: false,
+            }
             : undefined,
           strict: true,
         },
@@ -93,11 +97,6 @@ export async function processCommandRouterLlmCall(
   commands: Array<OpenAiFunction>,
   pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[]
 ) {
-  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    console.log(`No installation found, cannot invoke command`);
-    return;
-  }
-
   const response = await context.openAi.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -200,6 +199,23 @@ The input will include the following fields:
     console.log(`No plugin found for command '${command.name}'`);
     return;
   }
+
+  await processCommand(context, pluginWithManifest, command);
+}
+
+export async function processCommand(
+  context: GitHubContext<"issue_comment.created">,
+  pluginWithManifest: {
+    plugin: PluginConfiguration["plugins"][0]["uses"][0];
+    manifest: Manifest;
+  },
+  command: CommandCall
+) {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    console.log(`No installation found, cannot invoke command`);
+    return;
+  }
+
   const {
     plugin: { plugin, with: settings },
   } = pluginWithManifest;
