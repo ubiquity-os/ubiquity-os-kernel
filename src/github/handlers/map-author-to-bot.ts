@@ -138,5 +138,5 @@ export async function findTaskAuthor(context: GitHubContext<"issue_comment.creat
 }
 
 export async function preCheckForMappingAuthorToBot(context: GitHubContext<"issue_comment.created">, taskAuthor: string) {
-  return !context.payload.comment.body.startsWith(`@${taskAuthor}`);
+  return context.payload.comment.body.startsWith(`@${taskAuthor}`);
 }
