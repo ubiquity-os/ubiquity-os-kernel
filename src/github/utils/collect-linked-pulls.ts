@@ -43,7 +43,7 @@ type TaskList = {
   };
 };
 
-export async function collectLinkedIssues(context: GitHubContext<"issue_comment.created">) {
+export async function collectLinkedIssue(context: GitHubContext<"issue_comment.created">) {
   try {
     const { octokit, payload } = context;
     const repo = payload.repository.name;
@@ -54,25 +54,24 @@ export async function collectLinkedIssues(context: GitHubContext<"issue_comment.
       repo,
       pull_number: pullNumber,
     });
-    const mappedResults = results.repository.pullRequest.closingIssuesReferences.edges.map((edge) => edge.node);
+    const mappedIssues = results.repository.pullRequest.closingIssuesReferences.edges.map((edge) => edge.node);
 
-    if (!mappedResults.length) {
+    if (!mappedIssues.length) {
       console.log("No task found for PR", {
         url: payload.issue.html_url,
       });
-      return;
+      return null;
     }
 
-    if (mappedResults.length === 1) {
-      return mappedResults[0];
+    if (mappedIssues.length === 1) {
+      return mappedIssues[0];
     }
 
     console.log("Multiple tasks found for PR", {
       url: payload.issue.html_url,
     });
-    return mappedResults[0];
+    return mappedIssues[0];
   } catch (er) {
     console.log(er);
-    throw er;
   }
 }

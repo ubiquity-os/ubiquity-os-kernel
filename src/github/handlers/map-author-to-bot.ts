@@ -4,28 +4,20 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { processCommand } from "./issue-comment-created";
 import { CommandCall } from "../../types/command";
-import { collectLinkedIssues } from "../utils/collect-linked-pulls";
+import { collectLinkedIssue } from "../utils/collect-linked-pulls";
 
 export async function mapAuthorToBot(context: GitHubContext<"issue_comment.created">, taskAuthor: string) {
-  const helpCheck = await requestingHelpCheck(context, taskAuthor);
+  if (!(await requestingHelpCheck(context, taskAuthor))) {
+    return null;
+  }
 
   try {
-    if (helpCheck && JSON.parse(helpCheck).isRequestingHelp) {
-      const config = await getConfig(context);
+    const config = await getConfig(context);
+    for (const plugin of config.plugins) {
+      const pluginUrl = String(plugin.uses[0].plugin);
+      const manifest = (await getManifest(context, pluginUrl)) as Manifest;
 
-      // how do we handle this better?
-      const isLocal = process.env.NODE_ENV === "local" || true;
-      const askPlugin = config.plugins.find((plgn) => {
-        const plugin = String(plgn.uses[0].plugin);
-        if (isLocal) {
-          return plugin.includes("localhost") || plugin.includes("ngrok");
-        }
-
-        return !plugin.includes("localhost") && !plugin.includes("ngrok") && plugin.includes("command-ask");
-      })?.uses[0];
-
-      if (askPlugin) {
-        const manifest = (await getManifest(context, askPlugin.plugin)) as Manifest;
+      if (manifest.name?.includes("ask")) {
         if (!manifest || !manifest.commands) {
           console.log("No manifest found for ask plugin");
           return;
@@ -39,9 +31,7 @@ export async function mapAuthorToBot(context: GitHubContext<"issue_comment.creat
           },
         };
 
-        await processCommand(context, { plugin: askPlugin, manifest }, cmdCall);
-      } else {
-        console.error("No ask plugin found in config");
+        await processCommand(context, { plugin: plugin.uses[0], manifest }, cmdCall);
       }
     }
   } catch (e) {
@@ -95,15 +85,31 @@ async function requestingHelpCheck(context: GitHubContext<"issue_comment.created
     frequency_penalty: 0,
     presence_penalty: 0,
     response_format: {
-      type: "json_object",
+      type: "json_schema",
+      json_schema: {
+        name: "isRequestingHelp",
+        description: "Whether the user is requesting help from the task creator",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            isRequestingHelp: {
+              type: "boolean",
+            },
+          },
+          required: ["isRequestingHelp"],
+          additionalProperties: false,
+        },
+      },
     },
   });
 
-  if (llmResponse.choices.length === 0) {
-    return;
+  try {
+    return JSON.parse(llmResponse.choices[0].message.content ?? "{}").isRequestingHelp;
+  } catch (e) {
+    console.error("Error in requestingHelpCheck", e);
   }
-
-  return llmResponse.choices[0].message.content;
+  return false;
 }
 
 export async function findTaskAuthor(context: GitHubContext<"issue_comment.created">) {
@@ -121,17 +127,17 @@ export async function findTaskAuthor(context: GitHubContext<"issue_comment.creat
       console.log("No task author found for issue", {
         url: issue.data.html_url,
       });
-      return;
+      return null;
     }
     return issue.data.user?.login;
   }
 
-  const task = await collectLinkedIssues(context);
+  const task = await collectLinkedIssue(context);
   if (!task) {
     console.log("No task found for PR", {
       url: issue.data.html_url,
     });
-    return;
+    return null;
   }
 
   return task.author.login;
