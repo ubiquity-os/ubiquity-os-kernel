@@ -2,22 +2,19 @@ import { VoyageAIClient } from "voyageai";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { EmbedRequestInputType } from "voyageai/api";
 
-interface Example {
+export interface Example {
   command: string;
   embedding: number[];
 }
 
-let examples: Example[] = [];
+export async function initializeExamples(manifest: Manifest, voyageAiClient: VoyageAIClient): Promise<Example[]> {
+  if (!manifest.commands) return [];
 
-export async function initializeExamples(manifests: Manifest[], voyageAiClient: VoyageAIClient) {
-  const examplesFromManifests = manifests.flatMap((manifest: Manifest) => {
-    if (!manifest.commands) return [];
-    return Object.values(manifest.commands).flatMap((command) => command.examples?.map((example) => example.commandInvocation) ?? []);
-  });
+  const examplesFromManifest = Object.values(manifest.commands).flatMap((command) => command.examples?.map((example) => example.commandInvocation) ?? []);
 
   // Generate embeddings for all examples
-  examples = await Promise.all(
-    examplesFromManifests.map(async (command) => ({
+  return await Promise.all(
+    examplesFromManifest.map(async (command: string) => ({
       command,
       embedding: await generateEmbedding(voyageAiClient, command),
     }))
@@ -40,7 +37,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (normA * normB);
 }
 
-export async function findSimilarExamples(voyageAiClient: VoyageAIClient, input: string, count: number = 3): Promise<string[]> {
+export async function findSimilarExamples(voyageAiClient: VoyageAIClient, input: string, count: number = 3, examples: Example[]): Promise<string[]> {
   const inputEmbedding = await generateEmbedding(voyageAiClient, input, "query");
 
   // Calculate similarities and sort

@@ -3,7 +3,7 @@ import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
-import { findSimilarExamples, initializeExamples } from "../utils/examples";
+import { Example, findSimilarExamples, initializeExamples } from "../utils/examples";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
@@ -21,11 +21,6 @@ interface CommandParameterProperty {
   description?: string;
   type: string;
   default?: string;
-}
-
-interface CommandParameters {
-  type: string;
-  properties: Record<string, CommandParameterProperty>;
 }
 
 interface OpenAiFunction {
@@ -158,7 +153,7 @@ Guidelines:
   );
 
   return {
-    model: "openai/gpt-4o",
+    model: "openai/o3-mini",
     messages: [
       {
         role: "system" as const,
@@ -189,12 +184,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const config = await getConfig(context);
   const pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[] = [];
 
-  // Initialize examples from manifests
-  const manifests = await Promise.all(config.plugins.map(async (plugin) => await getManifest(context, plugin.uses[0].plugin)));
-
-  const validManifests = manifests.filter((manifest): manifest is Manifest => manifest !== null);
-  await initializeExamples(validManifests, context.voyageAiClient);
-
+  let examples: Example[] = [];
   for (let i = 0; i < config.plugins.length; ++i) {
     const plugin = config.plugins[i].uses[0];
 
@@ -202,6 +192,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     if (!manifest?.commands) {
       continue;
     }
+    examples = [...examples, ...(await initializeExamples(manifest, context.voyageAiClient))];
+
     pluginsWithManifest.push({
       plugin: plugin,
       manifest,
@@ -214,19 +206,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           description: command.description,
           parameters: command.parameters
             ? {
-                type: "object",
-                properties: Object.fromEntries(
-                  Object.entries((command.parameters as CommandParameters).properties).map(([key, prop]) => [
-                    key,
-                    {
-                      type: (prop as CommandParameterProperty).type,
-                      description: (prop as CommandParameterProperty).description,
-                    },
-                  ])
-                ),
-                required: Object.keys((command.parameters as CommandParameters).properties).filter(
-                  (key) => !(command.parameters as CommandParameters).properties[key].default
-                ),
+                ...command.parameters,
+                properties: command.parameters.properties.map((prop: CommandParameterProperty) => {
+                  return {
+                    ...prop,
+                    default: prop.default ? prop.default.toString() : undefined,
+                  };
+                }),
+                required: Object.keys(command.parameters.properties),
                 additionalProperties: false,
               }
             : undefined,
@@ -237,9 +224,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   // Get similar examples for the current input
-  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim());
+  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim(), 3, examples);
 
-  const promptConfig = await buildPrompt(context, commands, validManifests, similarExamples);
+  const promptConfig = await buildPrompt(
+    context,
+    commands,
+    pluginsWithManifest.map((plugin) => plugin.manifest),
+    similarExamples
+  );
 
   const response = await context.openAi.chat.completions.create(promptConfig);
 
