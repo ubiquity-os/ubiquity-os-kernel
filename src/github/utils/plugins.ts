@@ -7,9 +7,32 @@ import { Value } from "@sinclair/typebox/value";
 
 const _manifestCache: Record<string, Manifest> = {};
 
-export function getPluginsForEvent(plugins: PluginConfiguration["plugins"], event: EmitterWebhookEventName) {
-  return plugins.filter((plugin) => {
-    return plugin.uses?.[0].runsOn?.includes(event);
+export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0], event: EmitterWebhookEventName) {
+  if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
+    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
+    return true;
+  }
+  if (context.key === "issue_comment.created") {
+    const manifest = await getManifest(context, pluginChain.uses[0].plugin);
+    if (
+      manifest?.commands &&
+      !manifest["ubiquity:listeners"]?.includes("issue_comment.created") &&
+      Object.keys(manifest.commands).length &&
+      !Object.keys(manifest.commands).some(
+        (command) =>
+          "comment" in context.payload && typeof context.payload.comment !== "string" && context.payload.comment?.body.trim().startsWith(`/${command}`)
+      )
+    ) {
+      console.log(`Skipping plugin chain ${manifest.name} because command does not match.`, manifest.commands);
+      return true;
+    }
+  }
+  return !pluginChain.uses?.[0].runsOn?.includes(event);
+}
+
+export function getPluginsForEvent(context: GitHubContext, plugins: PluginConfiguration["plugins"], event: EmitterWebhookEventName) {
+  return plugins.filter(async (plugin) => {
+    return !(await shouldSkipPlugin(context, plugin, event));
   });
 }
 

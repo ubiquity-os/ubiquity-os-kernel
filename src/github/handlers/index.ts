@@ -1,14 +1,13 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
-import { GitHubContext } from "../github-context";
 import { GitHubEventHandler } from "../github-event-handler";
-import { getConfig } from "../utils/config";
-import issueCommentCreated from "./issue-comment-created";
-import { repositoryDispatch } from "./repository-dispatch";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { PluginInput } from "../types/plugin";
-import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
-import { getManifest, getPluginsForEvent } from "../utils/plugins";
+import { isGithubPlugin } from "../types/plugin-configuration";
+import { getConfig } from "../utils/config";
+import { getPluginsForEvent } from "../utils/plugins";
+import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import issueCommentCreated from "./issue-comment-created";
 import handlePushEvent from "./push-event";
+import { repositoryDispatch } from "./repository-dispatch";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown) {
   return async (event: EmitterWebhookEvent) => {
@@ -27,26 +26,6 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler))); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
-export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0]) {
-  if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
-    return true;
-  }
-  const manifest = await getManifest(context, pluginChain.uses[0].plugin);
-  if (
-    context.key === "issue_comment.created" &&
-    manifest?.commands &&
-    Object.keys(manifest.commands).length &&
-    !Object.keys(manifest.commands).some(
-      (command) => "comment" in context.payload && typeof context.payload.comment !== "string" && context.payload.comment?.body.trim().startsWith(`/${command}`)
-    )
-  ) {
-    console.log(`Skipping plugin chain ${manifest.name} because command does not match.`, manifest.commands);
-    return true;
-  }
-  return false;
-}
-
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
   const context = eventHandler.transformEvent(event);
 
@@ -62,7 +41,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = getPluginsForEvent(config.plugins, context.key);
+  const pluginChains = getPluginsForEvent(context, config.plugins, context.key);
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name} (${context.key})`);
@@ -72,10 +51,6 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   console.log(`Will call the following chain:\n${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join("\n")}`);
 
   for (const pluginChain of pluginChains) {
-    if (await shouldSkipPlugin(context, pluginChain)) {
-      continue;
-    }
-
     // invoke the first plugin in the chain
     const { plugin, with: settings } = pluginChain.uses[0];
     const isGithubPluginObject = isGithubPlugin(plugin);
