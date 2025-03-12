@@ -7,9 +7,11 @@ import { Example, findSimilarExamples, initializeExamples } from "../utils/examp
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
+import { ChatCompletionTool } from "openai/resources/index.mjs";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
+
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
@@ -17,23 +19,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 }
 
-interface CommandParameterProperty {
-  description?: string;
-  type: string;
-  default?: string;
-}
-
-interface OpenAiFunction {
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters?: Record<string, unknown>;
-    strict?: boolean | null;
-  };
-}
-
-const embeddedCommands: Array<OpenAiFunction> = [
+const embeddedCommands: Array<ChatCompletionTool> = [
   {
     type: "function",
     function: {
@@ -49,7 +35,12 @@ const embeddedCommands: Array<OpenAiFunction> = [
   },
 ];
 
-async function buildPrompt(context: GitHubContext<"issue_comment.created">, commands: Array<OpenAiFunction>, manifests: Manifest[], similarExamples: string[]) {
+async function buildPrompt(
+  context: GitHubContext<"issue_comment.created">,
+  commands: Array<ChatCompletionTool>,
+  manifests: Manifest[],
+  similarExamples: string[]
+) {
   // Gather command descriptions and examples
   const availableCommands = commands.map((cmd) => ({
     name: cmd.function.name,
@@ -207,17 +198,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
           parameters: command.parameters
             ? {
                 ...command.parameters,
-                properties: command.parameters.properties.map((prop: CommandParameterProperty) => {
-                  return {
-                    ...prop,
-                    default: prop.default ? prop.default.toString() : undefined,
-                  };
-                }),
                 required: Object.keys(command.parameters.properties),
-                additionalProperties: false,
+                addtionalProperties: false,
               }
             : undefined,
-          strict: true,
         },
       });
     }
