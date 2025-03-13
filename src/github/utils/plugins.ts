@@ -12,11 +12,12 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
     console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
     return true;
   }
-  if (context.key === "issue_comment.created") {
+  const commentEvents = ["issue_comment.created", "pull_request_review_comment.created"];
+  if (commentEvents.includes(context.key)) {
     const manifest = await getManifest(context, pluginChain.uses[0].plugin);
     if (
       manifest?.commands &&
-      !manifest["ubiquity:listeners"]?.includes("issue_comment.created") &&
+      !manifest["ubiquity:listeners"]?.some((event) => commentEvents.includes(event)) &&
       Object.keys(manifest.commands).length &&
       !Object.keys(manifest.commands).some(
         (command) =>
