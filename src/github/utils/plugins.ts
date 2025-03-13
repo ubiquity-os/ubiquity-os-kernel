@@ -26,15 +26,18 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
       !manifest["ubiquity:listeners"]?.some((event) => commentEvents.includes(event)) &&
       isCommentCreatedPayload(context.payload) &&
       context.payload.comment?.body.trim().startsWith(`/`) &&
-      Object.keys(manifest.commands).length &&
-      !Object.keys(manifest.commands).some(
-        (command) => isCommentCreatedPayload(context.payload) && context.payload.comment?.body.trim().startsWith(`/${command}`)
-      )
+      Object.keys(manifest.commands).length
     ) {
-      console.log(`Skipping plugin chain ${manifest.name} because command does not match.`, manifest.commands);
-      return true;
+      if (
+        !Object.keys(manifest.commands).some(
+          (command) => isCommentCreatedPayload(context.payload) && context.payload.comment?.body.trim().startsWith(`/${command}`)
+        )
+      ) {
+        console.log(`Skipping plugin chain ${manifest.name} because command '${context.payload.comment?.body.trim()}' does not match.`, manifest.commands);
+        return true;
+      }
+      return false;
     }
-    return false;
   }
   return !pluginChain.uses?.[0].runsOn?.includes(event);
 }
