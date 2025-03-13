@@ -41,14 +41,14 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
-  const pluginChains = getPluginsForEvent(context, config.plugins, context.key);
+  const pluginChains = await getPluginsForEvent(context, config.plugins, context.key);
 
   if (pluginChains.length === 0) {
     console.log(`No handler found for event ${event.name} (${context.key})`);
     return;
   }
 
-  console.log(`Will call the following chain:\n${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join("\n")}`);
+  console.log(`Will call the following chain: ${pluginChains.map((o) => JSON.stringify(o.uses[0]?.plugin)).join(";")}`);
 
   for (const pluginChain of pluginChains) {
     // invoke the first plugin in the chain
