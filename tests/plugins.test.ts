@@ -37,7 +37,7 @@ describe("Plugin tests", () => {
       })
     );
     const pluginChain = {
-      uses: [{ skipBotEvents: true, commands: { command: {} }, plugin: pluginAddress }],
+      uses: [{ skipBotEvents: true, plugin: pluginAddress }],
     } as PluginConfiguration["plugins"][0];
     // Skip bot comment
     await expect(
