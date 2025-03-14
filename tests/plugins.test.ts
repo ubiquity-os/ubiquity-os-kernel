@@ -22,9 +22,11 @@ describe("Plugin tests", () => {
   it("Should skip plugins if needed", async () => {
     const pluginAddress = "http://localhost";
     const issueCommentCreated = "issue_comment.created";
+    const pullRequestCommentCreated = "pull_request_review_comment.created";
     const pullRequestOpened = "pull_request.opened";
+    const pluginManifestUrl = "http://localhost/manifest.json";
     server.use(
-      http.get("http://localhost/manifest.json", () => {
+      http.get(pluginManifestUrl, () => {
         return HttpResponse.json({
           name: "command",
           commands: {
@@ -39,6 +41,7 @@ describe("Plugin tests", () => {
     const pluginChain = {
       uses: [{ skipBotEvents: true, plugin: pluginAddress }],
     } as PluginConfiguration["plugins"][0];
+
     // Skip bot comment
     await expect(
       shouldSkipPlugin(
@@ -53,6 +56,7 @@ describe("Plugin tests", () => {
         issueCommentCreated
       )
     ).resolves.toBe(true);
+
     // Skipping non-matching command
     await expect(
       shouldSkipPlugin(
@@ -71,6 +75,7 @@ describe("Plugin tests", () => {
         issueCommentCreated
       )
     ).resolves.toBe(true);
+
     // Not skipping matching command
     await expect(
       shouldSkipPlugin(
@@ -89,6 +94,7 @@ describe("Plugin tests", () => {
         issueCommentCreated
       )
     ).resolves.toBe(false);
+
     // Not skipping matching listener
     await expect(
       shouldSkipPlugin(
@@ -106,6 +112,7 @@ describe("Plugin tests", () => {
         pullRequestOpened
       )
     ).resolves.toBe(false);
+
     // Skipping non-matching listener
     await expect(
       shouldSkipPlugin(
@@ -121,6 +128,84 @@ describe("Plugin tests", () => {
           uses: [{ skipBotEvents: true, runsOn: [pullRequestOpened], plugin: pluginAddress }],
         } as PluginConfiguration["plugins"][0],
         "pull_request.closed"
+      )
+    ).resolves.toBe(true);
+
+    // Not skipping matching listener + command
+    server.use(
+      http.get(
+        pluginManifestUrl,
+        () => {
+          return HttpResponse.json({
+            name: "command",
+            "ubiquity:listeners": [issueCommentCreated],
+            commands: {
+              command: {
+                description: "command",
+                "ubiquity:example": "/command",
+              },
+            },
+          });
+        },
+        { once: true }
+      )
+    );
+    await expect(
+      shouldSkipPlugin(
+        {
+          key: pullRequestCommentCreated,
+          payload: {
+            sender: {
+              type: "User",
+            },
+            comment: {
+              body: "/command",
+            },
+          },
+        } as unknown as GitHubContext,
+        {
+          uses: [{ skipBotEvents: true, runsOn: [issueCommentCreated], plugin: pluginAddress }],
+        } as PluginConfiguration["plugins"][0],
+        pullRequestCommentCreated
+      )
+    ).resolves.toBe(false);
+
+    // Skipping comment that doesn't match a command and listener
+    server.use(
+      http.get(
+        pluginManifestUrl,
+        () => {
+          return HttpResponse.json({
+            name: "command",
+            "ubiquity:listeners": [issueCommentCreated],
+            commands: {
+              command: {
+                description: "command",
+                "ubiquity:example": "/command",
+              },
+            },
+          });
+        },
+        { once: true }
+      )
+    );
+    await expect(
+      shouldSkipPlugin(
+        {
+          key: pullRequestCommentCreated,
+          payload: {
+            sender: {
+              type: "User",
+            },
+            comment: {
+              body: "hello",
+            },
+          },
+        } as unknown as GitHubContext,
+        {
+          uses: [{ skipBotEvents: true, runsOn: [issueCommentCreated], plugin: pluginAddress }],
+        } as PluginConfiguration["plugins"][0],
+        pullRequestCommentCreated
       )
     ).resolves.toBe(true);
   });

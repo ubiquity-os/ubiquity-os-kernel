@@ -23,7 +23,7 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
     const manifest = await getManifest(context, pluginChain.uses[0].plugin);
     if (
       manifest?.commands &&
-      !manifest["ubiquity:listeners"]?.some((event) => commentEvents.includes(event)) &&
+      !manifest["ubiquity:listeners"]?.includes(context.key) &&
       isCommentCreatedPayload(context.payload) &&
       context.payload.comment?.body.trim().startsWith(`/`) &&
       Object.keys(manifest.commands).length
