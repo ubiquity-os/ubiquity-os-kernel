@@ -8,18 +8,18 @@
         "@cfworker/json-schema": "2.0.1",
         "@marplex/hono-azurefunc-adapter": "^1.0.1",
         "@octokit/auth-app": "7.1.5",
-        "@octokit/core": "6.1.4",
-        "@octokit/plugin-paginate-rest": "11.4.3",
+        "@octokit/core": "^6.1.4",
+        "@octokit/plugin-paginate-rest": "^11.4.3",
         "@octokit/plugin-request-log": "^5.3.1",
-        "@octokit/plugin-rest-endpoint-methods": "13.3.1",
-        "@octokit/plugin-retry": "7.1.4",
-        "@octokit/plugin-throttling": "9.4.0",
-        "@octokit/rest": "21.1.1",
+        "@octokit/plugin-rest-endpoint-methods": "^13.3.1",
+        "@octokit/plugin-retry": "^7.1.4",
+        "@octokit/plugin-throttling": "^9.4.0",
+        "@octokit/rest": "^21.1.1",
         "@octokit/types": "^13.8.0",
-        "@octokit/webhooks": "13.7.4",
-        "@octokit/webhooks-types": "7.6.1",
-        "@sinclair/typebox": "0.34.3",
-        "@ubiquity-os/plugin-sdk": "^3.1.1",
+        "@octokit/webhooks": "^13.7.4",
+        "@octokit/webhooks-types": "^7.6.1",
+        "@sinclair/typebox": "^0.34.30",
+        "@ubiquity-os/plugin-sdk": "^3.1.2",
         "console-log-level": "^1.4.1",
         "dotenv": "16.4.5",
         "hono": "^4.6.12",
@@ -261,7 +261,7 @@
 
     "@cspell/dict-elixir": ["@cspell/dict-elixir@4.0.7", "", {}, "sha512-MAUqlMw73mgtSdxvbAvyRlvc3bYnrDqXQrx5K9SwW8F7fRYf9V4vWYFULh+UWwwkqkhX9w03ZqFYRTdkFku6uA=="],
 
-    "@cspell/dict-en-common-misspellings": ["@cspell/dict-en-common-misspellings@2.0.9", "", {}, "sha512-O/jAr1VNtuyCFckbTmpeEf43ZFWVD9cJFvWaA6rO2IVmLirJViHWJUyBZOuQcesSplzEIw80MAYmnK06/MDWXQ=="],
+    "@cspell/dict-en-common-misspellings": ["@cspell/dict-en-common-misspellings@2.0.10", "", {}, "sha512-80mXJLtr0tVEtzowrI7ycVae/ULAYImZUlr0kUTpa8i57AUk7Zy3pYBs44EYIKW7ZC9AHu4Qjjfq4vriAtyTDQ=="],
 
     "@cspell/dict-en-gb": ["@cspell/dict-en-gb@1.1.33", "", {}, "sha512-tKSSUf9BJEV+GJQAYGw5e+ouhEe2ZXE620S7BLKe3ZmpnjlNG9JqlnaBhkIMxKnNFkLY2BP/EARzw31AZnOv4g=="],
 
@@ -405,7 +405,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.23.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Arm+WgUFLUATuoxCJcahGuk6Yj9Pzxd6l11Zb/2aAuv5kWWvvfhLFo2fni4uSK5vzlUdCGZ/BdV5tH8klj8p8g=="],
 
-    "@eslint-community/eslint-utils": ["@eslint-community/eslint-utils@4.5.0", "", { "dependencies": { "eslint-visitor-keys": "^3.4.3" }, "peerDependencies": { "eslint": "^6.0.0 || ^7.0.0 || >=8.0.0" } }, "sha512-RoV8Xs9eNwiDvhv7M+xcL4PWyRyIXRY/FLp3buU4h1EYfdF7unWUy3dOjPqb3C7rMUewIcqwW850PgS8h1o1yg=="],
+    "@eslint-community/eslint-utils": ["@eslint-community/eslint-utils@4.5.1", "", { "dependencies": { "eslint-visitor-keys": "^3.4.3" }, "peerDependencies": { "eslint": "^6.0.0 || ^7.0.0 || >=8.0.0" } }, "sha512-soEIOALTfTK6EjmKMMoLugwaP0rzkad90iIWd1hMO9ARkSAyjfMfkRRhLvD5qH7vvM0Cg72pieUfR6yh6XxC4w=="],
 
     "@eslint-community/regexpp": ["@eslint-community/regexpp@4.12.1", "", {}, "sha512-CCZCDJuduB9OUkFkY2IgppNZMi2lBQgD2qzwXkEia16cge2pijY/aXi96CJMquDMn3nJdlPV1A5KrJEXwfLNzQ=="],
 
@@ -647,7 +647,7 @@
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.35.0", "", { "os": "win32", "cpu": "x64" }, "sha512-PIQeY5XDkrOysbQblSW7v3l1MDZzkTEzAfTPkj5VAu3FW8fS4ynyLg2sINp0fp3SjZ8xkRYpLqoKcYqAkhU1dw=="],
 
-    "@sinclair/typebox": ["@sinclair/typebox@0.34.3", "", {}, "sha512-fEgncmnqn6WGibPn34deH5PwmMTuNCZ2clwlwevgFn8rP0l38zzWRg3KVYhoOZwkZ2Ew3yhZ/STdGDuMig66oQ=="],
+    "@sinclair/typebox": ["@sinclair/typebox@0.34.30", "", {}, "sha512-gFB3BiqjDxEoadW0zn+xyMVb7cLxPCoblVn2C/BKpI41WPYi2d6fwHAlynPNZ5O/Q4WEiujdnJzVtvG/Jc2CBQ=="],
 
     "@sinonjs/commons": ["@sinonjs/commons@3.0.1", "", { "dependencies": { "type-detect": "4.0.8" } }, "sha512-K3mCHKQ9sVh8o1C9cxkwxaOmXoAMlDxC1mYyHrjqOWEcBjYr76t96zL2zlj5dUGZ3HSw240X1qgH3Mjf1yJWpQ=="],
 
@@ -761,7 +761,7 @@
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@7.16.0", "", { "dependencies": { "@typescript-eslint/types": "7.16.0", "eslint-visitor-keys": "^3.4.3" } }, "sha512-rMo01uPy9C7XxG7AFsxa8zLnWXTF8N3PYclekWSrurvhwiw1eW88mrKiAYe6s53AUY57nTRz8dJsuuXdkAhzCg=="],
 
-    "@ubiquity-os/plugin-sdk": ["@ubiquity-os/plugin-sdk@3.1.1", "", { "dependencies": { "@actions/core": "^1.11.1", "@actions/github": "^6.0.0", "@octokit/core": "^6.1.2", "@octokit/plugin-paginate-graphql": "^5.2.4", "@octokit/plugin-paginate-rest": "^11.3.5", "@octokit/plugin-rest-endpoint-methods": "^13.2.6", "@octokit/plugin-retry": "^7.1.2", "@octokit/plugin-throttling": "^9.3.2", "@octokit/rest": "^21.0.2", "@octokit/types": "^13.6.1", "@octokit/webhooks": "^13.3.0", "@ubiquity-os/ubiquity-os-logger": "^1.4.0", "dotenv": "^16.4.5", "hono": "^4.6.9" }, "peerDependencies": { "@sinclair/typebox": "0.34.3" } }, "sha512-F9F8ChggsqJK6MaT4MoBTI1+LHfi/Tp8DIRrXwfsB/NGmi5vAEvMWBr6wdvm1iziVGt+vvIlL3ooCA3LkuciVQ=="],
+    "@ubiquity-os/plugin-sdk": ["@ubiquity-os/plugin-sdk@3.1.2", "", { "dependencies": { "@actions/core": "^1.11.1", "@actions/github": "^6.0.0", "@octokit/core": "^6.1.4", "@octokit/plugin-paginate-graphql": "^5.2.4", "@octokit/plugin-paginate-rest": "^11.4.3", "@octokit/plugin-rest-endpoint-methods": "^13.3.1", "@octokit/plugin-retry": "^7.1.4", "@octokit/plugin-throttling": "^9.4.0", "@octokit/rest": "^21.1.1", "@octokit/types": "^13.8.0", "@octokit/webhooks": "^13.7.4", "@ubiquity-os/ubiquity-os-logger": "^1.4.0", "dotenv": "^16.4.5", "hono": "^4.6.9" }, "peerDependencies": { "@sinclair/typebox": "^0.34.30" } }, "sha512-1rMWrTKsqjoDIIvzoeEl1uP3WRU6taQ3b4UK/3hsloArAka5UKmeH1Ly7WJwphKR6CL/e6yizPDExkF2xs+6Yg=="],
 
     "@ubiquity-os/ubiquity-os-logger": ["@ubiquity-os/ubiquity-os-logger@1.4.0", "", {}, "sha512-giybluPmu0sreEWi60t9X8NxC5d48X7oQAb9RjXR7wX/ZNYugbAaKgj0TYEqECvSVDqgzpKo7UNerh1UQBscGw=="],
 
@@ -873,7 +873,7 @@
 
     "camelcase": ["camelcase@6.3.0", "", {}, "sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA=="],
 
-    "caniuse-lite": ["caniuse-lite@1.0.30001703", "", {}, "sha512-kRlAGTRWgPsOj7oARC9m1okJEXdL/8fekFVcxA8Hl7GH4r/sN4OJn/i6Flde373T50KS7Y37oFbMwlE8+F42kQ=="],
+    "caniuse-lite": ["caniuse-lite@1.0.30001704", "", {}, "sha512-+L2IgBbV6gXB4ETf0keSvLr7JUrRVbIaB/lrQ1+z8mRcQiisG5k+lG6O4n6Y5q6f5EuNfaYXKgymucphlEXQew=="],
 
     "chalk": ["chalk@3.0.0", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-4D3B6Wf41KOYRFdszmDqMCGq5VV/uMAB273JILmO+3jAlh8X4qDtdtgCR3fxtbLEMzSx22QdhnDcJvu2u1fVwg=="],
 
@@ -1047,7 +1047,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "electron-to-chromium": ["electron-to-chromium@1.5.115", "", {}, "sha512-MN1nahVHAQMOz6dz6bNZ7apgqc9InZy7Ja4DBEVCTdeiUcegbyOYE9bi/f2Z/z6ZxLi0RxLpyJ3EGe+4h3w73A=="],
+    "electron-to-chromium": ["electron-to-chromium@1.5.118", "", {}, "sha512-yNDUus0iultYyVoEFLnQeei7LOQkL8wg8GQpkPCRrOlJXlcCwa6eGKZkxQ9ciHsqZyYbj8Jd94X1CTPzGm+uIA=="],
 
     "emittery": ["emittery@0.13.1", "", {}, "sha512-DeWwawk6r5yR9jFgnDKYt4sLS0LmHJJi3ZOnb5/JdbYwj3nW+FxQnHIjhBKz8YLC7oRNPVM9NQ47I3CVx34eqQ=="],
 
