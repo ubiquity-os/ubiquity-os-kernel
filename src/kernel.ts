@@ -8,7 +8,7 @@ import { WebhookEventName } from "@octokit/webhooks-types";
 import OpenAI from "openai";
 import { Context, Hono, HonoRequest } from "hono";
 import { env as honoEnv, getRuntimeKey } from "hono/adapter";
-import { StatusCode } from "hono/utils/http-status";
+import { ContentfulStatusCode } from "hono/utils/http-status";
 import packageJson from "../package.json";
 
 export const app = new Hono();
@@ -62,7 +62,7 @@ function handleUncaughtError(ctx: Context, error: unknown) {
   } else {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
-  return ctx.json({ error: errorMessage }, status as StatusCode);
+  return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
 }
 
 function validateEnv(env: Env): void {
