@@ -5,9 +5,8 @@ import "./__mocks__/webhooks";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { getManifest } from "../src/github/utils/plugins";
+import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { shouldSkipPlugin } from "../src/github/handlers";
 
 config({ path: ".dev.vars" });
 
@@ -188,7 +187,8 @@ describe("Configuration tests", () => {
                 "ubiquity:example": "/command"
               }
             },
-            "skipBotEvents": true
+            "skipBotEvents": true,
+            "ubiquity:listeners": ["${issueOpened}"]
           }
           `;
       } else if (args.path === CONFIG_FULL_PATH) {
@@ -236,7 +236,7 @@ describe("Configuration tests", () => {
 
     const cfg = await getConfig(context);
     expect(cfg.plugins[0].uses[0].skipBotEvents).toEqual(false);
-    await expect(shouldSkipPlugin(context, cfg.plugins[0])).resolves.toEqual(false);
+    await expect(shouldSkipPlugin(context, cfg.plugins[0], issueOpened)).resolves.toEqual(false);
   });
   it("should return dev config if environment is not production", async () => {
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
