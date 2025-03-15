@@ -1,5 +1,20 @@
 # Changelog
 
+## [7.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.0.0...v7.1.0) (2025-03-15)
+
+
+### Features
+
+* use ubiquity's knip-reporter ([db7ec9c](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/db7ec9cf0446fa2c2e82d5f7c6167a71fa369caf))
+* use ubiquity's knip-reporter ([19729a1](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/19729a17a18988c34c003e6932dd91756fc23705))
+* use ubiquity's knip-reporter ([902ee10](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/902ee10e7dfb1070960d29071892c22f2aeb78cc))
+
+
+### Bug Fixes
+
+* issue comment do not get skipped ([3591283](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/3591283011d39a0d094ea0662807785cba5860df))
+* plugins with `issue_comment.created` listeners do not get skipped if commands don't match ([3da3832](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/3da3832ccc4101a7004d9bf64f8b50b17284076e))
+
 ## [7.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v6.0.1...v7.0.0) (2025-01-28)
 
 
