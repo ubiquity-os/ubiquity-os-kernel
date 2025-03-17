@@ -277,6 +277,283 @@ describe("Event related tests", () => {
     });
   });
 
+  it("Should handle tool call schema validation failures", async () => {
+    const issues = {
+      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
+        return params;
+      },
+    };
+    const spy = jest.spyOn(issues, "createComment");
+
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    await issueCommentCreated({
+      id: "",
+      key: eventName,
+      octokit: {
+        rest: {
+          issues,
+          repos: {
+            getContent: jest.fn(getContent),
+          },
+        },
+      },
+      openAi: {
+        chat: {
+          completions: {
+            create: function () {
+              return {
+                choices: [
+                  {
+                    message: {
+                      tool_calls: [
+                        {
+                          type: "function",
+                          function: {
+                            // Missing required 'name' field
+                            arguments: "{}",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              };
+            },
+          },
+        },
+      },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
+      },
+      eventHandler: eventHandler,
+      payload: {
+        ...payload,
+        comment: {
+          body: "@UbiquityOS can you say hello",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+    } as unknown as GitHubContext);
+
+    expect(spy).toBeCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      body: "I apologize, but I encountered an error processing your command. Please try again.",
+      issue_number: 1,
+      owner: "ubiquity",
+      repo: name,
+    });
+  }, 100000);
+
+  it("Should retry LLM call with error feedback when tool parsing fails", async () => {
+    const issues = {
+      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
+        return params;
+      },
+    };
+    const spy = jest.spyOn(issues, "createComment");
+    const dispatchWorkflow = jest.fn();
+    jest.mock("../src/github/utils/workflow-dispatch", () => ({
+      getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
+      dispatchWorkflow: dispatchWorkflow,
+    }));
+
+    let attempts = 0;
+
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    await issueCommentCreated({
+      id: "",
+      key: eventName,
+      octokit: {
+        rest: {
+          issues,
+          repos: {
+            getContent: jest.fn(getContent),
+          },
+        },
+      },
+      openAi: {
+        chat: {
+          completions: {
+            create: function () {
+              attempts++;
+              // First attempt: Missing name field
+              if (attempts === 1) {
+                return {
+                  choices: [
+                    {
+                      message: {
+                        tool_calls: [
+                          {
+                            type: "function",
+                            function: {
+                              arguments: "{}",
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                };
+              }
+
+              // Second attempt: Invalid JSON
+              if (attempts === 2) {
+                return {
+                  choices: [
+                    {
+                      message: {
+                        tool_calls: [
+                          {
+                            type: "function",
+                            function: {
+                              name: "hello",
+                              arguments: "{invalid",
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                };
+              }
+
+              // Third attempt: Valid response
+              return {
+                choices: [
+                  {
+                    message: {
+                      tool_calls: [
+                        {
+                          type: "function",
+                          function: {
+                            name: "hello",
+                            arguments: JSON.stringify({ username: "testuser" }),
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              };
+            },
+          },
+        },
+      },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
+      },
+      eventHandler: eventHandler,
+      payload: {
+        ...payload,
+        comment: {
+          body: "@UbiquityOS say hello to @testuser",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+    } as unknown as GitHubContext);
+
+    expect(attempts).toBe(3); // Should make three attempts (2 failures, 1 success)
+    expect(spy).not.toBeCalled(); // Should not show error message on successful retry
+    expect(dispatchWorkflow).toBeCalledTimes(1); // Should execute the command on successful retry
+    expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
+      owner: "ubiquity-os",
+      repository: "plugin-b",
+      ref: "main",
+      workflowId: "compute.yml",
+      inputs: {
+        command: JSON.stringify({ name: "hello", parameters: { username: "testuser" } }),
+      },
+    });
+  });
+
+  it("Should handle invalid JSON in tool calls", async () => {
+    const issues = {
+      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
+        return params;
+      },
+    };
+    const spy = jest.spyOn(issues, "createComment");
+
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    await issueCommentCreated({
+      id: "",
+      key: eventName,
+      octokit: {
+        rest: {
+          issues,
+          repos: {
+            getContent: jest.fn(getContent),
+          },
+        },
+      },
+      openAi: {
+        chat: {
+          completions: {
+            create: function () {
+              return {
+                choices: [
+                  {
+                    message: {
+                      tool_calls: [
+                        {
+                          type: "function",
+                          function: {
+                            name: "hello",
+                            arguments: "{invalid json",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              };
+            },
+          },
+        },
+      },
+      voyageAiClient: {
+        embed: jest.fn().mockImplementation(() => {
+          return {
+            data: [
+              {
+                embedding: [0.1, 0.2, 0.3],
+              },
+            ],
+          };
+        }),
+      },
+      eventHandler: eventHandler,
+      payload: {
+        ...payload,
+        comment: {
+          body: "@UbiquityOS can you say hello to @0x4007",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+    } as unknown as GitHubContext);
+
+    expect(spy).toBeCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      body: "I apologize, but I encountered an error processing your command. Please try again.",
+      issue_number: 1,
+      owner: "ubiquity",
+      repo: name,
+    });
+  }, 100000);
+
   it("Should tell the user it cannot help with arbitrary requests", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {

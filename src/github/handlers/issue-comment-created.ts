@@ -8,6 +8,8 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 import { postHelpCommand } from "./help-command";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { ChatCompletionTool } from "openai/resources/index.mjs";
+import { retry } from "../utils/retry";
+import { parseToolCall } from "../utils/tool-parser";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -25,7 +27,6 @@ const embeddedCommands: Array<ChatCompletionTool> = [
     function: {
       name: "help",
       description: "Shows all available commands and their examples",
-      strict: false,
       parameters: {
         type: "object",
         properties: {},
@@ -199,7 +200,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
             ? {
                 ...command.parameters,
                 required: Object.keys(command.parameters.properties),
-                addtionalProperties: false,
+                additionalProperties: false,
               }
             : undefined,
         },
@@ -217,39 +218,74 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     similarExamples
   );
 
-  const response = await context.openAi.chat.completions.create(promptConfig);
+  let currentErrorContext: string | undefined;
+  const response = await retry(
+    async () => {
+      const config = {
+        ...promptConfig,
+        messages: [
+          ...promptConfig.messages,
+          ...(currentErrorContext
+            ? [
+                {
+                  role: "system" as const,
+                  content: `Previous attempt failed: ${currentErrorContext}. Please provide a valid tool call.`,
+                },
+              ]
+            : []),
+        ],
+      };
 
-  if (response.choices.length === 0) {
-    return;
-  }
+      const response = await context.openAi.chat.completions.create(config);
+      if (!response.choices.length) {
+        throw new Error("No choices returned from OpenAI");
+      }
 
-  const toolCalls = response.choices[0].message.tool_calls;
-  if (!toolCalls?.length) {
-    const message = response.choices[0].message.content || "I cannot help you with that.";
+      const result = parseToolCall(response, commands);
+      if (result === null) {
+        // Valid no-tool-call response
+        return {
+          type: "content" as const,
+          message: response.choices[0].message.content || "I cannot help with that.",
+        };
+      }
+
+      if ("error" in result) {
+        currentErrorContext = result.error;
+        throw new Error(result.error);
+      }
+
+      return {
+        type: "tool" as const,
+        command: result,
+      };
+    },
+    {
+      maxRetries: 3,
+      onError: (error: unknown) => console.error("OpenAI call failed:", error),
+    }
+  ).catch(() => ({
+    type: "error" as const,
+    message: "I apologize, but I encountered an error processing your command. Please try again.",
+  }));
+
+  // Post response or process command all at once at the end
+  if (response.type === "content" || response.type === "error") {
     await context.octokit.rest.issues.createComment({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      body: message,
+      body: response.message,
     });
     return;
   }
 
-  const toolCall = toolCalls[0];
-  if (!toolCall) {
-    console.log("No tool call");
-    return;
-  }
-
-  const command = {
-    name: toolCall.function.name,
-    parameters: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : null,
-  };
-
-  if (command.name === "help") {
+  if (response.command.name === "help") {
     await postHelpCommand(context);
     return;
   }
+
+  const { command } = response;
 
   const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {

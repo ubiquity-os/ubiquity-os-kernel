@@ -28,7 +28,7 @@ app.post("/", async (ctx: Context) => {
     const signatureSha256 = getSignature(request);
     const id = getId(request);
     const openAiClient = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
+      apiKey: env.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
     });
     const voyageAiClient = new VoyageAIClient({

@@ -65,7 +65,7 @@ describe("Worker tests", () => {
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENAI_API_KEY: "token",
+      OPENROUTER_API_KEY: "token",
       VOYAGEAI_API_KEY: "token",
     };
     const res = await app.request("http://localhost:8080", {
