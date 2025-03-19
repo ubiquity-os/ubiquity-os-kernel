@@ -6,6 +6,7 @@ export const envSchema = T.Object({
   APP_ID: T.String({ minLength: 1 }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   OPENAI_API_KEY: T.String({ minLength: 1 }),
+  X25519_PRIVATE_KEY: T.String(),
 });
 
 export type Env = Static<typeof envSchema> & {
