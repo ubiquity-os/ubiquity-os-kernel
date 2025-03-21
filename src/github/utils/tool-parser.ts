@@ -43,6 +43,7 @@ export function parseToolCall(response: ChatCompletion, availableCommands: ChatC
     };
   } catch (error) {
     return {
+      // Catch the error build ToolCallError object
       error: error instanceof Error ? error.message : "Unknown error occurred",
     };
   }

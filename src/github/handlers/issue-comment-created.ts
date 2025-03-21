@@ -209,7 +209,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   // Get similar examples for the current input
-  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim(), 3, examples);
+  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim(), examples);
 
   const promptConfig = await buildPrompt(
     context,

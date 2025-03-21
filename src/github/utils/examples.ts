@@ -37,7 +37,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (normA * normB);
 }
 
-export async function findSimilarExamples(voyageAiClient: VoyageAIClient, input: string, count: number = 3, examples: Example[]): Promise<string[]> {
+export async function findSimilarExamples(voyageAiClient: VoyageAIClient, input: string, examples: Example[], count: number = 3): Promise<string[]> {
   const inputEmbedding = await generateEmbedding(voyageAiClient, input, "query");
 
   // Calculate similarities and sort
