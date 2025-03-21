@@ -7,6 +7,7 @@ export const envSchema = T.Object({
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   OPENROUTER_API_KEY: T.String({ minLength: 1 }),
   VOYAGEAI_API_KEY: T.String({ minLength: 1 }),
+  X25519_PRIVATE_KEY: T.Optional(T.String()),
 });
 
 export type Env = Static<typeof envSchema> & {

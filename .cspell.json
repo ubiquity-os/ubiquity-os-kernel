@@ -26,6 +26,9 @@
     "azurefunc",
     "marplex",
     "ratelimit",
+    "libsodium",
+    "URLSAFE",
+    "scalarmult",
     "voyageai",
     "openrouter"
   ],
