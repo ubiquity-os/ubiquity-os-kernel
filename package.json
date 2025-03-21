@@ -69,6 +69,7 @@
     "dotenv": "16.4.5",
     "hono": "^4.7.4",
     "js-yaml": "^4.1.0",
+    "jsonschema": "^1.5.0",
     "openai": "^4.87.3",
     "typebox-validators": "0.3.5",
     "voyageai": "^0.0.3",

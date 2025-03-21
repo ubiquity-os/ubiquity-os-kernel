@@ -1,21 +1,26 @@
-import Ajv from "ajv";
+import { Validator } from "jsonschema";
 
 export function jsonSchemaValidator(schema: string, parameters: Record<string, unknown>): boolean {
   try {
-    // Parse the string schema to object
     const jsonSchema = JSON.parse(schema);
+    const validator = new Validator();
+    const result = validator.validate(parameters, jsonSchema);
 
-    const ajv = new Ajv({
-      allErrors: true,
-      strict: false,
-      verbose: true,
-    });
+    if (!result.valid) {
+      const error = result.errors[0];
+      let message = error.message;
+      const property = error.property.replace("instance.", "");
 
-    const validate = ajv.compile(jsonSchema);
-    const isValid = validate(parameters);
+      // Format error messages consistently
+      if (error.name === "required") {
+        message = `Missing required property '${error.argument}'`;
+      } else if (error.name === "additionalProperties") {
+        message = `Additional property '${error.argument}' is not allowed`;
+      } else if (property) {
+        message = `Property '${property}' ${error.message}`;
+      }
 
-    if (!isValid) {
-      throw new Error(`Validation error: ${ajv.errorsText(validate.errors)}`);
+      throw new Error(`Validation error: ${message}`);
     }
 
     return true;
