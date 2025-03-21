@@ -1,14 +1,19 @@
-import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
+import { Example, findSimilarExamples, initializeExamples } from "../utils/examples";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
+import { ChatCompletionTool } from "openai/resources/index.mjs";
+import { retry } from "../utils/retry";
+import { parseToolCall } from "../utils/tool-parser";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
+
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
@@ -16,23 +21,12 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 }
 
-interface OpenAiFunction {
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters?: Record<string, unknown>;
-    strict?: boolean | null;
-  };
-}
-
-const embeddedCommands: Array<OpenAiFunction> = [
+const embeddedCommands: Array<ChatCompletionTool> = [
   {
     type: "function",
     function: {
       name: "help",
       description: "Shows all available commands and their examples",
-      strict: false,
       parameters: {
         type: "object",
         properties: {},
@@ -41,6 +35,136 @@ const embeddedCommands: Array<OpenAiFunction> = [
     },
   },
 ];
+
+async function buildPrompt(
+  context: GitHubContext<"issue_comment.created">,
+  commands: Array<ChatCompletionTool>,
+  manifests: Manifest[],
+  similarExamples: string[]
+) {
+  // Gather command descriptions and examples
+  const availableCommands = commands.map((cmd) => ({
+    name: cmd.function.name,
+    description: cmd.function.description || "",
+    parameters: cmd.function.parameters,
+  }));
+
+  // Find matching examples and their command info from manifests
+  const detailedExamples = manifests.flatMap((manifest) => {
+    if (!manifest.commands) return [];
+
+    return Object.entries(manifest.commands).flatMap(([commandName, command]) => {
+      // Get all matching examples for this command
+      const allExamples = [];
+
+      // Add ubiquity:example first if it exists
+      if (command["ubiquity:example"]) {
+        allExamples.push({
+          commandInvocation: command["ubiquity:example"],
+          commandName,
+          description: command.description,
+          expectedToolCallResult: {
+            function: commandName,
+            parameters: command.parameters || {},
+          },
+        });
+      }
+
+      // Add any matching examples from the similar examples list
+      const matchingExamples = command.examples?.filter((example) => similarExamples.includes(example.commandInvocation)) ?? [];
+
+      allExamples.push(
+        ...matchingExamples.map((ex) => ({
+          ...ex,
+          commandName,
+          description: command.description,
+        }))
+      );
+
+      return allExamples;
+    });
+  });
+
+  // Format matched examples with their command info
+  const examplesSection = detailedExamples
+    .map((example) => {
+      const descriptionLine = example.description ? `Description: ${example.description}` : "";
+      return `Example: ${example.commandInvocation}
+Command: ${example.commandName}
+${descriptionLine}
+Tool Call:
+{
+  "function": "${example.expectedToolCallResult.function}",
+  "parameters": ${JSON.stringify(example.expectedToolCallResult.parameters, null, 2)}
+}`;
+    })
+    .join("\n\n");
+
+  // Format available commands section
+  const commandsSection = availableCommands
+    .map((cmd) => {
+      const commandDesc = cmd.description ? ` - ${cmd.description}` : "";
+      return `${cmd.name}${commandDesc}
+Parameters: ${JSON.stringify(cmd.parameters || {}, null, 2)}`;
+    })
+    .join("\n\n");
+
+  const systemMessage = `You are UbiquityOS, a GitHub bot that executes commands through function calls.
+
+Available Commands:
+${commandsSection}
+
+Similar Command Examples:
+${examplesSection}
+
+Input Format:
+{
+  "repositoryOwner": "string", // Repository owner's username
+  "repositoryName": "string",  // Repository name
+  "issueNumber": "number",     // Issue or PR number
+  "author": "string",         // Comment author's username
+  "comment": "string"         // The command text
+}
+
+Guidelines:
+1. Users invoke you with "@UbiquityOS" + command text
+2. Extract parameters from natural language
+3. Return tool call matching closest example
+4. Use relevant context from input JSON`;
+
+  const userContent = JSON.stringify(
+    {
+      repositoryOwner: context.payload.repository.owner.login,
+      repositoryName: context.payload.repository.name,
+      issueNumber: context.payload.issue.number,
+      author: context.payload.comment.user?.login,
+      comment: context.payload.comment.body,
+    },
+    null,
+    2
+  );
+
+  return {
+    model: "openai/o3-mini",
+    messages: [
+      {
+        role: "system" as const,
+        content: systemMessage,
+      },
+      {
+        role: "user" as const,
+        content: userContent,
+      },
+    ],
+    temperature: 1,
+    max_tokens: 2048,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    tools: commands,
+    parallel_tool_calls: false,
+  };
+}
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
@@ -51,6 +175,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const commands = [...embeddedCommands];
   const config = await getConfig(context);
   const pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[] = [];
+
+  let examples: Example[] = [];
   for (let i = 0; i < config.plugins.length; ++i) {
     const plugin = config.plugins[i].uses[0];
 
@@ -58,6 +184,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     if (!manifest?.commands) {
       continue;
     }
+    examples = [...examples, ...(await initializeExamples(manifest, context.voyageAiClient))];
+
     pluginsWithManifest.push({
       plugin: plugin,
       manifest,
@@ -67,6 +195,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         type: "function",
         function: {
           name: name,
+          description: command.description,
           parameters: command.parameters
             ? {
                 ...command.parameters,
@@ -74,108 +203,89 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
                 additionalProperties: false,
               }
             : undefined,
-          strict: true,
         },
       });
     }
   }
 
-  const response = await context.openAi.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: [
-          {
-            text: `
-You are a GitHub bot named **UbiquityOS**. Your role is to interpret and execute commands based on user comments provided in structured JSON format.
+  // Get similar examples for the current input
+  const similarExamples = await findSimilarExamples(context.voyageAiClient, context.payload.comment.body.trim(), examples);
 
-### JSON Structure:
-The input will include the following fields:
-- repositoryOwner: The username of the repository owner.
-- repositoryName: The name of the repository where the comment was made.
-- issueNumber: The issue or pull request number where the comment appears.
-- author: The username of the user who posted the comment.
-- comment: The comment text directed at UbiquityOS.
+  const promptConfig = await buildPrompt(
+    context,
+    commands,
+    pluginsWithManifest.map((plugin) => plugin.manifest),
+    similarExamples
+  );
 
-### Example JSON:
-{
-  "repositoryOwner": "repoOwnerUsername",
-  "repositoryName": "example-repo",
-  "issueNumber": 42,
-  "author": "user1",
-  "comment": "@UbiquityOS please allow @user2 to change priority and time labels."
-}
-
-### Instructions:
-- **Interpretation Mode**:
-  - **Tagged Natural Language**: Interpret the "comment" field provided in JSON. Users will mention you with "@UbiquityOS", followed by their request. Infer the intended command and parameters based on the "comment" content.
-
-- **Action**: Map the user's intent to one of your available functions. When responding, use the "author", "repositoryOwner", "repositoryName", and "issueNumber" fields as context if relevant.
-`,
-            type: "text",
-          },
+  let currentErrorContext: string | undefined;
+  const response = await retry(
+    async () => {
+      const config = {
+        ...promptConfig,
+        messages: [
+          ...promptConfig.messages,
+          ...(currentErrorContext
+            ? [
+                {
+                  role: "system" as const,
+                  content: `Previous attempt failed: ${currentErrorContext}. Please provide a valid tool call.`,
+                },
+              ]
+            : []),
         ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            text: JSON.stringify({
-              repositoryOwner: context.payload.repository.owner.login,
-              repositoryName: context.payload.repository.name,
-              issueNumber: context.payload.issue.number,
-              author: context.payload.comment.user?.login,
-              comment: context.payload.comment.body,
-            }),
-            type: "text",
-          },
-        ],
-      },
-    ],
-    temperature: 1,
-    max_tokens: 2048,
-    top_p: 1,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    tools: commands,
-    parallel_tool_calls: false,
-    response_format: {
-      type: "text",
+      };
+
+      const response = await context.openAi.chat.completions.create(config);
+      if (!response.choices.length) {
+        throw new Error("No choices returned from OpenAI");
+      }
+
+      const result = parseToolCall(response, commands);
+      if (result === null) {
+        // Valid no-tool-call response
+        return {
+          type: "content" as const,
+          message: response.choices[0].message.content || "I cannot help with that.",
+        };
+      }
+
+      if ("error" in result) {
+        currentErrorContext = result.error;
+        throw new Error(result.error);
+      }
+
+      return {
+        type: "tool" as const,
+        command: result,
+      };
     },
-  });
+    {
+      maxRetries: 3,
+      onError: (error: unknown) => console.error("OpenAI call failed:", error),
+    }
+  ).catch(() => ({
+    type: "error" as const,
+    message: "I apologize, but I encountered an error processing your command. Please try again.",
+  }));
 
-  if (response.choices.length === 0) {
-    return;
-  }
-
-  const toolCalls = response.choices[0].message.tool_calls;
-  if (!toolCalls?.length) {
-    const message = response.choices[0].message.content || "I cannot help you with that.";
+  // Post response or process command all at once at the end
+  if (response.type === "content" || response.type === "error") {
     await context.octokit.rest.issues.createComment({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      body: message,
+      body: response.message,
     });
     return;
   }
 
-  const toolCall = toolCalls[0];
-  if (!toolCall) {
-    console.log("No tool call");
-    return;
-  }
-
-  const command = {
-    name: toolCall.function.name,
-    parameters: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : null,
-  };
-
-  if (command.name === "help") {
+  if (response.command.name === "help") {
     await postHelpCommand(context);
     return;
   }
+
+  const { command } = response;
 
   const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {
