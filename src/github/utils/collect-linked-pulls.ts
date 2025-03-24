@@ -74,4 +74,6 @@ export async function collectLinkedIssue(context: GitHubContext<"issue_comment.c
   } catch (er) {
     console.log(er);
   }
+
+  return null;
 }

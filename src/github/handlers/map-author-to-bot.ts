@@ -1,4 +1,3 @@
-import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
@@ -14,10 +13,9 @@ export async function mapAuthorToBot(context: GitHubContext<"issue_comment.creat
   try {
     const config = await getConfig(context);
     for (const plugin of config.plugins) {
-      const pluginUrl = String(plugin.uses[0].plugin);
-      const manifest = (await getManifest(context, pluginUrl)) as Manifest;
+      const manifest = await getManifest(context, plugin.uses[0].plugin);
 
-      if (manifest.name?.includes("ask")) {
+      if (Object.keys(manifest?.commands || {})?.includes("ask")) {
         if (!manifest || !manifest.commands) {
           console.log("No manifest found for ask plugin");
           return;
