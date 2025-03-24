@@ -15,12 +15,7 @@ export async function mapAuthorToBot(context: GitHubContext<"issue_comment.creat
     for (const plugin of config.plugins) {
       const manifest = await getManifest(context, plugin.uses[0].plugin);
 
-      if (Object.keys(manifest?.commands || {})?.includes("ask")) {
-        if (!manifest || !manifest.commands) {
-          console.log("No manifest found for ask plugin");
-          return;
-        }
-
+      if (manifest && manifest.commands && Object.keys(manifest.commands)?.includes("ask")) {
         const question = `**Do not tag the author** in your response to this question unless you absolutely cannot help the user.\n\n${context.payload.comment.body}`;
         const cmdCall: CommandCall = {
           name: "ask",
