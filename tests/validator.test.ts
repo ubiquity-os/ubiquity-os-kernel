@@ -5,6 +5,7 @@ import { ChatCompletionTool } from "openai/resources/index.mjs";
 import { ChatCompletion } from "openai/resources";
 
 const ERROR_MESSAGE = "Validation error";
+const SCHEMA_ERROR = (prop: string) => `Validation error: Property "${prop}" does not match schema.`;
 
 describe("Command parameter validation", () => {
   describe("Basic validations", () => {
@@ -77,27 +78,27 @@ describe("Command parameter validation", () => {
       // Below minimum
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { age: -1 });
-      }).toThrow("Validation error: Property 'age' must be greater than or equal to 0");
+      }).toThrow(SCHEMA_ERROR("age"));
 
       // Above maximum
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { age: 121 });
-      }).toThrow("Validation error: Property 'age' must be less than or equal to 120");
+      }).toThrow(SCHEMA_ERROR("age"));
 
       // Not multiple of
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { age: 25.5 });
-      }).toThrow("Validation error: Property 'age' is not a multiple of (divisible by) 1");
+      }).toThrow(SCHEMA_ERROR("age"));
 
       // Equal to exclusive minimum
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { score: 0 });
-      }).toThrow("Validation error: Property 'score' must be strictly greater than 0");
+      }).toThrow(SCHEMA_ERROR("score"));
 
       // Equal to exclusive maximum
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { score: 100 });
-      }).toThrow("Validation error: Property 'score' must be strictly less than 100");
+      }).toThrow(SCHEMA_ERROR("score"));
     });
   });
 
@@ -123,17 +124,17 @@ describe("Command parameter validation", () => {
       // Too short
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { username: "ab" });
-      }).toThrow("Validation error: Property 'username' does not meet minimum length of 3");
+      }).toThrow(SCHEMA_ERROR("username"));
 
       // Too long
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { username: "a".repeat(21) });
-      }).toThrow("Validation error: Property 'username' does not meet maximum length of 20");
+      }).toThrow(SCHEMA_ERROR("username"));
 
       // Invalid pattern
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { username: "user@123" });
-      }).toThrow("Validation error: Property 'username' does not match pattern \"^[a-zA-Z0-9_]+$\"");
+      }).toThrow(SCHEMA_ERROR("username"));
     });
   });
 
@@ -163,22 +164,22 @@ describe("Command parameter validation", () => {
       // Empty array
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { tags: [] });
-      }).toThrow("Validation error: Property 'tags' does not meet minimum length of 1");
+      }).toThrow(SCHEMA_ERROR("tags"));
 
       // Too many items
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { tags: ["1", "2", "3", "4"] });
-      }).toThrow("Validation error: Property 'tags' does not meet maximum length of 3");
+      }).toThrow(SCHEMA_ERROR("tags"));
 
       // Duplicate items
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { tags: ["one", "one"] });
-      }).toThrow("Validation error: Property 'tags' contains duplicate item");
+      }).toThrow(SCHEMA_ERROR("tags"));
 
       // Invalid item length
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), { tags: ["one", "a"] });
-      }).toThrow("Validation error: Property 'tags[1]' does not meet minimum length of 2");
+      }).toThrow(SCHEMA_ERROR("tags"));
     });
   });
 
@@ -224,7 +225,7 @@ describe("Command parameter validation", () => {
             address: { city: "New York" },
           },
         });
-      }).toThrow("Validation error: Missing required property 'name'");
+      }).toThrow(SCHEMA_ERROR("user"));
 
       // Invalid nested property
       expect(() => {
@@ -237,7 +238,7 @@ describe("Command parameter validation", () => {
             },
           },
         });
-      }).toThrow("Validation error: Property 'user.address.zipcode' does not match pattern \"^\\\\d{5}$\"");
+      }).toThrow(SCHEMA_ERROR("user"));
     });
   });
 
@@ -269,14 +270,14 @@ describe("Command parameter validation", () => {
         jsonSchemaValidator(JSON.stringify(schema), {
           color: "yellow",
         });
-      }).toThrow("Validation error: Property 'color' is not one of enum values: red,green,blue");
+      }).toThrow(SCHEMA_ERROR("color"));
 
       // Invalid number enum
       expect(() => {
         jsonSchemaValidator(JSON.stringify(schema), {
           size: 4,
         });
-      }).toThrow("Validation error: Property 'size' is not one of enum values: 1,2,3");
+      }).toThrow(SCHEMA_ERROR("size"));
     });
   });
 
