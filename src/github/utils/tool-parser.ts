@@ -22,8 +22,18 @@ export function parseToolCall(response: ChatCompletion, availableCommands: ChatC
   try {
     // Find matching command schema
     const command = availableCommands.find((cmd) => cmd.function.name === toolCall.function.name);
+
+    // If command is not found, throw an error
     if (!command) {
       throw new Error(`Unknown command: ${toolCall.function.name}`);
+    }
+
+    // If help is requested, return the command schema
+    if (toolCall.function.name === "help") {
+      return {
+        name: toolCall.function.name,
+        parameters: {},
+      };
     }
 
     const parsedParameters = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
@@ -31,6 +41,7 @@ export function parseToolCall(response: ChatCompletion, availableCommands: ChatC
     // Validate parameters if command has parameter schema
     if (command.function.parameters?.type === "object" && command.function.parameters.properties) {
       try {
+        console.log("Validating parameters against schema:", command.function.parameters, toolCall);
         jsonSchemaValidator(JSON.stringify(command.function.parameters), parsedParameters);
       } catch (error) {
         throw new Error(`Invalid parameters: ${error}`);

@@ -8,8 +8,8 @@ import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/wor
 import { postHelpCommand } from "./help-command";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { ChatCompletionTool } from "openai/resources/index.mjs";
-import { retry } from "../utils/retry";
 import { parseToolCall } from "../utils/tool-parser";
+import { OpenRouterError, retry } from "@ubiquity-os/plugin-sdk/helpers";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -262,7 +262,24 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     },
     {
       maxRetries: 3,
-      onError: (error: unknown) => console.error("OpenAI call failed:", error),
+      isErrorRetryable: (error: unknown) => {
+        // Handle OpenRouter errors
+        if (typeof error === "object" && error !== null && "error" in error) {
+          const err = error as OpenRouterError;
+          console.error(`OpenRouter Error: ${err.error}`);
+
+          // Check error code if it exists
+          if ("code" in err.error) {
+            // Non-retryable errors
+            if ([401, 402, 503, 400].includes(err.error.code)) return false;
+            // Rate limit error - delay retry
+            if (err.error.code === 429) return 1000;
+            // All other error codes are retryable
+          }
+        }
+        console.error(`Error: ${error}`);
+        return true;
+      },
     }
   ).catch(() => ({
     type: "error" as const,
