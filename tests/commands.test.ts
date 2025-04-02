@@ -7,6 +7,8 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
+import { Context } from "@ubiquity-os/plugin-sdk";
+import { LogReturn, Logs } from "@ubiquity-os/ubiquity-os-logger";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -121,7 +123,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -172,6 +180,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -179,19 +191,11 @@ describe("Event related tests", () => {
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls).toEqual([
-      [
-        {
-          body:
-            "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
-            " all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |",
-          issue_number: 1,
-          owner: "ubiquity",
-          repo: name,
-        },
-      ],
-    ]);
+    expect(commentHandlerSpy).toBeCalledTimes(1);
+    expect(commentHandlerSpy.mock.calls[0][1].logMessage.raw).toBe(
+      "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
+        " all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |"
+    );
   });
 
   it("Should call appropriate plugin", async () => {
@@ -206,7 +210,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -257,6 +267,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -264,7 +278,7 @@ describe("Event related tests", () => {
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(0);
+    expect(commentHandlerSpy).toBeCalledTimes(0);
     expect(dispatchWorkflow.mock.calls.length).toEqual(1);
     expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
       owner: "ubiquity-os",
@@ -283,7 +297,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -334,6 +354,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -342,13 +366,8 @@ describe("Event related tests", () => {
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
 
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls[0][0]).toMatchObject({
-      body: "I apologize, but I encountered an error processing your command. Please try again.",
-      issue_number: 1,
-      owner: "ubiquity",
-      repo: name,
-    });
+    expect(commentHandlerSpy).toBeCalledTimes(1);
+    expect(commentHandlerSpy.mock.calls[0][1].logMessage.raw).toBe("I apologize, but I encountered an error processing your command. Please try again.");
   }, 100000);
 
   it("Should retry LLM call with error feedback when tool parsing fails", async () => {
@@ -357,7 +376,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
     const dispatchWorkflow = jest.fn();
     jest.mock("../src/github/utils/workflow-dispatch", () => ({
       getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
@@ -458,6 +483,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -467,7 +496,7 @@ describe("Event related tests", () => {
     } as unknown as GitHubContext);
 
     expect(attempts).toBe(3); // Should make three attempts (2 failures, 1 success)
-    expect(spy).not.toBeCalled(); // Should not show error message on successful retry
+    expect(commentHandlerSpy).not.toBeCalled(); // Should not show error message on successful retry
     expect(dispatchWorkflow).toBeCalledTimes(1); // Should execute the command on successful retry
     expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
       owner: "ubiquity-os",
@@ -486,7 +515,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -537,6 +572,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -545,13 +584,8 @@ describe("Event related tests", () => {
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
 
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls[0][0]).toMatchObject({
-      body: "I apologize, but I encountered an error processing your command. Please try again.",
-      issue_number: 1,
-      owner: "ubiquity",
-      repo: name,
-    });
+    expect(commentHandlerSpy).toBeCalledTimes(1);
+    expect(commentHandlerSpy.mock.calls[0][1].logMessage.raw).toBe("I apologize, but I encountered an error processing your command. Please try again.");
   }, 100000);
 
   it("Should tell the user it cannot help with arbitrary requests", async () => {
@@ -560,7 +594,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -603,6 +643,10 @@ describe("Event related tests", () => {
         }),
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -610,17 +654,8 @@ describe("Event related tests", () => {
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls).toEqual([
-      [
-        {
-          body: "Sorry, but I can't help with that.",
-          issue_number: 1,
-          owner: "ubiquity",
-          repo: name,
-        },
-      ],
-    ]);
+    expect(commentHandlerSpy).toBeCalledTimes(1);
+    expect(commentHandlerSpy.mock.calls[0][1].logMessage.raw).toBe("Sorry, but I can't help with that.");
   });
 
   it("Should not post the help menu when /help command if there is no available command", async () => {
@@ -629,7 +664,13 @@ describe("Event related tests", () => {
         return params;
       },
     };
-    const spy = jest.spyOn(issues, "createComment");
+    const commentHandlerSpy = jest.fn((context: Context, message: LogReturn) => {
+      return {
+        id: 1,
+        sender: context.payload.sender,
+        body: message.logMessage.raw,
+      };
+    });
     const getContent = jest.fn((params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) => {
       if (params?.path === CONFIG_FULL_PATH) {
         return {
@@ -668,6 +709,10 @@ describe("Event related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      logger: new Logs("debug"),
+      commentHandler: {
+        postComment: commentHandlerSpy,
+      },
       payload: {
         ...payload,
         comment: {
@@ -675,6 +720,6 @@ describe("Event related tests", () => {
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
     } as unknown as GitHubContext);
-    expect(spy).not.toBeCalled();
+    expect(commentHandlerSpy).not.toBeCalled();
   });
 });

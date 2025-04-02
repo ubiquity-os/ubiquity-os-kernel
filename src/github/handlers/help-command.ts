@@ -31,6 +31,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   if (!commands.length) {
     console.warn("No commands found, will not post the help command message.");
   } else {
+    console.log(context, context.commentHandler.postComment, context.logger);
     await context.commentHandler.postComment(context as unknown as Context, context.logger.ok(comments.concat(commands.sort()).join("\n")));
   }
 }
