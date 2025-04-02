@@ -170,7 +170,7 @@ Guidelines:
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    console.log(`No installation found, cannot invoke command`);
+    context.logger.error(`No installation found, cannot invoke command`);
     return;
   }
 
@@ -276,7 +276,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         // Handle OpenRouter errors
         if (typeof error === "object" && error !== null && "error" in error) {
           const err = error as OpenRouterError;
-          console.log("OpenRouter error:", err.error);
+          context.logger.error(`OpenRouter error: ${err.error.message}`);
           // Check error code if it exists
           if ("code" in err.error) {
             // Non-retryable errors
@@ -286,7 +286,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
             // All other error codes are retryable
           }
         }
-        console.log("Error:", error);
+        context.logger.error(`Error: ${error}`);
         return true;
       },
     }
@@ -315,7 +315,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {
-    console.log(`No plugin found for command '${command.name}'`);
+    context.logger.error(`No plugin found for command '${command.name}'`);
     return;
   }
   const {
@@ -342,6 +342,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       });
     }
   } catch (e) {
-    console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
+    context.logger.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, {
+      stack: e instanceof Error ? e.stack : undefined,
+    });
   }
 }
