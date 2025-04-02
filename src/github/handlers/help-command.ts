@@ -2,6 +2,7 @@ import { getConfig } from "../utils/config";
 import { GithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
 import { getManifest } from "../utils/plugins";
+import { Context } from "@ubiquity-os/plugin-sdk";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
   const commands: string[] = [];
@@ -30,12 +31,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   if (!commands.length) {
     console.warn("No commands found, will not post the help command message.");
   } else {
-    await context.octokit.rest.issues.createComment({
-      body: comments.concat(commands.sort()).join("\n"),
-      issue_number: context.payload.issue.number,
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-    });
+    await context.commentHandler.postComment(context as unknown as Context, context.logger.ok(comments.concat(commands.sort()).join("\n")));
   }
 }
 
