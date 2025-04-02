@@ -28,14 +28,6 @@ export function parseToolCall(response: ChatCompletion, availableCommands: ChatC
       throw new Error(`Unknown command: ${toolCall.function.name}`);
     }
 
-    // If help is requested, return the command schema
-    if (toolCall.function.name === "help") {
-      return {
-        name: toolCall.function.name,
-        parameters: {},
-      };
-    }
-
     const parsedParameters = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
 
     // Validate parameters if command has parameter schema

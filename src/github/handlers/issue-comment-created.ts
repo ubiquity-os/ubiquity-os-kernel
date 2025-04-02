@@ -10,6 +10,7 @@ import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { ChatCompletionTool } from "openai/resources/index.mjs";
 import { parseToolCall } from "../utils/tool-parser";
 import { OpenRouterError, retry } from "@ubiquity-os/plugin-sdk/helpers";
+import { OpenRouterResponseError } from "../types/error";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -237,6 +238,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       };
 
       const response = await context.openAi.chat.completions.create(config);
+
+      //@ts-expect-error OpenAI SDK does not have error in the response
+      if (response && response.error) {
+        // Throw the entire error object
+        //@ts-expect-error OpenAI SDK does not have error in the response
+        throw new OpenRouterResponseError(response as OpenRouterError);
+      }
+
       if (!response.choices.length) {
         throw new Error("No choices returned from OpenAI");
       }
@@ -266,8 +275,6 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         // Handle OpenRouter errors
         if (typeof error === "object" && error !== null && "error" in error) {
           const err = error as OpenRouterError;
-          console.error(`OpenRouter Error: ${err.error}`);
-
           // Check error code if it exists
           if ("code" in err.error) {
             // Non-retryable errors
@@ -277,7 +284,6 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
             // All other error codes are retryable
           }
         }
-        console.error(`Error: ${error}`);
         return true;
       },
     }
