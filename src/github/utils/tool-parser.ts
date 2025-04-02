@@ -11,7 +11,7 @@ export type ToolCallError = {
 };
 
 export function parseToolCall(response: ChatCompletion, availableCommands: ChatCompletionTool[]): ToolCallResult | ToolCallError | null {
-  if (!response.choices[0].message.tool_calls?.length) {
+  if (!response.choices[0]?.message.tool_calls?.length) {
     // No tool calls
     return null;
   }
