@@ -11,6 +11,7 @@ import { ChatCompletionTool } from "openai/resources/index.mjs";
 import { parseToolCall } from "../utils/tool-parser";
 import { OpenRouterError, retry } from "@ubiquity-os/plugin-sdk/helpers";
 import { OpenRouterResponseError } from "../types/error";
+import { metadataBuilder } from "../utils/metadata-builder";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -146,7 +147,7 @@ Guidelines:
   );
 
   return {
-    model: "openai/o3-mini",
+    model: "openai/gpt-4.5-preview",
     messages: [
       {
         role: "system" as const,
@@ -289,9 +290,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         return true;
       },
     }
-  ).catch(() => ({
+  ).catch((error: unknown) => ({
     type: "error" as const,
-    message: "I apologize, but I encountered an error processing your command. Please try again.",
+    message: "I apologize, but I encountered an error processing your command. Please try again." + metadataBuilder(error),
   }));
 
   // Post response or process command all at once at the end
