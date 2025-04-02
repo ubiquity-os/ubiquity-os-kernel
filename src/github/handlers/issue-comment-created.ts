@@ -147,7 +147,7 @@ Guidelines:
   );
 
   return {
-    model: "openai/gpt-4.5-preview",
+    model: "openai/o3-mini",
     messages: [
       {
         role: "system" as const,
