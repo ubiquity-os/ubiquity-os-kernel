@@ -7,11 +7,12 @@ import { Example, findSimilarExamples, initializeExamples } from "../utils/examp
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import { ChatCompletionTool } from "openai/resources/index.mjs";
+import { ChatCompletion, ChatCompletionTool } from "openai/resources/index.mjs";
 import { parseToolCall } from "../utils/tool-parser";
 import { OpenRouterError, retry } from "@ubiquity-os/plugin-sdk/helpers";
 import { OpenRouterResponseError } from "../types/error";
 import { metadataBuilder } from "../utils/metadata-builder";
+import { Context } from "@ubiquity-os/plugin-sdk";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -147,7 +148,7 @@ Guidelines:
   );
 
   return {
-    model: "openai/o3-mini",
+    model: "openai/gpt-4.5-preview",
     messages: [
       {
         role: "system" as const,
@@ -238,13 +239,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         ],
       };
 
-      const response = await context.openAi.chat.completions.create(config);
+      const response = (await context.openAi.chat.completions.create(config)) as ChatCompletion | OpenRouterError;
 
-      //@ts-expect-error OpenAI SDK does not have error in the response
-      if (response && response.error) {
-        // Throw the entire error object
-        //@ts-expect-error OpenAI SDK does not have error in the response
-        throw new OpenRouterResponseError(response as OpenRouterError);
+      if ("error" in response) {
+        throw new OpenRouterResponseError(response);
       }
 
       if (!response.choices.length) {
@@ -292,17 +290,16 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     }
   ).catch((error: unknown) => ({
     type: "error" as const,
-    message: "I apologize, but I encountered an error processing your command. Please try again." + metadataBuilder(error),
+    metadata: error,
+    message: "I apologize, but I encountered an error processing your command. Please try again.",
   }));
 
   // Post response or process command all at once at the end
-  if (response.type === "content" || response.type === "error") {
-    await context.octokit.rest.issues.createComment({
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      body: response.message,
-    });
+  if (response.type === "content") {
+    await context.commentHandler.postComment(context as unknown as Context, context.logger.warn(response.message));
+    return;
+  } else if (response.type === "error") {
+    await context.commentHandler.postComment(context as unknown as Context, context.logger.error(response.message, metadataBuilder(response.metadata)));
     return;
   }
 
