@@ -275,6 +275,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         // Handle OpenRouter errors
         if (typeof error === "object" && error !== null && "error" in error) {
           const err = error as OpenRouterError;
+          console.log("OpenRouter error:", err.error);
           // Check error code if it exists
           if ("code" in err.error) {
             // Non-retryable errors
@@ -284,6 +285,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
             // All other error codes are retryable
           }
         }
+        console.log("Error:", error);
         return true;
       },
     }
