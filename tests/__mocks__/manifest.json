@@ -1,11 +1,11 @@
 {
   "name": "Hello world",
   "description": "Hello world plugin for testing.",
-  "ubiquity:listeners": [ "issue_comment.created" ],
-	"commands": {
-		"hello": {
-			"ubiquity:example": "/hello",
-			"description": "Greet Ubiquibot!"
-		}
-	}
+  "ubiquity:listeners": ["issue_comment.created"],
+  "commands": {
+    "hello": {
+      "ubiquity:example": "/hello",
+      "description": "Greet Ubiquibot!"
+    }
+  }
 }
