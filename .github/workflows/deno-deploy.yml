@@ -30,3 +30,4 @@ jobs:
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
+          pluginEntry: './adapters/cloudflare-worker'
