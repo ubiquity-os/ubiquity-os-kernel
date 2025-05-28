@@ -6,7 +6,7 @@ import { getRuntimeKey, env as honoEnv } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import { GitHubEventHandler } from "./github/github-event-handler";
-import { bindHandlers } from "./github/handlers";
+import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
 
