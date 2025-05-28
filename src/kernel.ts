@@ -5,11 +5,12 @@ import { Context, Hono, HonoRequest } from "hono";
 import { getRuntimeKey, env as honoEnv } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
-import packageJson from "../package.json";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
+
+const packageJson = await import("../package.json");
 
 export const app = new Hono();
 
