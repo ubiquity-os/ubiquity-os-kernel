@@ -2,7 +2,7 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { env as honoEnv, getRuntimeKey } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import { GitHubEventHandler } from "./github/github-event-handler";
