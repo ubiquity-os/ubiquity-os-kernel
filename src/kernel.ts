@@ -9,8 +9,7 @@ import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
-
-const packageJson = await import("../package.json");
+import packageJson from "../package.json" with { type: "json" };
 
 export const app = new Hono();
 
