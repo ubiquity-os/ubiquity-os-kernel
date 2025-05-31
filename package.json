@@ -68,6 +68,7 @@
     "dotenv": "16.4.5",
     "hono": "^4.6.12",
     "js-yaml": "^4.1.0",
+    "libsodium-wrappers": "^0.7.15",
     "openai": "^4.70.2",
     "typebox-validators": "0.3.5",
     "yaml": "^2.7.0"
@@ -89,6 +90,7 @@
     "@types/console-log-level": "^1.4.5",
     "@types/jest": "29.5.12",
     "@types/js-yaml": "^4.0.9",
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "20.14.10",
     "@types/node-rsa": "^1.1.4",
     "azure-functions-core-tools": "^4.0.6610",

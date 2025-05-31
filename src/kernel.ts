@@ -1,20 +1,30 @@
 import { emitterEventNames } from "@octokit/webhooks";
-import { Value } from "@sinclair/typebox/value";
-import { GitHubEventHandler } from "./github/github-event-handler";
-import { bindHandlers } from "./github/handlers";
-import { Env, envSchema } from "./github/types/env";
-import { EmptyStore } from "./github/utils/kv-store";
 import { WebhookEventName } from "@octokit/webhooks-types";
-import OpenAI from "openai";
+import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
 import { env as honoEnv, getRuntimeKey } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
+import OpenAI from "openai";
 import packageJson from "../package.json";
+import { GitHubEventHandler } from "./github/github-event-handler";
+import { bindHandlers } from "./github/handlers/index";
+import { Env, envSchema } from "./github/types/env";
+import { EmptyStore } from "./github/utils/kv-store";
 
 export const app = new Hono();
 
 app.get("/", (c) => {
   return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
+});
+
+app.get("/x25519_public_key", async (ctx: Context) => {
+  if (!ctx.env.X25519_PRIVATE_KEY) {
+    return ctx.text("No key available", 500);
+  }
+  const sodium = await import("libsodium-wrappers"); // we have to import dynamically: https://github.com/jedisct1/libsodium/pull/1401
+  await sodium.ready;
+  const binaryPrivate = sodium.from_base64(ctx.env.X25519_PRIVATE_KEY, sodium.base64_variants.URLSAFE_NO_PADDING);
+  return ctx.text(sodium.default.crypto_scalarmult_base(binaryPrivate, "base64"));
 });
 
 app.post("/", async (ctx: Context) => {
