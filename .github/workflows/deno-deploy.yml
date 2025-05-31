@@ -1,0 +1,33 @@
+name: Deno Deploy
+
+on:
+  workflow_dispatch:
+  push:
+  delete:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    environment: ${{ (github.event.ref == 'refs/heads/main' || github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main') && 'main' || 'development' }}
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Set ACTION_REF environment variable
+        run: |
+          branch_name=$(echo '${{ github.event.ref || github.event.workflow_run.head_branch || github.ref }}' | sed 's#refs/heads/##')
+          echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
+
+      - uses: Meniole/deno-deploy@main
+        env:
+          APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          token: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
+          pluginEntry: './adapters/cloudflare-worker'
