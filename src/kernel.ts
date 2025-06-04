@@ -10,6 +10,7 @@ import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
+import { VoyageAIClient } from "voyageai";
 
 export const app = new Hono();
 
@@ -37,7 +38,11 @@ app.post("/", async (ctx: Context) => {
     const signatureSha256 = getSignature(request);
     const id = getId(request);
     const openAiClient = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+    });
+    const voyageAiClient = new VoyageAIClient({
+      apiKey: env.VOYAGEAI_API_KEY,
     });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
@@ -46,6 +51,7 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
       openAiClient,
+      voyageAiClient,
     });
     bindHandlers(eventHandler);
 

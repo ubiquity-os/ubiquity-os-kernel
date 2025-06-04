@@ -5,7 +5,8 @@ export const envSchema = T.Object({
   APP_WEBHOOK_SECRET: T.String({ minLength: 1 }),
   APP_ID: T.String({ minLength: 1 }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
-  OPENAI_API_KEY: T.String({ minLength: 1 }),
+  OPENROUTER_API_KEY: T.String({ minLength: 1 }),
+  VOYAGEAI_API_KEY: T.String({ minLength: 1 }),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
 });
 
@@ -20,7 +21,8 @@ declare global {
       APP_ID: string;
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
-      OPENAI_API_KEY: string;
+      OPENROUTER_API_KEY: string;
+      VOYAGEAI_API_KEY: string;
     }
   }
 }

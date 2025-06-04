@@ -8,6 +8,7 @@ import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 import { PluginChainState } from "./types/plugin";
 import { KvStore } from "./utils/kv-store";
+import { VoyageAIClient } from "voyageai";
 
 export type Options = {
   environment: "production" | "development";
@@ -16,6 +17,7 @@ export type Options = {
   privateKey: string;
   pluginChainState: KvStore<PluginChainState>;
   openAiClient: OpenAI;
+  voyageAiClient: VoyageAIClient;
 };
 
 export class GitHubEventHandler {
@@ -30,6 +32,7 @@ export class GitHubEventHandler {
   private readonly _privateKey: string;
   private readonly _appId: number;
   private readonly _openAiClient: OpenAI;
+  private readonly _voyageAiClient: VoyageAIClient;
 
   constructor(options: Options) {
     this.environment = options.environment;
@@ -38,6 +41,7 @@ export class GitHubEventHandler {
     this._webhookSecret = options.webhookSecret;
     this.pluginChainState = options.pluginChainState;
     this._openAiClient = options.openAiClient;
+    this._voyageAiClient = options.voyageAiClient;
 
     this.webhooks = new Webhooks<SimplifiedContext>({
       secret: this._webhookSecret,
@@ -63,10 +67,10 @@ export class GitHubEventHandler {
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._openAiClient);
+      return new GitHubContext(this, event, octokit, this._openAiClient, this._voyageAiClient);
     } else {
       const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._openAiClient);
+      return new GitHubContext(this, event, octokit, this._openAiClient, this._voyageAiClient);
     }
   }
 
