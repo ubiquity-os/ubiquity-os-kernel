@@ -93,7 +93,6 @@
     "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "20.14.10",
     "@types/node-rsa": "^1.1.4",
-    "azure-functions-core-tools": "^4.0.6610",
     "cspell": "8.9.0",
     "esbuild": "0.23.0",
     "eslint": "9.7.0",
