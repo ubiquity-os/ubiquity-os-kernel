@@ -34,6 +34,7 @@
     "setup-kv": "bun --env-file=.dev.vars scripts/setup-kv-namespace.ts",
     "setup": "tsx ./scripts/setup.ts",
     "start:azure": "run-p proxy build:watch start",
+    "start:bun": "run-p proxy start",
     "start": "bun --port 8787 --watch --no-clear-screen src/adapters/cloudflare-worker.ts",
     "prestart": "bun run build",
     "build": "tsup",
