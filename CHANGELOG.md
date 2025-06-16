@@ -1,5 +1,13 @@
 # Changelog
 
+## [7.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.1.0...v7.2.0) (2025-06-16)
+
+
+### Features
+
+* added Deno deployment ([fd9f149](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fd9f1498bb1390e36f2053eca3589944fc0c87b4))
+* added Deno deployment ([8516a2e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8516a2e6554adcef46177e849bf5eb088e198175))
+
 ## [7.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.0.0...v7.1.0) (2025-03-15)
 
 
