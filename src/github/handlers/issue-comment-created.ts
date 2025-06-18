@@ -6,13 +6,22 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
+import { findTaskAuthor, mapAuthorToBot, preCheckForMappingAuthorToBot } from "./map-author-to-bot";
+import { CommandCall } from "../../types/command";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`/help`)) {
+  const { body, user } = context.payload.comment;
+  const text = body.toLowerCase().trim();
+
+  if (text.startsWith(`/help`)) {
     await postHelpCommand(context);
-  } else if (body.startsWith(`@ubiquityos`)) {
+  } else if (text.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
+  } else if (user?.type === "User") {
+    const taskAuthor = await findTaskAuthor(context);
+    if (taskAuthor && (await preCheckForMappingAuthorToBot(context, taskAuthor))) {
+      await mapAuthorToBot(context, taskAuthor);
+    }
   }
 }
 
@@ -80,6 +89,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     }
   }
 
+  return await processCommandRouterLlmCall(context, commands, pluginsWithManifest);
+}
+
+export async function processCommandRouterLlmCall(
+  context: GitHubContext<"issue_comment.created">,
+  commands: Array<OpenAiFunction>,
+  pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[]
+) {
   const response = await context.openAi.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -182,6 +199,23 @@ The input will include the following fields:
     console.log(`No plugin found for command '${command.name}'`);
     return;
   }
+
+  await processCommand(context, pluginWithManifest, command);
+}
+
+export async function processCommand(
+  context: GitHubContext<"issue_comment.created">,
+  pluginWithManifest: {
+    plugin: PluginConfiguration["plugins"][0]["uses"][0];
+    manifest: Manifest;
+  },
+  command: CommandCall
+) {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    console.log(`No installation found, cannot invoke command`);
+    return;
+  }
+
   const {
     plugin: { plugin, with: settings },
   } = pluginWithManifest;
