@@ -29,10 +29,9 @@ async function isUserContributor(context: GitHubContext<"issue_comment.created">
 async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">) {
   const comment = context.payload.comment;
   const body = comment.body.trim().toLowerCase();
-  // Nobody was tagged in the message
-  if (body.search(/@\S+/) === -1) {
-    return false;
-  }
+  const issueAuthor = context.payload.issue.user?.login;
+  const commentAuthor = context.payload.comment.user?.login;
+
   // The author of that comment is not a contributor, or not a human
   if (comment.user?.type !== "User" || !(await isUserContributor(context))) {
     return false;
@@ -41,12 +40,59 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   if (context.payload.issue.pull_request) {
     return false;
   }
+  // The author was not tagged in the message
+  if (body.search(`@${issueAuthor}`) === -1) {
+    return false;
+  }
+
   try {
     const llmResponse = await context.openAi.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [],
+      messages: [
+        {
+          role: "system",
+          content: `You are a GitHub comment analyzer. Your task is to determine if a comment appears to be a help request directed at the issue author.
+
+A help request is typically:
+- A question asking for permission, assignment, or guidance
+- A request to take over work or be assigned to a task
+- Asking for clarification about the issue/task
+- Seeking approval to work on something
+- Technical questions requiring guidance or explanation
+- Questions about implementation details or approach
+
+Examples of help requests:
+- "@user1 could you assign me to the task?"
+- "Do you think I could take over the pull-request @user2"
+- "@author can I work on this issue?"
+- "Could you help me understand the requirements @maintainer?"
+- "How should I implement this feature @author?"
+- "What's the expected behavior for this edge case @maintainer?"
+- "Can you clarify the acceptance criteria @user?"
+
+Examples of NON-help requests:
+- General discussions about the code not seeking guidance
+- Status updates or progress reports
+- Comments that don't involve the issue author
+- Simple acknowledgments or confirmations
+
+Respond with only "true" if this appears to be a help request targeting the issue author, or "false" otherwise.`,
+        },
+        {
+          role: "user",
+          content: `Issue Author: ${issueAuthor}
+Comment Author: ${commentAuthor}
+Comment Body: ${body}
+
+Is this comment a help request directed at the issue author?`,
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 10,
     });
-    return JSON.parse(`${llmResponse.choices[0].message.content}`);
+
+    const response = llmResponse.choices[0].message.content?.trim().toLowerCase();
+    return response === "true";
   } catch (e) {
     console.error(`Failed to parse the user comment for help.`, e);
     return false;
