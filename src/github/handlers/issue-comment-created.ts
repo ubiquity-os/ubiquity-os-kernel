@@ -26,6 +26,28 @@ async function isUserContributor(context: GitHubContext<"issue_comment.created">
   return role === "none" || role === "read";
 }
 
+async function getPreviousComment(context: GitHubContext<"issue_comment.created">) {
+  const currentCommentId = context.payload.comment.id;
+
+  try {
+    const comments = await context.octokit.rest.issues.listComments({
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
+      issue_number: context.payload.issue.number,
+      per_page: 100, // Get enough comments to find the previous one
+    });
+
+    const currentIndex = comments.data.findIndex((comment) => comment.id === currentCommentId);
+    if (currentIndex > 0) {
+      return comments.data[currentIndex - 1];
+    }
+    return null;
+  } catch (e) {
+    console.error("Failed to fetch previous comment", e);
+    return null;
+  }
+}
+
 async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">) {
   const comment = context.payload.comment;
   const body = comment.body.trim().toLowerCase();
@@ -42,6 +64,11 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   }
   // The author was not tagged in the message
   if (body.search(`@${issueAuthor}`) === -1) {
+    return false;
+  }
+  // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
+  const previousComment = await getPreviousComment(context);
+  if (previousComment?.user?.login === commentAuthor) {
     return false;
   }
 
@@ -104,6 +131,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
+    // or if the tag is the issue author by an outsider?
+    // maybe check if the previous comment was from the actual tagged user to avoid useless post? also ignore previous bot comments?
+    // ask the llm is that seems to be a help request, respond by true or false
+    // if true, then find the issue author (the question could be asked in a PR, maybe should be ignored?)
+
     await commandRouter(context);
   } else if (await isUserHelpRequest(context)) {
     console.log("help requested");
