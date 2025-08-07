@@ -7,12 +7,60 @@ import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 
+async function isUserContributor(context: GitHubContext<"issue_comment.created">) {
+  const {
+    octokit,
+    payload: {
+      comment: { user },
+    },
+  } = context;
+  if (!user) {
+    return true;
+  }
+  const permissionLevel = await octokit.rest.repos.getCollaboratorPermissionLevel({
+    username: user.login,
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+  });
+  const role = permissionLevel.data.role_name?.toLowerCase();
+  return role === "none" || role === "read";
+}
+
+async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">) {
+  const comment = context.payload.comment;
+  const body = comment.body.trim().toLowerCase();
+  // Nobody was tagged in the message
+  if (body.search(/@\S+/) === -1) {
+    return false;
+  }
+  // The author of that comment is not a contributor, or not a human
+  if (comment.user?.type !== "User" || !(await isUserContributor(context))) {
+    return false;
+  }
+  // We also ignore pull-requests
+  if (context.payload.issue.pull_request) {
+    return false;
+  }
+  try {
+    const llmResponse = await context.openAi.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [],
+    });
+    return JSON.parse(`${llmResponse.choices[0].message.content}`);
+  } catch (e) {
+    console.error(`Failed to parse the user comment for help.`, e);
+    return false;
+  }
+}
+
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
+  } else if (await isUserHelpRequest(context)) {
+    console.log("help requested");
   }
 }
 
