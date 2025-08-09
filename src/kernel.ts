@@ -47,6 +47,7 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
       openAiClient,
+      llmModel: env.OPENROUTER_MODEL,
     });
     bindHandlers(eventHandler);
 

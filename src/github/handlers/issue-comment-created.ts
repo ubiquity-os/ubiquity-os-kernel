@@ -81,7 +81,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   const response = await context.openAi.chat.completions.create({
-    model: context.openAiModel,
+    model: context.llModel,
     messages: [
       {
         role: "system",
