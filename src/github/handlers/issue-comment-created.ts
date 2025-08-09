@@ -37,13 +37,13 @@ async function getPreviousComment(context: GitHubContext<"issue_comment.created"
       per_page: 100, // Get enough comments to find the previous one
     });
 
-    const currentIndex = comments.data.findIndex((comment) => comment.id === currentCommentId);
+    const currentIndex = comments.data.filter((comment) => comment.user?.type === "User").findIndex((comment) => comment.id === currentCommentId);
     if (currentIndex > 0) {
       return comments.data[currentIndex - 1];
     }
     return null;
   } catch (e) {
-    console.error("Failed to fetch previous comment", e);
+    console.warn("Failed to fetch previous comment", e);
     return null;
   }
 }
@@ -68,9 +68,7 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
   const previousComment = await getPreviousComment(context);
-  if (previousComment?.user?.login === commentAuthor) {
-    return false;
-  }
+  return previousComment?.user?.login !== commentAuthor;
 
   try {
     const llmResponse = await context.openAi.chat.completions.create({
@@ -139,6 +137,9 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     await commandRouter(context);
   } else if (await isUserHelpRequest(context)) {
     console.log("help requested");
+    const issueAuthor = context.payload.issue.user?.login;
+    context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
+    await commandRouter(context);
   }
 }
 
