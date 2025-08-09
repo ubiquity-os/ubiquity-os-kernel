@@ -38,6 +38,7 @@ app.post("/", async (ctx: Context) => {
     const id = getId(request);
     const openAiClient = new OpenAI({
       apiKey: env.OPENAI_API_KEY,
+      baseURL: env.OPENAI_BASE_URL || undefined,
     });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
@@ -46,6 +47,7 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
       openAiClient,
+      openAiModel: env.OPENAI_MODEL || "gpt-4o-mini",
     });
     bindHandlers(eventHandler);
 

@@ -6,6 +6,8 @@ export const envSchema = T.Object({
   APP_ID: T.String({ minLength: 1 }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   OPENAI_API_KEY: T.String({ minLength: 1 }),
+  OPENAI_MODEL: T.String({ minLength: 1, default: "gpt-4o-mini" }),
+  OPENAI_BASE_URL: T.Optional(T.String({ minLength: 1 })),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
 });
 
@@ -21,6 +23,8 @@ declare global {
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
       OPENAI_API_KEY: string;
+      OPENAI_MODEL: string;
+      OPENAI_BASE_URL?: string;
     }
   }
 }
