@@ -65,7 +65,9 @@ describe("Worker tests", () => {
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENAI_API_KEY: "token",
+      OPENROUTER_API_KEY: "token",
+      OPENROUTER_MODEL: "openai/o1-mini",
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",

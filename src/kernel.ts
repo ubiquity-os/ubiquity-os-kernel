@@ -2,7 +2,7 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { env as honoEnv, getRuntimeKey } from "hono/adapter";
+import { getRuntimeKey, env as honoEnv } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import packageJson from "../package.json";
@@ -37,8 +37,8 @@ app.post("/", async (ctx: Context) => {
     const signatureSha256 = getSignature(request);
     const id = getId(request);
     const openAiClient = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: env.OPENAI_BASE_URL || undefined,
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: env.OPENROUTER_BASE_URL,
     });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
@@ -47,7 +47,6 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
       openAiClient,
-      openAiModel: env.OPENAI_MODEL || "gpt-4o-mini",
     });
     bindHandlers(eventHandler);
 

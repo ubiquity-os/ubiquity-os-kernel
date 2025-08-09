@@ -25,6 +25,15 @@ The kernel is designed to:
 - **`WEBHOOK_PROXY_URL` (only for development)**
   Obtain a webhook URL at [smee.io](https://smee.io/) and set it in your GitHub App settings.
 
+- **`OPENROUTER_API_KEY`**
+  API key used for LLM requests.
+
+- **`OPENROUTER_MODEL`**
+  Fully qualified model identifier (default: `openai/o1-mini`).
+
+- **`OPENROUTER_BASE_URL`**
+  Base URL for the OpenRouter (or OpenAI-compatible) API (default: `https://openrouter.ai/api/v1`).
+
 ### Quick Start
 
 ```bash

@@ -21,9 +21,9 @@ jobs:
           echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
 
       - uses: ubiquity-os/deno-plugin-adapter@main
-        id : adapter
+        id: adapter
         with:
-          pluginEntry: './adapters/cloudflare-worker'
+          pluginEntry: "./adapters/cloudflare-worker"
 
       - uses: ubiquity-os/deno-deploy@main
         env:
@@ -31,9 +31,9 @@ jobs:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
