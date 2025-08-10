@@ -35,7 +35,7 @@
     "setup": "tsx ./scripts/setup.ts",
     "start:azure": "run-p proxy build:watch start",
     "start:bun": "run-p proxy start",
-    "start": "bun --port 8787 --watch --no-clear-screen src/adapters/cloudflare-worker.ts",
+    "start": "bun --port 8787 --watch --no-clear-screen src/adapters/server.ts",
     "prestart": "bun run build",
     "build": "tsup",
     "build:watch": "tsup --watch",

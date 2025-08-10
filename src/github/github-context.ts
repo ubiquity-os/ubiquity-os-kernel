@@ -13,7 +13,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
   public openAi: OpenAI;
-  public llModel: string;
+  public llm: string;
 
   constructor(
     eventHandler: InstanceType<typeof GitHubEventHandler>,
@@ -32,7 +32,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     }
     this.octokit = octokit;
     this.openAi = openAi;
-    this.llModel = eventHandler.llmModel;
+    this.llm = eventHandler.llm;
   }
 }
 

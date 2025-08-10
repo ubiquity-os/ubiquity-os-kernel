@@ -16,7 +16,7 @@ export type Options = {
   privateKey: string;
   pluginChainState: KvStore<PluginChainState>;
   openAiClient: OpenAI;
-  llmModel: string;
+  llm: string;
 };
 
 export class GitHubEventHandler {
@@ -31,7 +31,7 @@ export class GitHubEventHandler {
   private readonly _privateKey: string;
   private readonly _appId: number;
   private readonly _openAiClient: OpenAI;
-  public readonly llmModel: string;
+  public readonly llm: string;
 
   constructor(options: Options) {
     this.environment = options.environment;
@@ -40,7 +40,7 @@ export class GitHubEventHandler {
     this._webhookSecret = options.webhookSecret;
     this.pluginChainState = options.pluginChainState;
     this._openAiClient = options.openAiClient;
-    this.llmModel = options.llmModel;
+    this.llm = options.llm;
 
     this.webhooks = new Webhooks<SimplifiedContext>({
       secret: this._webhookSecret,
