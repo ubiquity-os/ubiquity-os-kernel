@@ -66,7 +66,7 @@ describe("Worker tests", () => {
       APP_ID: "",
       APP_PRIVATE_KEY: "",
       OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "openai/o1-mini",
+      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
       OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
     const res = await app.request("http://localhost:8080", {

@@ -6,7 +6,7 @@ export const envSchema = T.Object({
   APP_ID: T.String({ minLength: 1 }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   OPENROUTER_API_KEY: T.String({ minLength: 1 }),
-  OPENROUTER_MODEL: T.String({ minLength: 1, default: "openai/o1-mini" }),
+  OPENROUTER_MODEL: T.String({ minLength: 1, default: "deepseek/deepseek-chat-v3-0324:free" }),
   OPENROUTER_BASE_URL: T.String({ minLength: 1, default: "https://openrouter.ai/api/v1" }),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
 });

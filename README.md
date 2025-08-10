@@ -29,7 +29,7 @@ The kernel is designed to:
   API key used for LLM requests.
 
 - **`OPENROUTER_MODEL`**
-  Fully qualified model identifier (default: `openai/o1-mini`).
+  Fully qualified model identifier (default: `deepseek/deepseek-chat-v3-0324:free`).
 
 - **`OPENROUTER_BASE_URL`**
   Base URL for the OpenRouter (or OpenAI-compatible) API (default: `https://openrouter.ai/api/v1`).
