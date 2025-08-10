@@ -36,7 +36,7 @@ app.post("/", async (ctx: Context) => {
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const openAiClient = new OpenAI({
+    const llmClient = new OpenAI({
       apiKey: env.OPENROUTER_API_KEY,
       baseURL: env.OPENROUTER_BASE_URL,
     });
@@ -46,7 +46,7 @@ app.post("/", async (ctx: Context) => {
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
-      openAiClient,
+      llmClient,
       llm: env.OPENROUTER_MODEL,
     });
     bindHandlers(eventHandler);

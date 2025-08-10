@@ -15,7 +15,7 @@ export type Options = {
   appId: string | number;
   privateKey: string;
   pluginChainState: KvStore<PluginChainState>;
-  openAiClient: OpenAI;
+  llmClient: OpenAI;
   llm: string;
 };
 
@@ -30,7 +30,7 @@ export class GitHubEventHandler {
   private readonly _webhookSecret: string;
   private readonly _privateKey: string;
   private readonly _appId: number;
-  private readonly _openAiClient: OpenAI;
+  private readonly _llmClient: OpenAI;
   public readonly llm: string;
 
   constructor(options: Options) {
@@ -39,7 +39,7 @@ export class GitHubEventHandler {
     this._appId = Number(options.appId);
     this._webhookSecret = options.webhookSecret;
     this.pluginChainState = options.pluginChainState;
-    this._openAiClient = options.openAiClient;
+    this._llmClient = options.llmClient;
     this.llm = options.llm;
 
     this.webhooks = new Webhooks<SimplifiedContext>({
@@ -66,10 +66,10 @@ export class GitHubEventHandler {
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._openAiClient);
+      return new GitHubContext(this, event, octokit, this._llmClient);
     } else {
       const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._openAiClient);
+      return new GitHubContext(this, event, octokit, this._llmClient);
     }
   }
 

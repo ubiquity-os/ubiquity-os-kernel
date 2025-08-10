@@ -73,7 +73,7 @@ describe("Worker tests", () => {
       method: "POST",
     });
     expect(res.status).toEqual(500);
-    expect(await res.json()).toEqual({ error: "Error: Invalid environment variables" });
+    expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
     consoleSpy.mockReset();
   });
 
