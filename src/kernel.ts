@@ -29,7 +29,7 @@ app.get("/x25519_public_key", async (ctx: Context) => {
 
 app.post("/", async (ctx: Context) => {
   try {
-    const env = honoEnv(ctx);
+    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
     const request = ctx.req;
 
     validateEnv(env);
