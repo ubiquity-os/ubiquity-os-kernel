@@ -2,7 +2,7 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { env as honoEnv, getRuntimeKey } from "hono/adapter";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import packageJson from "../package.json";
@@ -31,8 +31,6 @@ app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
     const request = ctx.req;
-
-    validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
@@ -75,14 +73,6 @@ function handleUncaughtError(ctx: Context, error: unknown) {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
-}
-
-function validateEnv(env: Env): void {
-  if (!Value.Check(envSchema, env)) {
-    const errors = [...Value.Errors(envSchema, env)];
-    console.error("Invalid environment variables", errors);
-    throw new Error("Invalid environment variables");
-  }
 }
 
 function getEventName(request: HonoRequest): WebhookEventName {
