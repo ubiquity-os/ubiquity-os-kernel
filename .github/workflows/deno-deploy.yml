@@ -23,7 +23,7 @@ jobs:
       - uses: ubiquity-os/deno-plugin-adapter@main
         id: adapter
         with:
-          pluginEntry: "./adapters/server.ts"
+          pluginEntry: "./adapters/server"
 
       - uses: ubiquity-os/deno-deploy@main
         env:
