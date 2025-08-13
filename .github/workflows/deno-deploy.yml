@@ -20,6 +20,8 @@ jobs:
           branch_name=$(echo '${{ github.event.ref || github.event.workflow_run.head_branch || github.ref }}' | sed 's#refs/heads/##')
           echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
 
+      - uses: actions/checkout@v4
+
       - uses: ubiquity-os/deno-plugin-adapter@main
         id: adapter
         with:
