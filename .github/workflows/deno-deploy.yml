@@ -27,11 +27,6 @@ jobs:
         with:
           pluginEntry: "./adapters/server"
 
-      - name: print files
-        run: |
-          ls -lra ./src
-          cat ./src/deno.ts
-
       - uses: ubiquity-os/deno-deploy@main
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
