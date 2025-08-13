@@ -27,7 +27,7 @@ jobs:
 
       - name: print files
         run: |
-          ls -la
+          ls -lra ./src
           cat ./src/deno.ts
 
       - uses: ubiquity-os/deno-deploy@main
