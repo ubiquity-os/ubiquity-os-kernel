@@ -65,13 +65,15 @@ describe("Worker tests", () => {
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENAI_API_KEY: "token",
+      OPENROUTER_API_KEY: "token",
+      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",
     });
     expect(res.status).toEqual(500);
-    expect(await res.json()).toEqual({ error: "Error: Invalid environment variables" });
+    expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
     consoleSpy.mockReset();
   });
 

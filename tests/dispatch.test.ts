@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import crypto from "crypto";
-import { server } from "./__mocks__/node";
-import { http, HttpResponse } from "msw";
 import { Octokit } from "@octokit/rest";
+import crypto from "crypto";
+import { http, HttpResponse } from "msw";
+import { server } from "./__mocks__/node";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -147,7 +147,9 @@ describe("handleEvent", () => {
       APP_WEBHOOK_SECRET: secret,
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
-      OPENAI_API_KEY: "token",
+      OPENROUTER_API_KEY: "token",
+      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
 
     const app = (await import("../src/kernel")).app;

@@ -20,15 +20,22 @@ jobs:
           branch_name=$(echo '${{ github.event.ref || github.event.workflow_run.head_branch || github.ref }}' | sed 's#refs/heads/##')
           echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
 
+      - uses: ubiquity-os/deno-plugin-adapter@main
+        id: adapter
+        with:
+          pluginEntry: "./adapters/server"
+
       - uses: ubiquity-os/deno-deploy@main
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
-          pluginEntry: './adapters/cloudflare-worker'
           organization: ${{ secrets.DENO_ORG_NAME }}
+          entrypoint: ${{ steps.adapter.outputs.entrypoint }}

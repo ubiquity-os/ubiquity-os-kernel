@@ -2,4 +2,6 @@ WEBHOOK_PROXY_URL=https://smee.io/new
 APP_WEBHOOK_SECRET=xxxxxx
 APP_ID=123456
 ENVIRONMENT=development | production
-OPENAI_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=deepseek/deepseek-chat-v3-0324:free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1

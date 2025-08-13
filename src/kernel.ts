@@ -29,15 +29,14 @@ app.get("/x25519_public_key", async (ctx: Context) => {
 
 app.post("/", async (ctx: Context) => {
   try {
-    const env = honoEnv(ctx);
+    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
     const request = ctx.req;
-
-    validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const openAiClient = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
+    const llmClient = new OpenAI({
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: env.OPENROUTER_BASE_URL,
     });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
@@ -45,7 +44,8 @@ app.post("/", async (ctx: Context) => {
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
       pluginChainState: new EmptyStore(),
-      openAiClient,
+      llmClient,
+      llm: env.OPENROUTER_MODEL,
     });
     bindHandlers(eventHandler);
 
@@ -73,14 +73,6 @@ function handleUncaughtError(ctx: Context, error: unknown) {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
-}
-
-function validateEnv(env: Env): void {
-  if (!Value.Check(envSchema, env)) {
-    const errors = [...Value.Errors(envSchema, env)];
-    console.error("Invalid environment variables", errors);
-    throw new Error("Invalid environment variables");
-  }
 }
 
 function getEventName(request: HonoRequest): WebhookEventName {

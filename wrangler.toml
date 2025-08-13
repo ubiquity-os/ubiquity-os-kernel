@@ -1,5 +1,5 @@
 name = "ubiquity-os-kernel"
-main = "src/adapters/cloudflare-worker.ts"
+main = "src/adapters/server.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
