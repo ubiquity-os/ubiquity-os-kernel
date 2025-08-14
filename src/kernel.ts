@@ -3,6 +3,7 @@ import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
 import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import packageJson from "../package.json";
@@ -13,6 +14,14 @@ import { EmptyStore } from "./github/utils/kv-store";
 import { logger } from "./logger/logger";
 
 export const app = new Hono();
+
+app.use(requestId());
+app.use(async (c: Context, next) => {
+  const requestId = c.var.requestId;
+  const childLogger = logger.child({ requestId });
+  c.set("logger", childLogger);
+  await next();
+});
 
 app.get("/", (c) => {
   return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
@@ -47,6 +56,7 @@ app.post("/", async (ctx: Context) => {
       pluginChainState: new EmptyStore(),
       llmClient,
       llm: env.OPENROUTER_MODEL,
+      logger: ctx.var.logger,
     });
     bindHandlers(eventHandler);
 

@@ -17,6 +17,7 @@ export type Options = {
   pluginChainState: KvStore<PluginChainState>;
   llmClient: OpenAI;
   llm: string;
+  logger?: typeof logger;
 };
 
 export class GitHubEventHandler {
@@ -32,6 +33,7 @@ export class GitHubEventHandler {
   private readonly _appId: number;
   private readonly _llmClient: OpenAI;
   public readonly llm: string;
+  public readonly logger = logger;
 
   constructor(options: Options) {
     this.environment = options.environment;
@@ -41,6 +43,10 @@ export class GitHubEventHandler {
     this.pluginChainState = options.pluginChainState;
     this._llmClient = options.llmClient;
     this.llm = options.llm;
+
+    if (options.logger) {
+      this.logger = options.logger;
+    }
 
     this.webhooks = new Webhooks<SimplifiedContext>({
       secret: this._webhookSecret,
@@ -52,10 +58,10 @@ export class GitHubEventHandler {
     this.onError = this.webhooks.onError;
 
     this.onAny((event) => {
-      logger.github({ event: event.name, id: event.id }, "Event received");
+      this.logger.github({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      logger.github({ err: error }, "Webhook error");
+      this.logger.github({ err: error }, "Webhook error");
     });
   }
 
@@ -79,10 +85,10 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
       },
       auth: {
         appId: this._appId,
@@ -98,10 +104,10 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
       },
       auth: {
         appId: this._appId,
