@@ -7,6 +7,8 @@ const redact = {
   censor: "[REDACTED]",
 };
 
+console.log(`Logger level: ${level}`, process.env.NODE_ENV);
+
 export const logger = pino({
   level,
   redact,
