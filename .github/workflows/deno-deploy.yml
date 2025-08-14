@@ -41,3 +41,4 @@ jobs:
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
           entrypoint: ${{ steps.adapter.outputs.entrypoint }}
+          project_name: ${{ secrets.DENO_PROJECT_NAME }}
