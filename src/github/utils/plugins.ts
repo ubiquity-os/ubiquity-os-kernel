@@ -2,7 +2,6 @@ import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
-import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 
@@ -16,7 +15,7 @@ function isCommentCreatedPayload(
 
 export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0], event: EmitterWebhookEventName) {
   if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    logger.debug({ plugin: pluginChain.uses[0].plugin }, "Skipping plugin because sender is bot");
+    context.logger.debug({ plugin: pluginChain.uses[0].plugin }, "Skipping plugin because sender is bot");
     return true;
   }
   const commentEvents = ["issue_comment.created", "pull_request_review_comment.created"] as EmitterWebhookEventName[];
@@ -34,7 +33,7 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
           (command) => isCommentCreatedPayload(context.payload) && context.payload.comment?.body.trim().startsWith(`/${command}`)
         )
       ) {
-        logger.debug(
+        context.logger.debug(
           { manifest: manifest.name, command: context.payload.comment?.body.trim(), commands: Object.keys(manifest.commands) },
           "Skipping plugin because of chain command mismatch"
         );
@@ -57,7 +56,7 @@ export async function getPluginsForEvent(context: GitHubContext, plugins: Plugin
 }
 
 export function getManifest(context: GitHubContext, plugin: string | GithubPlugin) {
-  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin);
+  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
 async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
@@ -75,17 +74,17 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     if ("content" in data) {
       const content = Buffer.from(data.content, "base64").toString();
       const contentParsed = JSON.parse(content);
-      const manifest = decodeManifest(contentParsed);
+      const manifest = decodeManifest(context, contentParsed);
       _manifestCache[manifestKey] = manifest;
       return manifest;
     }
   } catch (e) {
-    logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
+    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
   }
   return null;
 }
 
-async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
+async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
   if (_manifestCache[url]) {
     return _manifestCache[url];
   }
@@ -93,20 +92,20 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
   try {
     const result = await fetch(manifestUrl);
     const jsonData = await result.json();
-    const manifest = decodeManifest(jsonData);
+    const manifest = decodeManifest(context, jsonData);
     _manifestCache[url] = manifest;
     return manifest;
   } catch (e) {
-    logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
+    context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
   }
   return null;
 }
 
-function decodeManifest(manifest: unknown) {
+function decodeManifest(context: GitHubContext, manifest: unknown) {
   const errors = [...Value.Errors(manifestSchema, manifest)];
   if (errors.length) {
     for (const error of errors) {
-      logger.error({ error }, "Manifest validation error");
+      context.logger.error({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }

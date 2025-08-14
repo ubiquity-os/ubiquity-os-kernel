@@ -1,7 +1,6 @@
 import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
-import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { expressionRegex } from "../types/plugin";
 import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
@@ -18,32 +17,32 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
     owner,
   });
 
-  logger.debug({ owner, repository }, "Downloaded configuration file");
+  context.logger.debug({ owner, repository }, "Downloaded configuration file");
   if (!rawData) {
-    logger.debug({ owner, repository }, "No raw configuration data");
+    context.logger.debug({ owner, repository }, "No raw configuration data");
     return { config: null, errors: null, rawData: null };
   }
 
-  const { yaml, errors } = parseYaml(rawData);
+  const { yaml, errors } = parseYaml(context, rawData);
   const targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
-  logger.debug({ owner, repository }, "Decoding configuration");
+  context.logger.debug({ owner, repository }, "Decoding configuration");
   if (targetRepoConfiguration) {
     try {
       const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
       const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
       if (errors !== null) {
         for (const error of errors) {
-          logger.error({ err: error }, "Configuration validation error");
+          context.logger.error({ err: error }, "Configuration validation error");
         }
       }
       const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
       return { config: decodedConfig, errors, rawData };
     } catch (error) {
-      logger.error({ err: error, owner, repository }, "Error decoding configuration; Will ignore.");
+      context.logger.error({ err: error, owner, repository }, "Error decoding configuration; Will ignore.");
       return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
-  logger.error({ owner, repository }, "YAML could not be decoded");
+  context.logger.error({ owner, repository }, "YAML could not be decoded");
   return { config: null, errors, rawData };
 }
 
@@ -62,17 +61,17 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   const payload = context.payload;
   const defaultConfiguration = Value.Decode(configSchema, Value.Default(configSchema, {}));
   if (!("repository" in payload) || !payload.repository) {
-    logger.warn("Repository is not defined");
+    context.logger.warn("Repository is not defined");
     return defaultConfiguration;
   }
   if (!("owner" in payload.repository) || !payload.repository.owner) {
-    logger.warn("Owner is not defined");
+    context.logger.warn("Owner is not defined");
     return defaultConfiguration;
   }
 
   let mergedConfiguration: PluginConfiguration = defaultConfiguration;
 
-  logger.debug(
+  context.logger.debug(
     {
       orgRepo: `${payload.repository.owner.login}/${CONFIG_ORG_REPO}`,
       repo: `${payload.repository.owner.login}/${payload.repository.name}`,
@@ -82,7 +81,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   const orgConfig = await getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login);
   const repoConfig = await getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login);
 
-  logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Fetched configurations; Will merge them.");
+  context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Fetched configurations; Will merge them.");
 
   if (orgConfig.config) {
     mergedConfiguration = mergeConfigurations(mergedConfiguration, orgConfig.config);
@@ -91,11 +90,14 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     mergedConfiguration = mergeConfigurations(mergedConfiguration, repoConfig.config);
   }
 
-  logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Checking plugin chains");
+  context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Checking plugin chains");
 
   checkPluginChains(mergedConfiguration);
 
-  logger.info({ repo: `${payload.repository.owner.login}/${payload.repository.name}`, plugins: mergedConfiguration.plugins.length }, "Found plugins enabled");
+  context.logger.info(
+    { repo: `${payload.repository.owner.login}/${payload.repository.name}`, plugins: mergedConfiguration.plugins.length },
+    "Found plugins enabled"
+  );
 
   for (const plugin of mergedConfiguration.plugins) {
     const manifest = await getManifest(context, plugin.uses[0].plugin);
@@ -167,43 +169,43 @@ function checkExpression(value: string, allIds: Set<string>, calledIds: Set<stri
 
 async function download({ context, repository, owner }: { context: GitHubContext; repository: string; owner: string }): Promise<string | null> {
   if (!repository || !owner) {
-    logger.error("Repo or owner is not defined, cannot download the requested file");
+    context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
   }
   const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
-    logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
+    context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
     const { data, headers } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
       path: filePath,
       mediaType: { format: "raw" },
     });
-    logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
+    context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
     return data as unknown as string; // this will be a string if media format is raw
   } catch (err) {
     // In case of a missing config, do not log it as an error
     if (err && typeof err === "object" && "status" in err && err.status === 404) {
-      logger.debug({ owner, repository, filePath }, "No configuration file found");
+      context.logger.debug({ owner, repository, filePath }, "No configuration file found");
     } else {
-      logger.error({ err, owner, repository, filePath }, "Failed to download the requested file");
+      context.logger.error({ err, owner, repository, filePath }, "Failed to download the requested file");
     }
     return null;
   }
 }
 
-export function parseYaml(data: null | string) {
-  logger.trace({ data }, "Will attempt to parse YAML data");
+export function parseYaml(context: GitHubContext, data: null | string) {
+  context.logger.trace({ data }, "Will attempt to parse YAML data");
   try {
     if (data) {
       const parsedData = YAML.load(data);
-      logger.trace({ parsedData }, "Parsed yaml data");
+      context.logger.trace({ parsedData }, "Parsed yaml data");
       return { yaml: parsedData ?? null, errors: null };
     }
   } catch (error) {
-    logger.error({ err: error }, "Error parsing YAML");
+    context.logger.error({ err: error }, "Error parsing YAML");
     return { errors: [error] as YAMLError[], yaml: null };
   }
-  logger.debug("Could not parse YAML");
+  context.logger.debug("Could not parse YAML");
   return { yaml: null, errors: null };
 }

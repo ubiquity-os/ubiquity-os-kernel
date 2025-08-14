@@ -1,5 +1,4 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
@@ -45,7 +44,7 @@ const embeddedCommands: Array<OpenAiFunction> = [
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    logger.warn({ event: context.key }, `No installation found, cannot invoke command`);
+    context.logger.warn({ event: context.key }, `No installation found, cannot invoke command`);
     return;
   }
 
@@ -164,7 +163,7 @@ The input will include the following fields:
 
   const toolCall = toolCalls[0];
   if (!toolCall) {
-    logger.debug({ event: context.key }, "No tool call");
+    context.logger.debug({ event: context.key }, "No tool call");
     return;
   }
 
@@ -180,7 +179,7 @@ The input will include the following fields:
 
   const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {
-    logger.warn({ command: command.name }, `No plugin found for command`);
+    context.logger.warn({ command: command.name }, `No plugin found for command`);
     return;
   }
   const {
@@ -207,6 +206,6 @@ The input will include the following fields:
       });
     }
   } catch (e) {
-    logger.error({ plugin, err: e }, "An error occurred while processing plugin chain; skipping plugin");
+    context.logger.error({ plugin, err: e }, "An error occurred while processing plugin chain; skipping plugin");
   }
 }

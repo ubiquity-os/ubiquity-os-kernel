@@ -1,4 +1,3 @@
-import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
@@ -29,7 +28,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
     commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
   if (!commands.length) {
-    logger.warn("No commands found, will not post the help command message.");
+    context.logger.warn("No commands found, will not post the help command message.");
   } else {
     await context.octokit.rest.issues.createComment({
       body: comments.concat(commands.sort()).join("\n"),

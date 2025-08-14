@@ -72,10 +72,10 @@ export class GitHubEventHandler {
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._llmClient);
+      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
     } else {
       const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._llmClient);
+      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
     }
   }
 

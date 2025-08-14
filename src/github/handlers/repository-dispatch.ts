@@ -1,15 +1,14 @@
 import { Value } from "@sinclair/typebox/value";
-import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { expressionRegex, PluginChainState, PluginInput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
-  logger.debug({ payload: context.payload.client_payload }, "Repository dispatch event received");
+  context.logger.debug({ payload: context.payload.client_payload }, "Repository dispatch event received");
 
   if (context.payload.action !== "return-data-to-ubiquity-os-kernel") {
-    logger.debug({ action: context.payload.action }, "Skipping non UbiquityOS event");
+    context.logger.debug({ action: context.payload.action }, "Skipping non UbiquityOS event");
     return;
   }
 
@@ -18,19 +17,19 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   try {
     pluginOutput = Value.Decode(pluginOutputSchema, context.payload.client_payload);
   } catch (error) {
-    logger.error({ repo: context.payload.repository.full_name, err: error }, "Cannot decode plugin output");
+    context.logger.error({ repo: context.payload.repository.full_name, err: error }, "Cannot decode plugin output");
     throw error;
   }
-  logger.debug({ pluginOutput }, "plugin output");
+  context.logger.debug({ pluginOutput }, "plugin output");
 
   const state = await context.eventHandler.pluginChainState.get(pluginOutput.state_id);
   if (!state) {
-    logger.error({ stateId: pluginOutput.state_id }, "No state found for plugin chain");
+    context.logger.error({ stateId: pluginOutput.state_id }, "No state found for plugin chain");
     return;
   }
 
   if (!("installation" in state.eventPayload) || state.eventPayload.installation?.id === undefined) {
-    logger.error({ stateId: pluginOutput.state_id }, "No installation found");
+    context.logger.error({ stateId: pluginOutput.state_id }, "No installation found");
     return;
   }
 
@@ -39,19 +38,19 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
     isGithubPlugin(currentPlugin.plugin) &&
     (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name)
   ) {
-    logger.error({ stateId: pluginOutput.state_id }, "Plugin chain state mismatch");
+    context.logger.error({ stateId: pluginOutput.state_id }, "Plugin chain state mismatch");
     return;
   }
   state.outputs[state.currentPlugin] = pluginOutput;
-  logger.trace({ state }, "chain state");
+  context.logger.trace({ state }, "chain state");
 
   const nextPlugin = state.pluginChain[state.currentPlugin + 1];
   if (!nextPlugin) {
-    logger.info({ stateId: pluginOutput.state_id }, "No more plugins to call");
+    context.logger.info({ stateId: pluginOutput.state_id }, "No more plugins to call");
     await context.eventHandler.pluginChainState.put(pluginOutput.state_id, state);
     return;
   }
-  logger.debug({ nextPlugin: nextPlugin.plugin }, "Dispatching next plugin");
+  context.logger.debug({ nextPlugin: nextPlugin.plugin }, "Dispatching next plugin");
 
   const token = await context.eventHandler.getToken(state.eventPayload.installation.id);
   const settings = findAndReplaceExpressions(nextPlugin.with, state);
