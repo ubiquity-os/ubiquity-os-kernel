@@ -52,10 +52,10 @@ export class GitHubEventHandler {
     this.onError = this.webhooks.onError;
 
     this.onAny((event) => {
-      logger.debug({ event: event.name, id: event.id }, "Event received");
+      logger.github({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      logger.error({ err: error }, "Webhook error");
+      logger.github({ err: error }, "Webhook error");
     });
   }
 
@@ -79,10 +79,10 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => logger.debug({ info }, msg),
-        info: (msg: string, info?: unknown) => logger.info({ info }, msg),
-        warn: (msg: string, info?: unknown) => logger.warn({ info }, msg),
-        error: (msg: string, info?: unknown) => logger.error({ info }, msg),
+        debug: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        info: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        warn: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        error: (msg: string, info?: unknown) => logger.github({ info }, msg),
       },
       auth: {
         appId: this._appId,
@@ -98,10 +98,10 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => logger.debug({ info }, msg),
-        info: (msg: string, info?: unknown) => logger.info({ info }, msg),
-        warn: (msg: string, info?: unknown) => logger.warn({ info }, msg),
-        error: (msg: string, info?: unknown) => logger.error({ info }, msg),
+        debug: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        info: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        warn: (msg: string, info?: unknown) => logger.github({ info }, msg),
+        error: (msg: string, info?: unknown) => logger.github({ info }, msg),
       },
       auth: {
         appId: this._appId,
