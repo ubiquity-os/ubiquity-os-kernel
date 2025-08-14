@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import { config } from "dotenv";
+import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
@@ -86,6 +87,7 @@ describe("Configuration tests", () => {
         },
       },
       eventHandler: eventHandler,
+      logger,
     } as unknown as GitHubContext);
     expect(cfg.plugins[0]).toEqual({
       uses: [
@@ -232,6 +234,7 @@ describe("Configuration tests", () => {
         },
       },
       eventHandler: eventHandler,
+      logger,
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);
@@ -297,6 +300,7 @@ describe("Configuration tests", () => {
         },
       },
       eventHandler: { environment: "development" } as GitHubEventHandler,
+      logger,
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);

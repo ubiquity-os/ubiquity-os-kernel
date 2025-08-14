@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jes
 import { GitHubContext } from "../src/github/github-context";
 import { shouldSkipPlugin } from "../src/github/utils/plugins";
 import { PluginConfiguration } from "../src/github/types/plugin-configuration";
+import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import { http, HttpResponse } from "msw";
 
@@ -51,6 +52,7 @@ describe("Plugin tests", () => {
               type: "Bot",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         pluginChain,
         issueCommentCreated
@@ -70,6 +72,7 @@ describe("Plugin tests", () => {
               body: "/wrong-command",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         pluginChain,
         issueCommentCreated
@@ -89,6 +92,7 @@ describe("Plugin tests", () => {
               body: "/command",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         pluginChain,
         issueCommentCreated
@@ -105,6 +109,7 @@ describe("Plugin tests", () => {
               type: "User",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         {
           uses: [{ skipBotEvents: true, runsOn: [pullRequestOpened], plugin: pluginAddress }],
@@ -123,6 +128,7 @@ describe("Plugin tests", () => {
               type: "User",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         {
           uses: [{ skipBotEvents: true, runsOn: [pullRequestOpened], plugin: pluginAddress }],
@@ -201,6 +207,7 @@ describe("Plugin tests", () => {
               body: "hello",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         {
           uses: [{ skipBotEvents: true, runsOn: [issueCommentCreated], plugin: pluginAddress }],
