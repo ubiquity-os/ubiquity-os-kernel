@@ -36,6 +36,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
           OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
+          NODE_ENV: "production"
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
