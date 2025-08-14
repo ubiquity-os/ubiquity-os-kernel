@@ -10,6 +10,7 @@ import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
+import { logger } from "./logger/logger";
 
 export const app = new Hono();
 
@@ -62,7 +63,7 @@ app.post("/", async (ctx: Context) => {
 });
 
 function handleUncaughtError(ctx: Context, error: unknown) {
-  console.error(error);
+  logger.error({ err: error }, "Uncaught error");
   let status = 500;
   let errorMessage = "An uncaught error occurred";
   if (error instanceof AggregateError) {

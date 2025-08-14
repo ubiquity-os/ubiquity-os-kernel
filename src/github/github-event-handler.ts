@@ -1,8 +1,8 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
-import logger from "console-log-level";
 import OpenAI from "openai";
+import { logger } from "../logger/logger";
 
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
@@ -52,10 +52,10 @@ export class GitHubEventHandler {
     this.onError = this.webhooks.onError;
 
     this.onAny((event) => {
-      console.log(`Event ${event.name} received (id: ${event.id})`);
+      logger.debug({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      console.error(error);
+      logger.error({ err: error }, "Webhook error");
     });
   }
 
@@ -78,7 +78,12 @@ export class GitHubEventHandler {
       request: {
         fetch: fetch.bind(globalThis),
       },
-      log: logger({ level: "debug" }),
+      log: {
+        debug: (msg: string, info?: unknown) => logger.debug({ info }, msg),
+        info: (msg: string, info?: unknown) => logger.info({ info }, msg),
+        warn: (msg: string, info?: unknown) => logger.warn({ info }, msg),
+        error: (msg: string, info?: unknown) => logger.error({ info }, msg),
+      },
       auth: {
         appId: this._appId,
         privateKey: this._privateKey,
@@ -92,7 +97,12 @@ export class GitHubEventHandler {
       request: {
         fetch: fetch.bind(globalThis),
       },
-      log: logger({ level: "debug" }),
+      log: {
+        debug: (msg: string, info?: unknown) => logger.debug({ info }, msg),
+        info: (msg: string, info?: unknown) => logger.info({ info }, msg),
+        warn: (msg: string, info?: unknown) => logger.warn({ info }, msg),
+        error: (msg: string, info?: unknown) => logger.error({ info }, msg),
+      },
       auth: {
         appId: this._appId,
         privateKey: this._privateKey,

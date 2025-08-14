@@ -2,6 +2,7 @@ import { Validator } from "@cfworker/json-schema";
 import { ValueErrorType } from "@sinclair/typebox/value";
 import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
+import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
@@ -134,7 +135,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
     return;
   }
 
-  console.log("Configuration file changed, will run configuration checks.");
+  logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
 
   const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
   const errors: (ValueError | YAML.YAMLError)[] = [];
@@ -159,6 +160,6 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
       );
     }
   } catch (e) {
-    console.error("handlePushEventError", e);
+    logger.error({ err: e }, "handlePushEventError");
   }
 }

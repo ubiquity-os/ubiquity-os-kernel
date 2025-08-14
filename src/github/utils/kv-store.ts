@@ -40,12 +40,15 @@ export interface KvStore<T> {
  */
 export class EmptyStore<T> implements KvStore<T> {
   get(id: string): Promise<T | null> {
-    console.log(`get KV ${id}`);
-    return Promise.resolve(null);
+    return import("../../logger/logger").then(({ logger }) => {
+      logger.debug({ id }, "kv get");
+      return null;
+    });
   }
 
   put(id: string, state: T): Promise<void> {
-    console.log(`put KV ${id} ${state}`);
-    return Promise.resolve();
+    return import("../../logger/logger").then(({ logger }) => {
+      logger.debug({ id, state }, "kv put");
+    });
   }
 }

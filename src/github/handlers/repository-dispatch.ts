@@ -1,14 +1,15 @@
 import { Value } from "@sinclair/typebox/value";
+import { logger } from "../../logger/logger";
 import { GitHubContext } from "../github-context";
 import { expressionRegex, PluginChainState, PluginInput, pluginOutputSchema } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 
 export async function repositoryDispatch(context: GitHubContext<"repository_dispatch">) {
-  console.log("Repository dispatch event received", context.payload.client_payload);
+  logger.debug({ payload: context.payload.client_payload }, "Repository dispatch event received");
 
   if (context.payload.action !== "return-data-to-ubiquity-os-kernel") {
-    console.log("Skipping non UbiquityOS event");
+    logger.debug({ action: context.payload.action }, "Skipping non UbiquityOS event");
     return;
   }
 
@@ -17,19 +18,19 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
   try {
     pluginOutput = Value.Decode(pluginOutputSchema, context.payload.client_payload);
   } catch (error) {
-    console.error(`Cannot decode plugin output from ${context.payload.repository.full_name}`, error);
+    logger.error({ repo: context.payload.repository.full_name, err: error }, "Cannot decode plugin output");
     throw error;
   }
-  console.log("Plugin output", pluginOutput);
+  logger.debug({ pluginOutput }, "plugin output");
 
   const state = await context.eventHandler.pluginChainState.get(pluginOutput.state_id);
   if (!state) {
-    console.error("No state found for plugin chain");
+    logger.error({ stateId: pluginOutput.state_id }, "No state found for plugin chain");
     return;
   }
 
   if (!("installation" in state.eventPayload) || state.eventPayload.installation?.id === undefined) {
-    console.error("No installation found");
+    logger.error({ stateId: pluginOutput.state_id }, "No installation found");
     return;
   }
 
@@ -38,19 +39,19 @@ export async function repositoryDispatch(context: GitHubContext<"repository_disp
     isGithubPlugin(currentPlugin.plugin) &&
     (currentPlugin.plugin.owner !== context.payload.repository.owner.login || currentPlugin.plugin.repo !== context.payload.repository.name)
   ) {
-    console.error("Plugin chain state does not match payload");
+    logger.error({ stateId: pluginOutput.state_id }, "Plugin chain state mismatch");
     return;
   }
   state.outputs[state.currentPlugin] = pluginOutput;
-  console.log("State", state);
+  logger.trace({ state }, "chain state");
 
   const nextPlugin = state.pluginChain[state.currentPlugin + 1];
   if (!nextPlugin) {
-    console.log("No more plugins to call");
+    logger.info({ stateId: pluginOutput.state_id }, "No more plugins to call");
     await context.eventHandler.pluginChainState.put(pluginOutput.state_id, state);
     return;
   }
-  console.log("Dispatching next plugin", nextPlugin);
+  logger.debug({ nextPlugin: nextPlugin.plugin }, "Dispatching next plugin");
 
   const token = await context.eventHandler.getToken(state.eventPayload.installation.id);
   const settings = findAndReplaceExpressions(nextPlugin.with, state);
