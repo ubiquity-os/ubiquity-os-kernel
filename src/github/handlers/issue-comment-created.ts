@@ -65,8 +65,8 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
     return false;
   }
   // The author was not tagged in the message
-  if (body.search(`@${issueAuthor}`) === -1) {
-    console.log(`Comment author was not tagged in the message, will ignore the help request.`);
+  if (body.search(`@${issueAuthor}`) === -1 || issueAuthor === context.payload.issue.user.login) {
+    console.log(`Comment author was not tagged in the message or tagged itself, will ignore the help request.`);
     return false;
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
