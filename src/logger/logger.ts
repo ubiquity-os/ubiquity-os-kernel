@@ -1,4 +1,5 @@
 import pino from "pino";
+import pretty from "pino-pretty";
 
 const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "info" : "debug");
 
@@ -7,27 +8,26 @@ const redact = {
   censor: "[REDACTED]",
 };
 
-console.log(`Logger level: ${level}`, process.env.NODE_ENV);
+const stream =
+  process.env.NODE_ENV !== "production"
+    ? pretty({
+        colorize: true,
+        singleLine: false,
+        levelFirst: true,
+        translateTime: "HH:MM:ss.l",
+        ignore: "pid,hostname",
+      })
+    : undefined;
 
-export const logger = pino({
-  level,
-  redact,
-  customLevels: {
-    github: 15, // between debug (10) and info (20)
-    local: 55, // Above all defaults, useful for debugging
+export const logger = pino(
+  {
+    level,
+    redact,
+    customLevels: {
+      github: 15, // between debug (10) and info (20)
+      local: 55, // Above all defaults, useful for debugging
+    },
+    useOnlyCustomLevels: false,
   },
-  useOnlyCustomLevels: false,
-  transport:
-    process.env.NODE_ENV === "production"
-      ? undefined
-      : {
-          target: "pino-pretty",
-          options: {
-            colorize: true,
-            singleLine: false,
-            levelFirst: true,
-            translateTime: "HH:MM:ss.l",
-            ignore: "pid,hostname",
-          },
-        },
-});
+  stream
+);
