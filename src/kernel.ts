@@ -53,7 +53,7 @@ app.post("/", async (ctx: Context) => {
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      pluginChainState: new EmptyStore(),
+      pluginChainState: new EmptyStore(ctx.var.logger),
       llmClient,
       llm: env.OPENROUTER_MODEL,
       logger: ctx.var.logger,
@@ -73,7 +73,7 @@ app.post("/", async (ctx: Context) => {
 });
 
 function handleUncaughtError(ctx: Context, error: unknown) {
-  logger.error({ err: error }, "Uncaught error");
+  ctx.var.logger.error(error, "Uncaught error");
   let status = 500;
   let errorMessage = "An uncaught error occurred";
   if (error instanceof AggregateError) {

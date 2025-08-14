@@ -15,7 +15,12 @@ const stream =
         singleLine: false,
         levelFirst: true,
         translateTime: "HH:MM:ss.l",
-        ignore: "pid,hostname",
+        ignore: "pid,hostname,requestId",
+        messageFormat: (log, messageKey) => {
+          const msg = log[messageKey] as string;
+          if (log.requestId) return `(${log.requestId}) ${msg}`;
+          return msg;
+        },
       })
     : undefined;
 
