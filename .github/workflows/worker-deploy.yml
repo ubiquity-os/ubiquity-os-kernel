@@ -51,13 +51,17 @@ jobs:
             APP_PRIVATE_KEY
             APP_WEBHOOK_SECRET
             ENVIRONMENT
-            OPENAI_API_KEY
+            OPENROUTER_API_KEY
+            OPENROUTER_MODEL
+            OPENROUTER_BASE_URL
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
 
       - name: Write Deployment URL to Summary
         run: |
