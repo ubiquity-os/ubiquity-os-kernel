@@ -56,14 +56,17 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 
   // The author of that comment is not a contributor, or not a human
   if (comment.user?.type !== "User" || !(await isUserContributor(context))) {
+    console.log(`Comment author is not an external contributor, or not a human, will ignore the help request.`);
     return false;
   }
   // We also ignore pull-requests
   if (context.payload.issue.pull_request) {
+    console.log("Help requests cannot be made in pull requests, will ignore the help request.");
     return false;
   }
   // The author was not tagged in the message
   if (body.search(`@${issueAuthor}`) === -1) {
+    console.log(`Comment author was not tagged in the message, will ignore the help request.`);
     return false;
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
