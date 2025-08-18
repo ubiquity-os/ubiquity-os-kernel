@@ -36,7 +36,8 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     this.octokit = octokit;
     this.openAi = openAi;
     this.llm = eventHandler.llm;
-    this.logger = logger;
+    const instigator = "repository" in this.payload ? this.payload.repository?.html_url : undefined;
+    this.logger = logger.child({ name: this.key, instigator });
   }
 }
 

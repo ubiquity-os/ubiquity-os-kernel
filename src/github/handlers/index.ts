@@ -33,19 +33,19 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   const config = await getConfig(context);
 
   if (!config) {
-    context.logger.debug({ event: context.key }, "No config found");
+    context.logger.debug("No configuration was found");
     return;
   }
 
   if (!("installation" in event.payload) || event.payload.installation?.id === undefined) {
-    context.logger.warn({ event: context.key }, "No installation found");
+    context.logger.warn("No installation found");
     return;
   }
 
   const pluginChains = await getPluginsForEvent(context, config.plugins, context.key);
 
   if (pluginChains.length === 0) {
-    context.logger.debug({ event: context.key, name: event.name }, "No handler found for event");
+    context.logger.debug("No handler found for event");
     return;
   }
 
@@ -55,7 +55,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     // invoke the first plugin in the chain
     const { plugin, with: settings } = pluginChain.uses[0];
     const isGithubPluginObject = isGithubPlugin(plugin);
-    context.logger.debug({ plugin, event: event.name }, "Calling handler for event");
+    context.logger.debug({ plugin }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
 

@@ -32,7 +32,6 @@ export const logger = pino(
       github: 15, // between debug (10) and info (20)
       local: 55, // Above all defaults, useful for debugging
     },
-    useOnlyCustomLevels: false,
   },
   stream
 );
