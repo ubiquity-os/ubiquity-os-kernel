@@ -34,7 +34,7 @@ async function getPreviousComment(context: GitHubContext<"issue_comment.created"
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
-      per_page: 100, // Get enough comments to find the previous one
+      per_page: 100,
     });
 
     const currentIndex = comments.data.filter((comment) => comment.user?.type === "User").findIndex((comment) => comment.id === currentCommentId);
@@ -43,7 +43,7 @@ async function getPreviousComment(context: GitHubContext<"issue_comment.created"
     }
     return null;
   } catch (e) {
-    console.warn("Failed to fetch previous comment", e);
+    context.logger.warn(e, "Failed to fetch previous comment");
     return null;
   }
 }
@@ -56,75 +56,22 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 
   // The author of that comment is not a contributor, or not a human
   if (comment.user?.type !== "User" || !(await isUserContributor(context))) {
-    console.log(`Comment author is not an external contributor, or not a human, will ignore the help request.`);
+    context.logger.warn(`Comment author is not an external contributor, or not a human, will ignore the help request.`);
     return false;
   }
   // We also ignore pull-requests
   if (context.payload.issue.pull_request) {
-    console.log("Help requests cannot be made in pull requests, will ignore the help request.");
+    context.logger.warn("Help requests cannot be made in pull requests, will ignore the help request.");
     return false;
   }
   // The author was not tagged in the message
-  if (body.search(`@${issueAuthor}`) === -1 || issueAuthor === context.payload.issue.user.login) {
-    console.log(`Comment author was not tagged in the message or tagged itself, will ignore the help request.`);
+  if (body.search(`@${issueAuthor}`) === -1 || issueAuthor === commentAuthor) {
+    context.logger.warn({ issueAuthor, commentAuthor, body }, `Comment author was not tagged in the message or tagged itself, will ignore the help request.`);
     return false;
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
   const previousComment = await getPreviousComment(context);
   return previousComment?.user?.login !== commentAuthor;
-
-  try {
-    const llmResponse = await context.openAi.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are a GitHub comment analyzer. Your task is to determine if a comment appears to be a help request directed at the issue author.
-
-A help request is typically:
-- A question asking for permission, assignment, or guidance
-- A request to take over work or be assigned to a task
-- Asking for clarification about the issue/task
-- Seeking approval to work on something
-- Technical questions requiring guidance or explanation
-- Questions about implementation details or approach
-
-Examples of help requests:
-- "@user1 could you assign me to the task?"
-- "Do you think I could take over the pull-request @user2"
-- "@author can I work on this issue?"
-- "Could you help me understand the requirements @maintainer?"
-- "How should I implement this feature @author?"
-- "What's the expected behavior for this edge case @maintainer?"
-- "Can you clarify the acceptance criteria @user?"
-
-Examples of NON-help requests:
-- General discussions about the code not seeking guidance
-- Status updates or progress reports
-- Comments that don't involve the issue author
-- Simple acknowledgments or confirmations
-
-Respond with only "true" if this appears to be a help request targeting the issue author, or "false" otherwise.`,
-        },
-        {
-          role: "user",
-          content: `Issue Author: ${issueAuthor}
-Comment Author: ${commentAuthor}
-Comment Body: ${body}
-
-Is this comment a help request directed at the issue author?`,
-        },
-      ],
-      temperature: 0.1,
-      max_tokens: 10,
-    });
-
-    const response = llmResponse.choices[0].message.content?.trim().toLowerCase();
-    return response === "true";
-  } catch (e) {
-    console.error(`Failed to parse the user comment for help.`, e);
-    return false;
-  }
 }
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
@@ -132,14 +79,8 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   if (body.startsWith(`/help`)) {
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
-    // or if the tag is the issue author by an outsider?
-    // maybe check if the previous comment was from the actual tagged user to avoid useless post? also ignore previous bot comments?
-    // ask the llm is that seems to be a help request, respond by true or false
-    // if true, then find the issue author (the question could be asked in a PR, maybe should be ignored?)
-
     await commandRouter(context);
   } else if (await isUserHelpRequest(context)) {
-    console.log("help requested");
     const issueAuthor = context.payload.issue.user?.login;
     context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
     await commandRouter(context);
@@ -174,7 +115,7 @@ const embeddedCommands: Array<OpenAiFunction> = [
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    context.logger.warn({ event: context.key }, `No installation found, cannot invoke command`);
+    context.logger.warn(`No installation found, cannot invoke command`);
     return;
   }
 
@@ -279,6 +220,8 @@ The input will include the following fields:
     return;
   }
 
+  context.logger.debug({ response }, "LLM response");
+
   const toolCalls = response.choices[0].message.tool_calls;
   if (!toolCalls?.length) {
     const message = response.choices[0].message.content || "I cannot help you with that.";
@@ -293,7 +236,7 @@ The input will include the following fields:
 
   const toolCall = toolCalls[0];
   if (!toolCall) {
-    context.logger.debug({ event: context.key }, "No tool call");
+    context.logger.debug("No tool can be called.");
     return;
   }
 
@@ -323,6 +266,7 @@ The input will include the following fields:
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
+  context.logger.info({ plugin }, "Will attempt to call a plugin to answer the help request.");
   try {
     if (!isGithubPluginObject) {
       await dispatchWorker(plugin, await inputs.getInputs());
