@@ -1,6 +1,6 @@
-import { getConfig } from "../utils/config";
-import { GithubPlugin } from "../types/plugin-configuration";
 import { GitHubContext } from "../github-context";
+import { GithubPlugin } from "../types/plugin-configuration";
+import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
@@ -28,7 +28,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
     commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
   if (!commands.length) {
-    console.warn("No commands found, will not post the help command message.");
+    context.logger.warn("No commands found, will not post the help command message.");
   } else {
     await context.octokit.rest.issues.createComment({
       body: comments.concat(commands.sort()).join("\n"),

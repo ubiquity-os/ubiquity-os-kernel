@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
+import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -36,6 +37,7 @@ const eventHandler = {
   environment: "production",
   getToken: jest.fn().mockReturnValue("1234"),
   signPayload: jest.fn().mockReturnValue("sha256=1234"),
+  logger: logger,
 } as unknown as GitHubEventHandler;
 
 function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
@@ -167,6 +169,7 @@ describe("Event related tests", () => {
           body: "@UbiquityOS can you tell me all available commands",
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger: logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(1);
     expect(spy.mock.calls).toEqual([
@@ -241,6 +244,7 @@ describe("Event related tests", () => {
           body: "@UbiquityOS can you say hello to @pavlovcik",
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(0);
     expect(dispatchWorkflow.mock.calls.length).toEqual(1);
@@ -299,6 +303,7 @@ describe("Event related tests", () => {
           body: "@UbiquityOS who is the creator of the universe",
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(1);
     expect(spy.mock.calls).toEqual([
@@ -364,6 +369,7 @@ describe("Event related tests", () => {
           body: "/help",
         },
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
     } as unknown as GitHubContext);
     expect(spy).not.toBeCalled();
   });

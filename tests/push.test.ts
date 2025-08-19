@@ -6,6 +6,7 @@ import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import handlePushEvent from "../src/github/handlers/push-event";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
+import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -133,6 +134,7 @@ describe("Push related tests", () => {
         },
         commits: [{ modified: [CONFIG_FULL_PATH] }],
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
     } as unknown as GitHubContext;
     await expect(handlePushEvent(context)).resolves.not.toThrow();
     expect(createCommitComment).toBeCalledTimes(1);

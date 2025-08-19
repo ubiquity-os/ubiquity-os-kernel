@@ -1,3 +1,5 @@
+import { logger } from "../../logger/logger";
+
 /**
  * KvStore is an interface representing a simple key-value store.
  *
@@ -39,13 +41,15 @@ export interface KvStore<T> {
  * @template T - The type of values to be stored.
  */
 export class EmptyStore<T> implements KvStore<T> {
+  constructor(protected _logger = logger) {}
+
   get(id: string): Promise<T | null> {
-    console.log(`get KV ${id}`);
+    this._logger.debug({ id }, "kv get");
     return Promise.resolve(null);
   }
 
   put(id: string, state: T): Promise<void> {
-    console.log(`put KV ${id} ${state}`);
+    this._logger.debug({ id, state }, "kv put");
     return Promise.resolve();
   }
 }

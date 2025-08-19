@@ -174,7 +174,7 @@ const embeddedCommands: Array<OpenAiFunction> = [
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    console.log(`No installation found, cannot invoke command`);
+    context.logger.warn({ event: context.key }, `No installation found, cannot invoke command`);
     return;
   }
 
@@ -293,7 +293,7 @@ The input will include the following fields:
 
   const toolCall = toolCalls[0];
   if (!toolCall) {
-    console.log("No tool call");
+    context.logger.debug({ event: context.key }, "No tool call");
     return;
   }
 
@@ -309,7 +309,7 @@ The input will include the following fields:
 
   const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
   if (!pluginWithManifest) {
-    console.log(`No plugin found for command '${command.name}'`);
+    context.logger.warn({ command: command.name }, `No plugin found for command`);
     return;
   }
   const {
@@ -336,6 +336,6 @@ The input will include the following fields:
       });
     }
   } catch (e) {
-    console.error(`An error occurred while processing the plugin chain, will skip plugin ${JSON.stringify(plugin)}`, e);
+    context.logger.error({ plugin, err: e }, "An error occurred while processing plugin chain; skipping plugin");
   }
 }
