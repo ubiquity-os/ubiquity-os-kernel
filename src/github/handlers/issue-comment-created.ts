@@ -71,7 +71,7 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
   const previousComment = await getPreviousComment(context);
-  return previousComment?.user?.login !== commentAuthor;
+  return previousComment?.user?.login !== issueAuthor;
 }
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
