@@ -1,9 +1,10 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { StaticDecode, Type } from "@sinclair/typebox";
-import { PluginChain } from "./plugin-configuration";
-import { GitHubEventHandler } from "../github-event-handler";
+import { compressString } from "@ubiquity-os/plugin-sdk/compression";
 import { CommandCall } from "../../types/command";
 import { jsonType } from "../../types/util";
+import { GitHubEventHandler } from "../github-event-handler";
+import { PluginChain } from "./plugin-configuration";
 
 export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
 
@@ -48,7 +49,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     const inputs = {
       stateId: this.stateId,
       eventName: this.eventName,
-      eventPayload: JSON.stringify(this.eventPayload),
+      eventPayload: compressString(JSON.stringify(this.eventPayload)),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
       ref: this.ref,
