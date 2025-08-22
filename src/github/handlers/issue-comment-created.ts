@@ -30,16 +30,16 @@ async function getPreviousComment(context: GitHubContext<"issue_comment.created"
   const currentCommentId = context.payload.comment.id;
 
   try {
-    const comments = await context.octokit.rest.issues.listComments({
+    const comments = await context.octokit.paginate(context.octokit.rest.issues.listComments, {
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
       issue_number: context.payload.issue.number,
       per_page: 100,
     });
 
-    const currentIndex = comments.data.filter((comment) => comment.user?.type === "User").findIndex((comment) => comment.id === currentCommentId);
+    const currentIndex = comments.filter((comment) => comment.user?.type === "User").findIndex((comment) => comment.id === currentCommentId);
     if (currentIndex > 0) {
-      return comments.data[currentIndex - 1];
+      return comments[currentIndex - 1];
     }
     return null;
   } catch (e) {
