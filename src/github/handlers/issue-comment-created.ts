@@ -37,9 +37,10 @@ async function getPreviousComment(context: GitHubContext<"issue_comment.created"
       per_page: 100,
     });
 
-    const currentIndex = comments.filter((comment) => comment.user?.type === "User").findIndex((comment) => comment.id === currentCommentId);
+    const filteredComments = comments.filter((comment) => comment.user?.type === "User");
+    const currentIndex = filteredComments.findIndex((comment) => comment.id === currentCommentId);
     if (currentIndex > 0) {
-      return comments[currentIndex - 1];
+      return filteredComments[currentIndex - 1];
     }
     return null;
   } catch (e) {
