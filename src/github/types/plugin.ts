@@ -10,7 +10,7 @@ export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
 
 export const pluginOutputSchema = Type.Object({
   state_id: Type.String(), // GitHub forces snake_case
-  output: jsonType(Type.Record(Type.String(), Type.Unknown())),
+  output: jsonType(Type.Record(Type.String(), Type.Unknown()), true),
 });
 
 export type PluginOutput = StaticDecode<typeof pluginOutputSchema>;
