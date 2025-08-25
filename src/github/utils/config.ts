@@ -94,7 +94,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
   checkPluginChains(mergedConfiguration);
 
-  context.logger.info(
+  context.logger.debug(
     { repo: `${payload.repository.owner.login}/${payload.repository.name}`, plugins: mergedConfiguration.plugins.length },
     "Found plugins enabled"
   );
