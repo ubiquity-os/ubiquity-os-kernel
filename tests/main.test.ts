@@ -5,7 +5,8 @@ import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { getConfig } from "../src/github/utils/config";
-import { app } from "../src/kernel"; // has to be imported after the mocks
+import { app } from "../src/kernel";
+import { logger } from "../src/logger/logger"; // has to be imported after the mocks
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -65,13 +66,15 @@ describe("Worker tests", () => {
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENAI_API_KEY: "token",
+      OPENROUTER_API_KEY: "token",
+      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",
     });
     expect(res.status).toEqual(500);
-    expect(await res.json()).toEqual({ error: "Error: Invalid environment variables" });
+    expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
     consoleSpy.mockReset();
   });
 
@@ -86,6 +89,7 @@ describe("Worker tests", () => {
         },
         octokit: {},
         eventHandler: eventHandler,
+        logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -110,6 +114,7 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
+        logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
@@ -142,6 +147,7 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
+        logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       const pluginChain = cfg.plugins;
@@ -224,6 +230,7 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
+        logger,
       } as unknown as GitHubContext);
       expect(cfg.plugins[0]).toEqual({
         uses: [

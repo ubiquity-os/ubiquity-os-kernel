@@ -2,7 +2,8 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { env as honoEnv, getRuntimeKey } from "hono/adapter";
+import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import OpenAI from "openai";
 import packageJson from "../package.json";
@@ -10,8 +11,17 @@ import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
 import { EmptyStore } from "./github/utils/kv-store";
+import { logger } from "./logger/logger";
 
 export const app = new Hono();
+
+app.use(requestId());
+app.use(async (c: Context, next) => {
+  const requestId = c.var.requestId;
+  const childLogger = logger.child({ requestId });
+  c.set("logger", childLogger);
+  await next();
+});
 
 app.get("/", (c) => {
   return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
@@ -29,23 +39,24 @@ app.get("/x25519_public_key", async (ctx: Context) => {
 
 app.post("/", async (ctx: Context) => {
   try {
-    const env = honoEnv(ctx);
+    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
     const request = ctx.req;
-
-    validateEnv(env);
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const openAiClient = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
+    const llmClient = new OpenAI({
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: env.OPENROUTER_BASE_URL,
     });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      pluginChainState: new EmptyStore(),
-      openAiClient,
+      pluginChainState: new EmptyStore(ctx.var.logger),
+      llmClient,
+      llm: env.OPENROUTER_MODEL,
+      logger: ctx.var.logger,
     });
     bindHandlers(eventHandler);
 
@@ -62,7 +73,7 @@ app.post("/", async (ctx: Context) => {
 });
 
 function handleUncaughtError(ctx: Context, error: unknown) {
-  console.error(error);
+  ctx.var.logger.error(error, "Uncaught error");
   let status = 500;
   let errorMessage = "An uncaught error occurred";
   if (error instanceof AggregateError) {
@@ -73,14 +84,6 @@ function handleUncaughtError(ctx: Context, error: unknown) {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
-}
-
-function validateEnv(env: Env): void {
-  if (!Value.Check(envSchema, env)) {
-    const errors = [...Value.Errors(envSchema, env)];
-    console.error("Invalid environment variables", errors);
-    throw new Error("Invalid environment variables");
-  }
 }
 
 function getEventName(request: HonoRequest): WebhookEventName {

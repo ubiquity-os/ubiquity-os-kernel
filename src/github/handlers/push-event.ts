@@ -134,7 +134,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
     return;
   }
 
-  console.log("Configuration file changed, will run configuration checks.");
+  context.logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
 
   const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
   const errors: (ValueError | YAML.YAMLError)[] = [];
@@ -159,6 +159,6 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
       );
     }
   } catch (e) {
-    console.error("handlePushEventError", e);
+    context.logger.error({ err: e }, "handlePushEventError");
   }
 }

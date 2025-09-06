@@ -1,9 +1,9 @@
-import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { GitHubContext } from "../github-context";
+import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
-import { Value } from "@sinclair/typebox/value";
+import { GitHubContext } from "../github-context";
+import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
 
 const _manifestCache: Record<string, Manifest> = {};
 
@@ -15,7 +15,7 @@ function isCommentCreatedPayload(
 
 export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0], event: EmitterWebhookEventName) {
   if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    console.log(`Skipping plugin ${JSON.stringify(pluginChain.uses[0].plugin)} in the chain because the sender is a bot`);
+    context.logger.debug({ plugin: pluginChain.uses[0].plugin }, "Skipping plugin because sender is bot");
     return true;
   }
   const commentEvents = ["issue_comment.created", "pull_request_review_comment.created"] as EmitterWebhookEventName[];
@@ -23,7 +23,7 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
     const manifest = await getManifest(context, pluginChain.uses[0].plugin);
     if (
       manifest?.commands &&
-      !manifest["ubiquity:listeners"]?.includes(context.key) &&
+      !manifest["ubiquity:listeners"]?.includes(context.key as keyof Manifest["ubiquity:listeners"]) &&
       isCommentCreatedPayload(context.payload) &&
       context.payload.comment?.body.trim().startsWith(`/`) &&
       Object.keys(manifest.commands).length
@@ -33,7 +33,10 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
           (command) => isCommentCreatedPayload(context.payload) && context.payload.comment?.body.trim().startsWith(`/${command}`)
         )
       ) {
-        console.log(`Skipping plugin chain ${manifest.name} because command '${context.payload.comment?.body.trim()}' does not match.`, manifest.commands);
+        context.logger.debug(
+          { manifest: manifest.name, command: context.payload.comment?.body.trim(), commands: Object.keys(manifest.commands) },
+          "Skipping plugin because of chain command mismatch"
+        );
         return true;
       }
       return false;
@@ -53,7 +56,7 @@ export async function getPluginsForEvent(context: GitHubContext, plugins: Plugin
 }
 
 export function getManifest(context: GitHubContext, plugin: string | GithubPlugin) {
-  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(plugin);
+  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
 async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
@@ -71,17 +74,17 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     if ("content" in data) {
       const content = Buffer.from(data.content, "base64").toString();
       const contentParsed = JSON.parse(content);
-      const manifest = decodeManifest(contentParsed);
+      const manifest = decodeManifest(context, contentParsed);
       _manifestCache[manifestKey] = manifest;
       return manifest;
     }
   } catch (e) {
-    console.error(`Could not find a manifest for Action ${owner}/${repo}: ${e}`);
+    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
   }
   return null;
 }
 
-async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
+async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
   if (_manifestCache[url]) {
     return _manifestCache[url];
   }
@@ -89,20 +92,20 @@ async function fetchWorkerManifest(url: string): Promise<Manifest | null> {
   try {
     const result = await fetch(manifestUrl);
     const jsonData = await result.json();
-    const manifest = decodeManifest(jsonData);
+    const manifest = decodeManifest(context, jsonData);
     _manifestCache[url] = manifest;
     return manifest;
   } catch (e) {
-    console.error(`Could not find a manifest for Worker ${manifestUrl}: ${e}`);
+    context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
   }
   return null;
 }
 
-function decodeManifest(manifest: unknown) {
+function decodeManifest(context: GitHubContext, manifest: unknown) {
   const errors = [...Value.Errors(manifestSchema, manifest)];
   if (errors.length) {
     for (const error of errors) {
-      console.dir(error, { depth: null });
+      context.logger.error({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }
