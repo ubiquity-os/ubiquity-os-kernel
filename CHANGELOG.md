@@ -1,5 +1,20 @@
 # Changelog
 
+## [7.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.1.0...v7.2.0) (2025-09-18)
+
+
+### Features
+
+* added Deno deployment ([fd9f149](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/fd9f1498bb1390e36f2053eca3589944fc0c87b4))
+* added Deno deployment ([8516a2e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8516a2e6554adcef46177e849bf5eb088e198175))
+* added request ID and pino logger instance ([becafdd](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/becafdddf39d8003e51a01f8fd39d65e1e5d64e3))
+
+
+### Bug Fixes
+
+* implemented help request detection and integrated OpenAI model settings ([3539ea9](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/3539ea9763c60245619c6ee7b391438ece9d1760))
+* migrate OpenAI configuration to OpenRouter settings ([8ee18bb](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8ee18bb463751655c7ad1ee87f455ef189547430))
+
 ## [7.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.0.0...v7.1.0) (2025-03-15)
 
 ### Features
