@@ -46,38 +46,31 @@ bun dev
 ### Deploying to Cloudflare Workers
 
 1. **Install Dependencies:**
-
    - Execute `bun install` to install the required dependencies.
 
 2. **Create a GitHub App:**
-
    - Generate a GitHub App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
    - Ensure the app is subscribed to all events with the following permissions:
 
      Repository permissions:
-
      - Actions: Read & Write
      - Contents: Read & Write
      - Issues: Read & Write
      - Pull Requests: Read & Write
 
      Organization permissions:
-
      - Members: Read only
 
 3. **Cloudflare Account Setup:**
-
    - If not done already, create a Cloudflare account.
    - Run `npx wrangler login` to log in.
 
 4. **Create a KV Namespace:**
-
    - Generate a KV namespace using `npx wrangler kv:namespace create PLUGIN_CHAIN_STATE`.
    - Copy the generated ID and paste it under `[env.dev]` in `wrangler.toml`.
 
 5. **Manage Secrets:**
-
    - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
    - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
 
