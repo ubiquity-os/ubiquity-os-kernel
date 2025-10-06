@@ -148,7 +148,6 @@ export class McpServer {
     try {
       this._githubContext = await this._createGitHubContext(jobDetails.installationId);
       await this._agentRegistry.loadAgents(this._githubContext, jobDetails.owner);
-      // Calling _createAgentJob without the unnecessary progressToken argument
       const jobId = await this._createAgentJob(jobDetails.agentId, jobDetails.capability, jobDetails.inputs, jobDetails.owner, jobDetails.installationId);
       await this._writeJobStream(writer, originalId, jobId);
     } catch (err: unknown) {
@@ -167,7 +166,6 @@ export class McpServer {
     console.log(`   -> Stream task started for Job ID: [${jobId}]`);
     const write = (data: unknown) => writer.write(this._encoder.encode(generateSseMessage("message", data)));
 
-    // Helper to send the progress notification. The progressToken is the original request ID (originalId).
     const sendProgressNotification = (message: string) => {
       writer
         .write(
@@ -176,8 +174,8 @@ export class McpServer {
               jsonrpc: "2.0",
               method: "notifications/progress",
               params: {
-                progressToken: originalId, // Use the ID of the original request as the progressToken
-                progress: 0.5, // Standard placeholder for ongoing
+                progressToken: originalId,
+                progress: 0.5,
                 total: 1,
                 message,
               },
@@ -185,7 +183,6 @@ export class McpServer {
           )
         )
         .catch((err) => {
-          // Log error if writing fails, but let the main loop break if the writer is closed.
           console.debug("Progress notification write failed, client might be disconnected:", err.message);
         });
     };
@@ -193,20 +190,16 @@ export class McpServer {
     let progressInterval: number | undefined;
 
     try {
-      // Send initial patch creating the context for this job
       await write({
         jsonrpc: "2.0",
         method: "patch",
         params: { context: ["-"], patch: [{ op: "add", path: "/-/", value: { jobId, status: "pending", outputs: null, error: null } }] },
       });
 
-      // Start the interval for periodic progress notifications (keep-alive)
       progressInterval = setInterval(() => {
-        // Send a generic progress notification as a keep-alive every 10 seconds
         sendProgressNotification("Ongoing analysis...");
       }, 5000) as unknown as number;
 
-      // Watch the job state from Deno KV and stream updates
       for await (const jobState of this._agentRegistry.watchJob(jobId)) {
         if (jobState) {
           console.log(`   -> Job [${jobId}] state changed: ${jobState.status}`);
@@ -225,25 +218,26 @@ export class McpServer {
 
           if (jobState.status === "completed" || jobState.status === "failed") {
             await write({ jsonrpc: "2.0", method: "done", params: { context: ["0"] } });
-            break; // Exit the loop
+            break;
           }
         }
       }
 
-      // Send the final JSON-RPC response to resolve the client's original request
       const finalState = await this._agentRegistry.getJobState(jobId);
+
+      const formattedOutputs = finalState?.outputs ? [this._formatToolOutput(finalState.outputs)] : [];
+
       await write({
         jsonrpc: "2.0",
         id: originalId,
         result: {
           status: finalState?.status || "unknown",
-          outputs: finalState?.outputs,
+          outputs: formattedOutputs,
         },
       });
     } catch (error) {
       console.error("Stream write error (client likely disconnected):", error);
     } finally {
-      // Cleanup the interval
       if (progressInterval !== undefined) {
         clearInterval(progressInterval);
       }
@@ -252,8 +246,6 @@ export class McpServer {
     }
   }
 
-  // --- Helper to create a job (extracted from _runTool) ---
-  // Corrected the signature by removing the unnecessary progressToken parameter
   private async _createAgentJob(agentId: string, capability: string, inputs: Record<string, unknown>, owner: string, installationId: number): Promise<string> {
     this._githubContext = await this._createGitHubContext(installationId);
 
@@ -276,7 +268,7 @@ export class McpServer {
         capabilities: {
           tools: {
             list: true,
-            call: true, // Added call capability
+            call: true,
           },
           sampling: {},
           elicitation: {},
@@ -293,7 +285,6 @@ export class McpServer {
   }
 
   private async _listTools(request: JsonRpcRequest, owner: string, installationId: number) {
-    // Re-uses the centralized context creation logic.
     const githubContext = await this._createGitHubContext(installationId);
 
     await this._agentRegistry.loadAgents(githubContext, owner);
@@ -305,7 +296,6 @@ export class McpServer {
       if (!manifest?.commands) continue;
 
       for (const [commandName, command] of Object.entries(manifest.commands)) {
-        // remove callbackUrl and jobId from the command.parameters
         if (command.parameters) {
           delete (command.parameters as Record<string, unknown>)["callbackUrl"];
           delete (command.parameters as Record<string, unknown>)["jobId"];
@@ -330,6 +320,25 @@ export class McpServer {
       result: {
         tools,
       },
+    };
+  }
+
+  private _formatToolOutput(output: unknown): object {
+    if (
+      typeof output === "object" &&
+      output !== null &&
+      "type" in output &&
+      typeof (output as { type: unknown }).type === "string" &&
+      ["text", "image", "audio", "resource_link", "resource"].includes((output as { type: string }).type)
+    ) {
+      return output;
+    }
+
+    const serializedText = typeof output === "string" ? output : JSON.stringify(output, null, 2);
+
+    return {
+      type: "text",
+      text: serializedText,
     };
   }
 
