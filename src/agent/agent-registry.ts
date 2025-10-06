@@ -13,6 +13,7 @@ import { GitHubEventHandler } from "../github/github-event-handler";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { brotliCompressSync } from "node:zlib";
+import { Buffer } from "node:buffer";
 
 export interface JobResult {
   jobId: string;
