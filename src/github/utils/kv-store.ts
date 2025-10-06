@@ -70,7 +70,7 @@ export class AgentStateStore implements KvStore<AgentJobState> {
 
   static async create(kvUrl: string, loggerInstance = logger, prefix: string = "agent:") {
     logger.info({ kv: kvUrl || "undefined" }, "Creating AgentStateStore");
-    const kv = await Deno.openKv(kvUrl);
+    const kv = await Deno.openKv();
     return new AgentStateStore(kv, loggerInstance, prefix);
   }
 

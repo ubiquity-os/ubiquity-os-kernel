@@ -37,7 +37,7 @@ jobs:
           OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
           OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
           KV_URL: ${{ secrets.KV_URL }}
-          KV_ACCESS_TOKEN: ${{ secrets.KV_ACCESS_TOKEN }}
+          DENO_KV_ACCESS_TOKEN: ${{ secrets.DENO_KV_ACCESS_TOKEN }}
           NODE_ENV: "production"
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
