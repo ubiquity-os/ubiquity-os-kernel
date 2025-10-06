@@ -23,7 +23,7 @@ function generateSseMessage(event: string, data: unknown): string {
 // Interfaces remain the same
 interface JsonRpcRequest {
   jsonrpc: "2.0";
-  id: number | string | null;
+  id: unknown;
   method: string;
   params?: Record<string, unknown>;
 }
@@ -128,7 +128,7 @@ export class McpServer {
     const writer = writable.getWriter();
 
     // Launch the background task to create the job and stream its progress.
-    void this._createAndStreamJob(writer, String(request.id), { agentId, capability, inputs, owner, installationId });
+    void this._createAndStreamJob(writer, request.id, { agentId, capability, inputs, owner, installationId });
 
     // Return the readable stream immediately to prevent the timeout.
     return new Response(readable, {
@@ -142,7 +142,7 @@ export class McpServer {
 
   private async _createAndStreamJob(
     writer: WritableStreamDefaultWriter,
-    originalId: string,
+    originalId: unknown,
     jobDetails: { agentId: string; capability: string; inputs: Record<string, unknown>; owner: string; installationId: number }
   ) {
     try {
@@ -163,7 +163,7 @@ export class McpServer {
     }
   }
 
-  private async _writeJobStream(writer: WritableStreamDefaultWriter, originalId: string, jobId: string) {
+  private async _writeJobStream(writer: WritableStreamDefaultWriter, originalId: unknown, jobId: string) {
     console.log(`   -> Stream task started for Job ID: [${jobId}]`);
     const write = (data: unknown) => writer.write(this._encoder.encode(generateSseMessage("message", data)));
 
