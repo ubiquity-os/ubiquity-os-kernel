@@ -116,10 +116,10 @@ export class McpServer {
   // --- Tool Execution Logic (Refactored for Streaming) ---
   private async _runTool(request: JsonRpcRequest, owner: string, installationId: number): Promise<object | Response> {
     const { name, arguments: inputs } = request.params as { name: string; arguments: Record<string, unknown> };
-    const [agentId, capability] = name.split(".");
+    const [agentId, capability] = name.split("_");
 
     if (!agentId || !capability) {
-      return this._error(request, -32602, "Invalid params: 'name' must be in the format 'agentId.capability'");
+      return this._error(request, -32602, "Invalid params: 'name' must be in the format 'agentId_capability'");
     }
 
     console.log(`✅ [POST] Handling "tools/call" for [${name}]...`);
@@ -311,7 +311,7 @@ export class McpServer {
           delete (command.parameters as Record<string, unknown>)["jobId"];
         }
         tools.push({
-          name: `${agent.id}.${commandName}`,
+          name: `${agent.id}_${commandName}`,
           description: command.description || `Command ${commandName} for agent ${agent.id}`,
           server: agent.id,
           inputSchema: {
