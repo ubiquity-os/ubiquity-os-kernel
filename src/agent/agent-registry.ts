@@ -1,0 +1,344 @@
+import { logger } from "../logger/logger";
+import yaml from "js-yaml";
+import { Value } from "@sinclair/typebox/value";
+import { AgentStateStore, EmptyStore, KvStore } from "../github/utils/kv-store";
+import { GitHubContext } from "../github/github-context";
+import { dispatchWorkflow, dispatchWorker } from "../github/utils/workflow-dispatch";
+import { Agent, agentConfigSchema, AgentConfiguration, AgentJobState, isGithubAgent } from "./types/agent-configuration";
+import { Context } from "hono";
+import { env as honoEnv } from "hono/adapter";
+import { Env, envSchema } from "../github/types/env";
+import OpenAI from "openai";
+import { GitHubEventHandler } from "../github/github-event-handler";
+import { WebhookEventName } from "@octokit/webhooks-types";
+import { EmitterWebhookEvent } from "@octokit/webhooks";
+
+export interface JobResult {
+  jobId: string;
+  status: "completed" | "failed";
+  outputs?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface CommandResponse {
+  data?: Record<string, unknown>;
+  error?: string;
+}
+const AGENT_CONFIG_REPO = ".ubiquity-os";
+const AGENT_CONFIG_PATH = ".github/.ubiquity-os.agents.yml";
+
+export class AgentRegistry {
+  private _jobState: KvStore<AgentJobState>;
+  private _agents: Map<string, Agent> = new Map();
+  private _config: AgentConfiguration | null = null;
+  private _jobCallbacks: Map<string, (result: JobResult) => Promise<void>> = new Map();
+
+  constructor(jobState: KvStore<AgentJobState>) {
+    this._jobState = jobState;
+  }
+
+  async loadAgents(context: GitHubContext, agentConfigOwner: string) {
+    try {
+      const { data } = await context.octokit.rest.repos.getContent({
+        owner: agentConfigOwner,
+        repo: AGENT_CONFIG_REPO,
+        path: AGENT_CONFIG_PATH,
+        mediaType: { format: "raw" },
+      });
+
+      const configYaml = data as unknown as string;
+      const parsed = yaml.load(configYaml);
+      const configWithDefaults = Value.Default(agentConfigSchema, parsed);
+      const config = Value.Decode(agentConfigSchema, configWithDefaults);
+
+      this._config = config;
+      this._agents = config.agents.reduce((map, agent) => {
+        map.set(agent.id, agent);
+        return map;
+      }, new Map<string, Agent>());
+      logger.info({ agentCount: config.agents.length }, "Loaded agent configuration");
+    } catch (err) {
+      logger.error({ err }, "Failed to load agent configuration");
+      return null;
+    }
+  }
+
+  async loadAgentsFromConfig(config: AgentConfiguration): Promise<void> {
+    for (const agent of config.agents) {
+      this._agents.set(agent.id, agent);
+      logger.info({ agentId: agent.id }, "Registered agent");
+    }
+  }
+
+  async createJob(
+    context: GitHubContext,
+    agentId: string,
+    capability: string,
+    inputs: Record<string, unknown>,
+    callbackUrl: string,
+    signature: string,
+    token: string,
+    progressToken?: string,
+    onComplete?: (result: JobResult) => Promise<void>,
+    sessionId?: string
+  ): Promise<string> {
+    const agent = this._agents.get(agentId);
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+
+    const jobId = `${agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    logger.info({ jobId, agentId, capability }, "Creating agent job");
+
+    // Format inputs according to plugin schema
+    const agentInput = {
+      stateId: jobId,
+      progressToken: progressToken || "",
+      eventName: context.name,
+      eventPayload: context.payload,
+      command: {
+        name: capability,
+        parameters: {
+          ...inputs,
+          callbackUrl,
+          jobId,
+        },
+      },
+      authToken: token,
+      settings: agent.settings || {},
+      ref: isGithubAgent(agent.agent) ? agent.agent.ref || "main" : "",
+      signature,
+    };
+
+    const jobState: AgentJobState = {
+      jobId: sessionId || jobId,
+      status: "pending",
+      inputs: agentInput,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await this._jobState.put(jobId, jobState);
+    if (onComplete) {
+      this._jobCallbacks.set(jobId, onComplete);
+    }
+    void this._executeJob(context, agent, jobState, signature);
+
+    return jobId;
+  }
+
+  async getJobState(jobId: string): Promise<AgentJobState | null> {
+    return await this._jobState.get(jobId);
+  }
+
+  async handleAgentResponse(jobId: string, response: Record<string, unknown>): Promise<void> {
+    const jobState = await this._jobState.get(jobId);
+    if (!jobState) {
+      logger.error({ jobId }, "Job state not found for agent response");
+      return;
+    }
+
+    const isFinalResponse = "data" in response;
+
+    // Fix 1: Ignore empty responses, which can race and overwrite the final output with {}.
+    if (Object.keys(response).length === 0) {
+      logger.warn({ jobId, response }, "Ignoring empty agent response to prevent final output overwrite.");
+      return;
+    }
+
+    // Determine the new status. It's 'completed' only if it's the final payload.
+    const newStatus = isFinalResponse ? "completed" : "running";
+
+    // Fix 2: If the job is already completed, and this new response is not the final one,
+    // it's a late-arriving intermediate update. We ignore it to prevent overwriting the final result.
+    if (jobState.status === "completed" && !isFinalResponse) {
+      logger.warn({ jobId, response }, "Ignoring late intermediate update after job completion.");
+      return;
+    }
+
+    // Fix 3: For all valid non-empty responses, update the state.
+    // This allows intermediate step outputs to be streamed via the KV watcher
+    // without prematurely marking the job as completed.
+    await this._updateJobState(jobState, {
+      status: newStatus,
+      outputs: response,
+    });
+
+    logger.debug({ jobId, status: newStatus }, "Agent job state updated");
+
+    if (isFinalResponse) {
+      logger.info({ jobId }, "Agent job completed with final data");
+
+      const result: JobResult = {
+        jobId,
+        status: "completed",
+        outputs: response,
+      };
+
+      const callback = this._jobCallbacks.get(jobId);
+      if (callback) {
+        await callback(result);
+        this._jobCallbacks.delete(jobId);
+      }
+    }
+  }
+
+  async handleAgentError(jobId: string, error: string): Promise<void> {
+    const jobState = await this._jobState.get(jobId);
+    if (!jobState) {
+      logger.error({ jobId }, "Job state not found for agent error");
+      return;
+    }
+
+    const result: JobResult = {
+      jobId,
+      status: "failed",
+      error,
+    };
+
+    await this._updateJobState(jobState, {
+      status: "failed",
+      error,
+    });
+
+    const callback = this._jobCallbacks.get(jobId);
+    if (callback) {
+      await callback(result);
+      this._jobCallbacks.delete(jobId);
+    }
+  }
+
+  getAgents(): Map<string, Agent> {
+    return this._agents;
+  }
+
+  private async _updateJobState(jobState: AgentJobState, update: Partial<AgentJobState>): Promise<void> {
+    const updatedState = {
+      ...jobState,
+      ...update,
+      updatedAt: new Date().toISOString(),
+    };
+    await this._jobState.put(jobState.jobId, updatedState);
+  }
+
+  private async _executeJob(context: GitHubContext, agent: Agent, jobState: AgentJobState, signature: string) {
+    try {
+      await this._updateJobState(jobState, { status: "running" });
+      const inputs = {
+        stateId: jobState.jobId,
+        eventName: jobState.inputs.eventName,
+        eventPayload: JSON.stringify(jobState.inputs.eventPayload) || "",
+        command: JSON.stringify(jobState.inputs.command) || "",
+        authToken: jobState.inputs.authToken,
+        settings: JSON.stringify({
+          ...agent.settings,
+        }),
+        ref: "http://example.com",
+        signature,
+        input: JSON.stringify(jobState.inputs),
+      };
+
+      if (isGithubAgent(agent.agent)) {
+        await dispatchWorkflow(context, {
+          owner: agent.agent.owner,
+          repository: agent.agent.repo,
+          workflowId: agent.agent.workflowId,
+          ref: agent.agent.ref,
+        });
+      } else {
+        // Call remote agent
+        logger.info({ agentUrl: agent.agent }, "Dispatching to remote agent");
+        await dispatchWorker(agent.agent, inputs);
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : "Unknown error occurred";
+      logger.error({ error, jobId: jobState.jobId }, "Failed to execute agent job");
+      jobState.status = "failed";
+      jobState.error = error;
+      await this.handleAgentError(jobState.jobId, error);
+    }
+  }
+
+  async *getJobStream(jobId: string): AsyncGenerator<string, void, unknown> {
+    let lastStatus: string | null = null;
+    for await (const jobState of (this._jobState as AgentStateStore).watch(jobId)) {
+      if (!jobState) {
+        yield `data: ${JSON.stringify({ error: "Job not found" })}\n\n`;
+        return;
+      }
+      if (jobState.status !== lastStatus) {
+        lastStatus = jobState.status;
+        yield `data: ${JSON.stringify({ status: jobState.status, outputs: jobState.outputs, error: jobState.error })}\n\n`;
+        if (jobState.status === "completed" || jobState.status === "failed") {
+          return;
+        }
+      }
+    }
+  }
+
+  public watchJob(jobId: string): AsyncIterableIterator<AgentJobState | null> {
+    // Check if the underlying job state store has the 'watch' capability.
+    if (this._jobState instanceof AgentStateStore) {
+      // Directly return the async iterator from the state store.
+      console.log("Watching job:", jobId);
+      return this._jobState.watch(jobId);
+    }
+
+    // If the store (e.g., EmptyStore) doesn't support watching, log a warning
+    // and return an empty async generator that completes immediately.
+    logger.warn({ jobId }, "Job watching is not supported by the current state store.");
+    return (async function* () {})();
+  }
+}
+
+export async function createAgentJob(
+  ctx: Context,
+  agentId: string,
+  capability: string,
+  inputs: Record<string, unknown>,
+  owner: string,
+  installationId: string | number
+) {
+  const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+
+  const llmClient = new OpenAI({
+    apiKey: env.OPENROUTER_API_KEY,
+    baseURL: env.OPENROUTER_BASE_URL,
+  });
+
+  const agentStateStore = await AgentStateStore.create(env.DENO_KV_URL, ctx.var.logger);
+  const agentRegistry = new AgentRegistry(agentStateStore);
+
+  const eventHandler = new GitHubEventHandler({
+    environment: env.ENVIRONMENT,
+    webhookSecret: env.APP_WEBHOOK_SECRET,
+    appId: env.APP_ID,
+    privateKey: env.APP_PRIVATE_KEY,
+    pluginChainState: new EmptyStore(ctx.var.logger),
+    llmClient,
+    llm: env.OPENROUTER_MODEL,
+    logger: ctx.var.logger,
+  });
+
+  // This part determines the callback URL for agent responses
+  const url = ctx.req.url;
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    throw new Error("Cannot determine public callback URL for agent. Please ensure the 'Host' header is set correctly.");
+  }
+  const baseUrl = new URL(url).origin;
+  const callbackUrl = `${baseUrl}/agent/response`;
+
+  const githubContext = new GitHubContext(
+    eventHandler,
+    { name: "repository_dispatch" as WebhookEventName, id: ctx.var.requestId, payload: {} } as EmitterWebhookEvent<"repository_dispatch">,
+    installationId ? eventHandler.getAuthenticatedOctokit(Number(installationId)) : eventHandler.getUnauthenticatedOctokit(),
+    llmClient,
+    ctx.var.logger
+  );
+
+  const signature = await eventHandler.signPayload(JSON.stringify(githubContext.payload));
+  const token = await eventHandler.getToken(Number(installationId));
+  await agentRegistry.loadAgents(githubContext, owner);
+
+  return agentRegistry.createJob(githubContext, agentId, capability, inputs, callbackUrl, signature, token);
+}

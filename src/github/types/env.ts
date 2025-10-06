@@ -9,6 +9,7 @@ export const envSchema = T.Object({
   OPENROUTER_MODEL: T.String({ minLength: 1, default: "deepseek/deepseek-chat-v3-0324:free" }),
   OPENROUTER_BASE_URL: T.String({ minLength: 1, default: "https://openrouter.ai/api/v1" }),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
+  DENO_KV_URL: T.String({ minLength: 1 }),
 });
 
 export type Env = Static<typeof envSchema> & {
