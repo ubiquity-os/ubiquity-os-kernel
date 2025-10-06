@@ -26,7 +26,7 @@ describe("Personal Agent tests", () => {
 
   it("Should handle personal agent command", async () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, infoSpy } = createContext("@testacc2 help");
+    const { context, errorSpy, infoSpy } = createContext("@test_acc2 help");
 
     expect(context.key).toBe(commentCreateEvent);
 
@@ -36,13 +36,13 @@ describe("Personal Agent tests", () => {
     expect(infoSpy).toHaveBeenNthCalledWith(
       1,
       {
-        personalAgentOwner: "testacc2",
-        owner: "testacc",
-        comment: "@testacc2 help",
+        personalAgentOwner: "test_acc2",
+        owner: "test_acc",
+        comment: "@test_acc2 help",
       },
       `Comment received`
     );
-    expect(infoSpy).toHaveBeenNthCalledWith(2, `Successfully sent the comment to testacc2/personal-agent`);
+    expect(infoSpy).toHaveBeenNthCalledWith(2, `Successfully sent the comment to test_acc2/personal-agent`);
     expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
   });
 
@@ -85,7 +85,7 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
         getRepoInstallation: () => ({
           data: { id: 123456 },
         }),
-        listInstallations: () => ({ data: [{ id: 123456, account: { login: "testacc2" } }] }),
+        listInstallations: () => ({ data: [{ id: 123456, account: { login: "test_acc2" } }] }),
       },
       repos: {
         get: () => ({
@@ -100,7 +100,7 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
     name: commentCreateEvent,
     payload: {
       action: "created",
-      repository: { owner: { login: "testacc" } },
+      repository: { owner: { login: "test_acc" } },
       comment: { body: commentBody },
     } as GitHubContext<"issue_comment.created">["payload"],
     logger: logger,
