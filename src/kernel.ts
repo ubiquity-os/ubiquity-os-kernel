@@ -81,7 +81,7 @@ app.post("/mcp", async (ctx: Context) => {
       );
     }
 
-    const agentStateStore = await AgentStateStore.create(ctx.env.DENO_KV_URL, ctx.var.logger);
+    const agentStateStore = await AgentStateStore.create(ctx.env.KV_URL, ctx.var.logger);
     const agentRegistry = new AgentRegistry(agentStateStore);
     console.log(`MCP Request for owner: ${owner}, installationId: ${installationId}`);
     const mcpServer = new McpServer(ctx, agentRegistry);
@@ -126,7 +126,7 @@ app.get("/x25519_public_key", async (ctx: Context) => {
 
 app.get("/agent/job/:jobId", async (ctx: Context) => {
   try {
-    const agentStateStore = await AgentStateStore.create(ctx.env.DENO_KV_URL, ctx.var.logger);
+    const agentStateStore = await AgentStateStore.create(ctx.env.KV_URL, ctx.var.logger);
     const agentRegistry = new AgentRegistry(agentStateStore);
     const jobId = ctx.req.param("jobId");
     const jobState = await agentRegistry.getJobState(jobId);
@@ -145,7 +145,7 @@ app.post("/agent/response", async (ctx: Context) => {
   try {
     const { jobId, outputs } = await ctx.req.json();
     console.log("Agent response received for jobId:", jobId, "with outputs:", outputs);
-    const agentStateStore = await AgentStateStore.create(ctx.env.DENO_KV_URL, ctx.var.logger);
+    const agentStateStore = await AgentStateStore.create(ctx.env.KV_URL, ctx.var.logger);
     const agentRegistry = new AgentRegistry(agentStateStore);
     await agentRegistry.handleAgentResponse(jobId, outputs);
 
@@ -157,7 +157,7 @@ app.post("/agent/response", async (ctx: Context) => {
 
 app.post("/agent/error", async (ctx: Context) => {
   try {
-    const agentStateStore = await AgentStateStore.create(ctx.env.DENO_KV_URL, ctx.var.logger);
+    const agentStateStore = await AgentStateStore.create(ctx.env.KV_URL, ctx.var.logger);
     const agentRegistry = new AgentRegistry(agentStateStore);
     const { jobId, error } = await ctx.req.json();
     await agentRegistry.handleAgentError(jobId, error);

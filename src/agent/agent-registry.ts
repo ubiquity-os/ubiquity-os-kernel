@@ -348,7 +348,7 @@ export async function createAgentJob(
     baseURL: env.OPENROUTER_BASE_URL,
   });
 
-  const agentStateStore = await AgentStateStore.create(env.DENO_KV_URL, ctx.var.logger);
+  const agentStateStore = await AgentStateStore.create(env.KV_URL, ctx.var.logger);
   const agentRegistry = new AgentRegistry(agentStateStore);
 
   const eventHandler = new GitHubEventHandler({
