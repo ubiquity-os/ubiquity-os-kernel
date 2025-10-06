@@ -6,6 +6,7 @@ import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
+import { callPersonalAgent } from "./personal-agent";
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim().toLowerCase();
@@ -13,6 +14,8 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     await postHelpCommand(context);
   } else if (body.startsWith(`@ubiquityos`)) {
     await commandRouter(context);
+  } else {
+    await callPersonalAgent(context);
   }
 }
 
