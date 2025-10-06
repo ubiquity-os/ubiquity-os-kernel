@@ -12,6 +12,7 @@ import OpenAI from "openai";
 import { GitHubEventHandler } from "../github/github-event-handler";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { EmitterWebhookEvent } from "@octokit/webhooks";
+import { brotliCompressSync } from "node:zlib";
 
 export interface JobResult {
   jobId: string;
@@ -20,12 +21,36 @@ export interface JobResult {
   error?: string;
 }
 
+export interface EventPayload {
+  action: string;
+  installation: {
+    id: number;
+  };
+  repository: {
+    name: string;
+    full_name: string;
+    owner: {
+      login: string;
+    };
+  };
+  sender: {
+    login: string;
+  };
+  [key: string]: unknown;
+}
+
 export interface CommandResponse {
   data?: Record<string, unknown>;
   error?: string;
 }
 const AGENT_CONFIG_REPO = ".ubiquity-os";
 const AGENT_CONFIG_PATH = ".github/.ubiquity-os.agents.yml";
+
+function compress(str: string): string {
+  const input = Buffer.from(str, "utf8");
+  const compressed = brotliCompressSync(new Uint8Array(input));
+  return Buffer.from(compressed.buffer).toString("base64");
+}
 
 export class AgentRegistry {
   private _jobState: KvStore<AgentJobState>;
@@ -78,6 +103,7 @@ export class AgentRegistry {
     callbackUrl: string,
     signature: string,
     token: string,
+    owner: string,
     progressToken?: string,
     onComplete?: (result: JobResult) => Promise<void>,
     sessionId?: string
@@ -90,7 +116,6 @@ export class AgentRegistry {
     const jobId = `${agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     logger.info({ jobId, agentId, capability }, "Creating agent job");
 
-    // Format inputs according to plugin schema
     const agentInput = {
       stateId: jobId,
       progressToken: progressToken || "",
@@ -122,7 +147,7 @@ export class AgentRegistry {
     if (onComplete) {
       this._jobCallbacks.set(jobId, onComplete);
     }
-    void this._executeJob(context, agent, jobState, signature);
+    void this._executeJob(context, agent, jobState, signature, owner);
 
     return jobId;
   }
@@ -140,25 +165,18 @@ export class AgentRegistry {
 
     const isFinalResponse = "data" in response;
 
-    // Fix 1: Ignore empty responses, which can race and overwrite the final output with {}.
     if (Object.keys(response).length === 0) {
       logger.warn({ jobId, response }, "Ignoring empty agent response to prevent final output overwrite.");
       return;
     }
 
-    // Determine the new status. It's 'completed' only if it's the final payload.
     const newStatus = isFinalResponse ? "completed" : "running";
 
-    // Fix 2: If the job is already completed, and this new response is not the final one,
-    // it's a late-arriving intermediate update. We ignore it to prevent overwriting the final result.
     if (jobState.status === "completed" && !isFinalResponse) {
       logger.warn({ jobId, response }, "Ignoring late intermediate update after job completion.");
       return;
     }
 
-    // Fix 3: For all valid non-empty responses, update the state.
-    // This allows intermediate step outputs to be streamed via the KV watcher
-    // without prematurely marking the job as completed.
     await this._updateJobState(jobState, {
       status: newStatus,
       outputs: response,
@@ -221,21 +239,50 @@ export class AgentRegistry {
     await this._jobState.put(jobState.jobId, updatedState);
   }
 
-  private async _executeJob(context: GitHubContext, agent: Agent, jobState: AgentJobState, signature: string) {
+  private async _buildEventPayload(context: GitHubContext, installationId: number, owner: string, repo: string): Promise<EventPayload> {
+    const safeOwner = owner && typeof owner === "string" && owner.length > 0 ? owner : "unknown-owner";
+    const safeRepo = repo && typeof repo === "string" && repo.length > 0 ? repo : "unknown-repo";
+    return {
+      action: "agent_invoked",
+      installation: {
+        id: installationId,
+      },
+      repository: {
+        name: safeRepo,
+        full_name: `${safeOwner}/${safeRepo}`,
+        owner: {
+          login: safeOwner,
+        },
+      },
+      sender: {
+        login: safeOwner,
+      },
+      ...Object.fromEntries(Object.entries(context.payload).filter(([key]) => key !== "repository")),
+    };
+  }
+
+  private async _executeJob(context: GitHubContext, agent: Agent, jobState: AgentJobState, signature: string, owner: string) {
     try {
       await this._updateJobState(jobState, { status: "running" });
-      const inputs = {
+
+      const workflowInputs = {
         stateId: jobState.jobId,
         eventName: jobState.inputs.eventName,
-        eventPayload: JSON.stringify(jobState.inputs.eventPayload) || "",
-        command: JSON.stringify(jobState.inputs.command) || "",
+        eventPayload: await this._buildEventPayload(context, parseInt(jobState.inputs.installationId as string) || 123445, owner, AGENT_CONFIG_REPO),
+        command: jobState.inputs.command || {},
         authToken: jobState.inputs.authToken,
-        settings: JSON.stringify({
-          ...agent.settings,
-        }),
+        settings: { ...agent.settings },
         ref: "http://example.com",
         signature,
-        input: JSON.stringify(jobState.inputs),
+        input: jobState.inputs,
+      };
+
+      const dispatchInputs = {
+        ...workflowInputs,
+        eventPayload: compress(JSON.stringify(workflowInputs.eventPayload)),
+        command: JSON.stringify(workflowInputs.command),
+        settings: JSON.stringify(workflowInputs.settings),
+        input: JSON.stringify(workflowInputs.input),
       };
 
       if (isGithubAgent(agent.agent)) {
@@ -246,9 +293,8 @@ export class AgentRegistry {
           ref: agent.agent.ref,
         });
       } else {
-        // Call remote agent
         logger.info({ agentUrl: agent.agent }, "Dispatching to remote agent");
-        await dispatchWorker(agent.agent, inputs);
+        await dispatchWorker(agent.agent, dispatchInputs);
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : "Unknown error occurred";
@@ -277,15 +323,11 @@ export class AgentRegistry {
   }
 
   public watchJob(jobId: string): AsyncIterableIterator<AgentJobState | null> {
-    // Check if the underlying job state store has the 'watch' capability.
     if (this._jobState instanceof AgentStateStore) {
-      // Directly return the async iterator from the state store.
       console.log("Watching job:", jobId);
       return this._jobState.watch(jobId);
     }
 
-    // If the store (e.g., EmptyStore) doesn't support watching, log a warning
-    // and return an empty async generator that completes immediately.
     logger.warn({ jobId }, "Job watching is not supported by the current state store.");
     return (async function* () {})();
   }
@@ -320,7 +362,6 @@ export async function createAgentJob(
     logger: ctx.var.logger,
   });
 
-  // This part determines the callback URL for agent responses
   const url = ctx.req.url;
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
     throw new Error("Cannot determine public callback URL for agent. Please ensure the 'Host' header is set correctly.");
@@ -340,5 +381,5 @@ export async function createAgentJob(
   const token = await eventHandler.getToken(Number(installationId));
   await agentRegistry.loadAgents(githubContext, owner);
 
-  return agentRegistry.createJob(githubContext, agentId, capability, inputs, callbackUrl, signature, token);
+  return agentRegistry.createJob(githubContext, agentId, capability, inputs, callbackUrl, signature, token, owner);
 }

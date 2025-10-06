@@ -264,7 +264,7 @@ export class McpServer {
     const signature = await this._githubContext.eventHandler.signPayload(JSON.stringify(this._githubContext.payload));
     const token = await this._githubContext.eventHandler.getToken(Number(installationId));
 
-    return this._agentRegistry.createJob(this._githubContext, agentId, capability, inputs, callbackUrl, signature, token);
+    return this._agentRegistry.createJob(this._githubContext, agentId, capability, inputs, callbackUrl, signature, token, owner);
   }
 
   private async _initialize(request: JsonRpcRequest) {
