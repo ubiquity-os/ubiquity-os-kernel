@@ -232,7 +232,7 @@ export class McpServer {
         id: originalId,
         result: {
           status: finalState?.status || "unknown",
-          outputs: formattedOutputs,
+          content: formattedOutputs,
         },
       });
     } catch (error) {
