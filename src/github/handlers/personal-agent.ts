@@ -8,8 +8,8 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
   const owner = payload.repository.owner.login;
   const body = payload.comment.body.trim();
 
-  if (!body.trim().startsWith("@")) {
-    logger.info(`Ignoring irrelevant comment: ${body}`);
+  if (!body.startsWith("@")) {
+    logger.debug(`Ignoring irrelevant comment: ${body}`);
     return;
   }
 
@@ -21,7 +21,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
 
   const personalAgentOwner = targetUser[1];
   const personalAgentRepo = "personal-agent";
-  logger.info({ owner, personalAgentOwner, comment: body }, `Comment received`);
+  logger.debug({ owner, personalAgentOwner, comment: body }, `Comment received`);
 
   try {
     const defaultBranch = await getDefaultBranch(context, personalAgentOwner, personalAgentRepo);
