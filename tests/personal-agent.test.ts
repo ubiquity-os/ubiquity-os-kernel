@@ -26,14 +26,14 @@ describe("Personal Agent tests", () => {
 
   it("Should handle personal agent command", async () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, infoSpy } = createContext("@test_acc2 help");
+    const { context, errorSpy, infoSpy, debugSpy } = createContext("@test_acc2 help");
 
     expect(context.key).toBe(commentCreateEvent);
 
     await issueCommentCreated(context);
 
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(infoSpy).toHaveBeenNthCalledWith(
+    expect(debugSpy).toHaveBeenNthCalledWith(
       1,
       {
         personalAgentOwner: "test_acc2",
@@ -42,13 +42,13 @@ describe("Personal Agent tests", () => {
       },
       `Comment received`
     );
-    expect(infoSpy).toHaveBeenNthCalledWith(2, `Successfully sent the comment to test_acc2/personal-agent`);
+    expect(infoSpy).toHaveBeenNthCalledWith(1, `Successfully sent the comment to test_acc2/personal-agent`);
     expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
   });
 
   it("Should ignore irrelevant comments", async () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, infoSpy } = createContext("foo bar");
+    const { context, errorSpy, debugSpy } = createContext("foo bar");
 
     expect(context.key).toBe(commentCreateEvent);
     expect(context.payload.comment.body).toBe("foo bar");
@@ -56,7 +56,7 @@ describe("Personal Agent tests", () => {
     await issueCommentCreated(context);
 
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(infoSpy).toHaveBeenNthCalledWith(1, "Ignoring irrelevant comment: foo bar");
+    expect(debugSpy).toHaveBeenNthCalledWith(1, "Ignoring irrelevant comment: foo bar");
     expect(createWorkflowDispatch).not.toHaveBeenCalled();
   });
 });
