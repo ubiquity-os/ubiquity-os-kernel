@@ -73,8 +73,6 @@ const pluginInvocationSchema = T.Object({
   skipBotEvents: T.Optional(T.Boolean()),
 });
 
-export type PluginInvocation = StaticDecode<typeof pluginInvocationSchema>;
-
 export const pluginChainSchema = T.Array(pluginInvocationSchema, { minItems: 1, default: [] });
 
 export type PluginChain = StaticDecode<typeof pluginChainSchema>;
