@@ -3,7 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context";
-import { GithubPlugin, isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
+import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 
 const _manifestCache: Record<string, Manifest> = {};
 
@@ -13,14 +13,26 @@ function isCommentCreatedPayload(
   return "comment" in payload && typeof payload.comment !== "string";
 }
 
-export async function shouldSkipPlugin(context: GitHubContext, pluginChain: PluginConfiguration["plugins"][0], event: EmitterWebhookEventName) {
-  if (pluginChain.uses[0].skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    context.logger.debug({ plugin: pluginChain.uses[0].plugin }, "Skipping plugin because sender is bot");
+export type ResolvedPlugin = {
+  key: string;
+  target: string | GithubPlugin;
+  settings: PluginSettings;
+};
+
+function formatPluginTarget(target: string | GithubPlugin) {
+  return typeof target === "string"
+    ? target
+    : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+}
+
+export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
+  if (plugin.settings.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
+    context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
     return true;
   }
   const commentEvents = ["issue_comment.created", "pull_request_review_comment.created"] as EmitterWebhookEventName[];
   if (commentEvents.includes(context.key)) {
-    const manifest = await getManifest(context, pluginChain.uses[0].plugin);
+    const manifest = await getManifest(context, plugin.target);
     if (
       manifest?.commands &&
       !manifest["ubiquity:listeners"]?.includes(context.key as keyof Manifest["ubiquity:listeners"]) &&
@@ -42,14 +54,30 @@ export async function shouldSkipPlugin(context: GitHubContext, pluginChain: Plug
       return false;
     }
   }
-  return !pluginChain.uses?.[0].runsOn?.includes(event);
+  return !plugin.settings.runsOn?.includes(event);
 }
 
-export async function getPluginsForEvent(context: GitHubContext, plugins: PluginConfiguration["plugins"], event: EmitterWebhookEventName) {
-  const allowedPlugins = [] as PluginConfiguration["plugins"];
-  for (const plugin of plugins) {
-    if (!(await shouldSkipPlugin(context, plugin, event))) {
-      allowedPlugins.push(plugin);
+export async function getPluginsForEvent(
+  context: GitHubContext,
+  plugins: PluginConfiguration["plugins"],
+  event: EmitterWebhookEventName
+): Promise<ResolvedPlugin[]> {
+  const allowedPlugins: ResolvedPlugin[] = [];
+  for (const [pluginKey, settings] of Object.entries(plugins)) {
+    let target: string | GithubPlugin;
+    try {
+      target = parsePluginIdentifier(pluginKey);
+    } catch (error) {
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
+    const resolvedPlugin: ResolvedPlugin = {
+      key: pluginKey,
+      target,
+      settings,
+    };
+    if (!(await shouldSkipPlugin(context, resolvedPlugin, event))) {
+      allowedPlugins.push(resolvedPlugin);
     }
   }
   return allowedPlugins;

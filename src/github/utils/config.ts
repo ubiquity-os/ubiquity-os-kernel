@@ -2,8 +2,7 @@ import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
-import { expressionRegex } from "../types/plugin";
-import { configSchema, configSchemaValidator, PluginConfiguration } from "../types/plugin-configuration";
+import { GithubPlugin, PluginConfiguration, PluginSettings, configSchema, configSchemaValidator, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
@@ -50,11 +49,15 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
  * Merge configurations based on their 'plugins' keys
  */
 function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
-  const mergedConfiguration = { ...configuration1 };
-  if (configuration2.plugins?.length) {
-    mergedConfiguration.plugins = configuration2.plugins;
-  }
-  return mergedConfiguration;
+  const mergedPlugins = {
+    ...configuration1.plugins,
+    ...configuration2.plugins,
+  };
+  return {
+    ...configuration1,
+    ...configuration2,
+    plugins: mergedPlugins,
+  };
 }
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
@@ -90,81 +93,47 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     mergedConfiguration = mergeConfigurations(mergedConfiguration, repoConfig.config);
   }
 
-  context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Checking plugin chains");
-
-  checkPluginChains(mergedConfiguration);
+  const resolvedPlugins: Record<string, PluginSettings> = {};
 
   context.logger.debug(
-    { repo: `${payload.repository.owner.login}/${payload.repository.name}`, plugins: mergedConfiguration.plugins.length },
+    { repo: `${payload.repository.owner.login}/${payload.repository.name}`, plugins: Object.keys(mergedConfiguration.plugins).length },
     "Found plugins enabled"
   );
 
-  for (const plugin of mergedConfiguration.plugins) {
-    const manifest = await getManifest(context, plugin.uses[0].plugin);
+  for (const [pluginKey, pluginSettings] of Object.entries(mergedConfiguration.plugins)) {
+    let pluginIdentifier: string | GithubPlugin;
+    try {
+      pluginIdentifier = parsePluginIdentifier(pluginKey);
+    } catch (error) {
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
+
+    const manifest = await getManifest(context, pluginIdentifier);
+
+    let runsOn = pluginSettings.runsOn ?? [];
+    let shouldSkipBotEvents = pluginSettings.skipBotEvents;
+
     if (manifest) {
-      if (!plugin.uses[0].runsOn.length) {
-        plugin.uses[0].runsOn = manifest["ubiquity:listeners"] ?? [];
+      if (!runsOn.length) {
+        runsOn = manifest["ubiquity:listeners"] ?? [];
       }
-      if (plugin.uses[0].skipBotEvents === undefined) {
-        plugin.uses[0].skipBotEvents = manifest.skipBotEvents ?? true;
+      if (shouldSkipBotEvents === undefined) {
+        shouldSkipBotEvents = manifest.skipBotEvents ?? true;
       }
     }
-  }
-  return mergedConfiguration;
-}
 
-function checkPluginChains(config: PluginConfiguration) {
-  for (const plugin of config.plugins) {
-    const allIds = checkPluginChainUniqueIds(plugin);
-    checkPluginChainExpressions(plugin, allIds);
+    resolvedPlugins[pluginKey] = {
+      ...pluginSettings,
+      runsOn,
+      skipBotEvents: shouldSkipBotEvents,
+    };
   }
-}
 
-function checkPluginChainUniqueIds(plugin: PluginConfiguration["plugins"][0]) {
-  const allIds = new Set<string>();
-  for (const use of plugin.uses) {
-    if (!use.id) continue;
-
-    if (allIds.has(use.id)) {
-      throw new Error(`Duplicate id ${use.id} in plugin chain`);
-    }
-    allIds.add(use.id);
-  }
-  return allIds;
-}
-
-function checkPluginChainExpressions(plugin: PluginConfiguration["plugins"][0], allIds: Set<string>) {
-  const calledIds = new Set<string>();
-  for (const use of plugin.uses) {
-    if (!use.id) continue;
-    for (const key of Object.keys(use.with)) {
-      const value = use.with[key];
-      if (typeof value !== "string") continue;
-      checkExpression(value, allIds, calledIds);
-    }
-    calledIds.add(use.id);
-  }
-}
-
-function checkExpression(value: string, allIds: Set<string>, calledIds: Set<string>) {
-  const matches = value.match(expressionRegex);
-  if (!matches) {
-    return;
-  }
-  const parts = matches[1].split(".");
-  if (parts.length !== 3) {
-    throw new Error(`Invalid expression: ${value}`);
-  }
-  const id = parts[0];
-  if (!allIds.has(id)) {
-    throw new Error(`Expression ${value} refers to non-existent id ${id}`);
-  }
-  if (!calledIds.has(id)) {
-    throw new Error(`Expression ${value} refers to plugin id ${id} before it is called`);
-  }
-  if (parts[1] !== "output") {
-    throw new Error(`Invalid expression: ${value}`);
-  }
+  return {
+    ...mergedConfiguration,
+    plugins: resolvedPlugins,
+  };
 }
 
 async function download({ context, repository, owner }: { context: GitHubContext; repository: string; owner: string }): Promise<string | null> {

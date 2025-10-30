@@ -1,5 +1,5 @@
 import { GitHubContext } from "../github-context";
-import { GithubPlugin } from "../types/plugin-configuration";
+import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
@@ -23,8 +23,14 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   ];
   const commands: string[] = [];
   const configuration = await getConfig(context);
-  for (const pluginElement of configuration.plugins) {
-    const { plugin } = pluginElement.uses[0];
+  for (const [pluginKey] of Object.entries(configuration.plugins)) {
+    let plugin: string | GithubPlugin;
+    try {
+      plugin = parsePluginIdentifier(pluginKey);
+    } catch (error) {
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
     commands.push(...(await parseCommandsFromManifest(context, plugin)));
   }
   if (!commands.length) {

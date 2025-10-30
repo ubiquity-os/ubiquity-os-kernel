@@ -3,9 +3,48 @@ import { ValueErrorType } from "@sinclair/typebox/value";
 import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
-import { configSchema, PluginConfiguration } from "../types/plugin-configuration";
+import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
+
+function encodePointerSegment(segment: string) {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function decodePointerSegment(segment: string) {
+  return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function pointerSegmentsToString(segments: (string | number)[]) {
+  return segments.map((segment) => (typeof segment === "number" ? segment.toString() : encodePointerSegment(segment))).join("/");
+}
+
+function pointerStringToSegments(pointer: string): (string | number)[] {
+  return pointer
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment, index) => {
+      const decoded = decodePointerSegment(segment);
+      if (index > 1 && /^\d+$/.test(decoded)) {
+        return Number(decoded);
+      }
+      return decoded;
+    });
+}
+
+function parseInstanceSegments(instanceLocation: string) {
+  const pointer = instanceLocation.replace(/^#\/?/, "");
+  if (!pointer.length) {
+    return [] as (string | number)[];
+  }
+  return pointer
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => {
+      const decoded = decodePointerSegment(segment);
+      return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+    });
+}
 
 function constructErrorBody(
   errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
@@ -23,11 +62,11 @@ function constructErrorBody(
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
-        const path = error.path.split("/").filter((o) => o);
+        const pathSegments = pointerStringToSegments(error.path);
         if (error.type === ValueErrorType.ObjectRequiredProperty) {
-          path.splice(path.length - 1, 1);
+          pathSegments.splice(pathSegments.length - 1, 1);
         }
-        const node = doc.getIn(path, true) as Node;
+        const node = doc.getIn(pathSegments, true) as Node;
         const linePosStart = lineCounter.linePos(node?.range?.[0] || 0);
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${linePosStart.line}`);
       }
@@ -86,38 +125,39 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
   const errors: (ValueError | YAML.YAMLError)[] = [];
   const doc = rawData ? YAML.parseDocument(rawData) : null;
 
-  for (let i = 0; i < config.plugins.length; ++i) {
-    const { uses } = config.plugins[i];
-    for (let j = 0; j < uses.length; ++j) {
-      const { plugin, with: args } = uses[j];
-      const manifest = await getManifest(context, plugin);
-      if (!manifest?.configuration) {
+  for (const [pluginKey, settings] of Object.entries(config.plugins)) {
+    const pluginIdentifier = parsePluginIdentifier(pluginKey);
+    const manifest = await getManifest(context, pluginIdentifier);
+    const baseSegments: (string | number)[] = ["plugins", pluginKey];
+    if (!manifest?.configuration) {
+      errors.push({
+        path: pointerSegmentsToString(baseSegments),
+        message: "Failed to fetch the manifest configuration.",
+        value: pluginKey,
+        type: 0,
+        schema: configSchema,
+        errors: [],
+      });
+      continue;
+    }
+
+    const validator = new Validator(manifest.configuration, "7", false);
+    const result = validator.validate(settings.with);
+
+    if (!result.valid) {
+      for (const error of result.errors) {
+        const instanceSegments = parseInstanceSegments(error.instanceLocation);
+        const pathSegments = [...baseSegments, "with", ...instanceSegments];
+        const path = pointerSegmentsToString(pathSegments);
+        const value = doc?.getIn(pathSegments);
         errors.push({
-          path: `plugins/${i}/uses/${j}`,
-          message: `Failed to fetch the manifest configuration.`,
-          value: JSON.stringify(plugin),
+          path,
+          message: error.error,
+          value: JSON.stringify(value),
           type: 0,
           schema: configSchema,
           errors: [],
         });
-      } else {
-        const validator = new Validator(manifest.configuration, "7", false);
-        const result = validator.validate(args);
-
-        if (!result.valid) {
-          for (const error of result.errors) {
-            const path = error.instanceLocation.replace("#", `plugins/${i}/uses/${j}/with`);
-            const value = doc?.getIn(path.split("/").filter((o) => o));
-            errors.push({
-              path,
-              message: error.error,
-              value: JSON.stringify(value),
-              type: 0,
-              schema: configSchema,
-              errors: [],
-            });
-          }
-        }
       }
     }
   }

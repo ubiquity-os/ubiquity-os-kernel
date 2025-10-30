@@ -160,17 +160,16 @@ How to run a "hello-world" plugin the Cloudflare way:
 
 ```yml
 plugins:
-  - skipBotEvents: true
-    uses:
-    	# hello-world-plugin
-      - plugin: http://127.0.0.1:9090
-        runsOn: [ "issue_comment.created" ]
-        with:
-          response: world
+  http://127.0.0.1:9090:
+    skipBotEvents: true
+    runsOn:
+      - issue_comment.created
+    with:
+      response: world
 ```
 
-4. Post a `/hello` comment in any issue
-5. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
+1. Post a `/hello` comment in any issue
+2. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
 
 How it works:
 
