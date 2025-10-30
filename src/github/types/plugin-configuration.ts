@@ -53,17 +53,7 @@ export function stringLiteralUnion<T extends string[]>(values: readonly [...T]):
 
 const emitterType = stringLiteralUnion(emitterEventNames);
 
-const runsOnSchema = T.Transform(T.Union([T.Array(emitterType), emitterType, T.Null(), T.Undefined()], { default: [] }))
-  .Decode((value) => {
-    if (Array.isArray(value)) {
-      return value;
-    }
-    if (typeof value === "string") {
-      return [value];
-    }
-    return [];
-  })
-  .Encode((value) => value);
+const runsOnSchema = T.Array(emitterType, { default: [] });
 
 const pluginInvocationSchema = T.Object({
   id: T.Optional(T.String()),
