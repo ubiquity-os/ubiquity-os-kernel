@@ -157,19 +157,17 @@ How to run a "hello-world" plugin the Cloudflare way:
 1. Run `bun dev` to spin up the kernel
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
-
-```yml
-plugins:
-  http://127.0.0.1:9090:
-    skipBotEvents: true
-    runsOn:
-      - issue_comment.created
-    with:
-      response: world
-```
-
-1. Post a `/hello` comment in any issue
-2. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
+	```yml
+	plugins:
+    http://127.0.0.1:9090:
+      skipBotEvents: true
+      runsOn:
+        - issue_comment.created
+      with:
+        response: world
+	```
+4. Post a `/hello` comment in any issue
+5. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
 
 How it works:
 
