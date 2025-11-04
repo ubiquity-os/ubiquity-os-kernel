@@ -193,7 +193,7 @@ The input will include the following fields:
   }
 
   const plugin = pluginWithManifest.target;
-  const settings = pluginWithManifest.settings.with;
+  const settings = pluginWithManifest.settings?.with;
 
   // call plugin
   const isGithubPluginObject = isGithubPlugin(plugin);

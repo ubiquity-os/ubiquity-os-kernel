@@ -55,23 +55,36 @@ const emitterType = stringLiteralUnion(emitterEventNames);
 
 const runsOnSchema = T.Array(emitterType, { default: [] });
 
-const pluginInvocationSchema = T.Object({
-  id: T.Optional(T.String()),
-  plugin: githubPluginType(),
-  with: T.Record(T.String(), T.Unknown(), { default: {} }),
-  runsOn: T.Optional(runsOnSchema),
-  skipBotEvents: T.Optional(T.Boolean()),
-});
+const pluginInvocationSchema = T.Object(
+  {
+    id: T.Optional(T.String()),
+    plugin: githubPluginType(),
+    with: T.Record(T.String(), T.Unknown(), { default: {} }),
+    runsOn: T.Optional(runsOnSchema),
+    skipBotEvents: T.Optional(T.Boolean()),
+  },
+  { default: {} }
+);
 
 export const pluginChainSchema = T.Array(pluginInvocationSchema, { minItems: 1, default: [] });
 
 export type PluginChain = StaticDecode<typeof pluginChainSchema>;
 
-const pluginSettingsSchema = T.Object({
-  with: T.Record(T.String(), T.Unknown(), { default: {} }),
-  runsOn: T.Optional(runsOnSchema),
-  skipBotEvents: T.Optional(T.Boolean()),
-});
+// We accept null when a key has no following body
+const pluginSettingsSchema = T.Union(
+  [
+    T.Null(),
+    T.Object(
+      {
+        with: T.Record(T.String(), T.Unknown(), { default: {} }),
+        runsOn: T.Optional(runsOnSchema),
+        skipBotEvents: T.Optional(T.Boolean()),
+      },
+      { default: {} }
+    ),
+  ],
+  { default: null }
+);
 
 export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;
 

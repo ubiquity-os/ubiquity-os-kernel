@@ -143,7 +143,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
     }
 
     const validator = new Validator(manifest.configuration, "7", false);
-    const result = validator.validate(settings.with);
+    const result = validator.validate(settings?.with ?? {});
 
     if (!result.valid) {
       for (const error of result.errors) {

@@ -136,10 +136,7 @@ describe("Worker tests", () => {
                 return {
                   data: `
                   plugins:
-                    - name: "Run on comment created"
-                      uses:
-                        - id: plugin-A
-                          plugin: https://plugin-a.internal
+                    https://plugin-a.internal: {}
                   `,
                 };
               },
@@ -150,16 +147,15 @@ describe("Worker tests", () => {
         logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
-      const pluginChain = cfg.plugins;
-      expect(pluginChain.length).toBe(1);
-      expect(pluginChain[0].uses.length).toBe(1);
-      expect(pluginChain[0].uses[0].skipBotEvents).toBeTruthy();
-      expect(pluginChain[0].uses[0].id).toBe("plugin-A");
-      expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
-      expect(pluginChain[0].uses[0].with).toEqual({});
+      expect(cfg.plugins).toEqual({
+        "https://plugin-a.internal": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {},
+        },
+      });
     });
     it("Should merge organization and repository configuration", async () => {
-      const workflowId = "compute.yml";
       function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
         let data: string;
         if (args.path === "manifest.json") {
@@ -177,29 +173,24 @@ describe("Worker tests", () => {
         } else if (args.repo !== ".ubiquity-os") {
           data = `
           plugins:
-            - uses:
-              - plugin: repo-3/plugin-3
-                with:
-                  setting1: false
-            - uses:
-              - plugin: repo-1/plugin-1
-                with:
-                  setting2: true`;
+            repo-3/plugin-3:
+              with:
+                setting1: false
+            repo-1/plugin-1:
+              with:
+                setting2: true`;
         } else {
           data = `
           plugins:
-            - uses:
-              - plugin: uses-1/plugin-1
-                with:
-                  settings1: 'enabled'
-            - uses:
-              - plugin: repo-1/plugin-1
-                with:
-                  setting1: false
-            - uses:
-              - plugin: repo-2/plugin-2
-                with:
-                  setting2: true`;
+            uses-1/plugin-1:
+              with:
+                settings1: 'enabled'
+            repo-1/plugin-1:
+              with:
+                setting1: false
+            repo-2/plugin-2:
+              with:
+                setting2: true`;
         }
 
         if (args.mediaType === undefined || args.mediaType?.format === "base64") {
@@ -232,42 +223,36 @@ describe("Worker tests", () => {
         eventHandler: eventHandler,
         logger,
       } as unknown as GitHubContext);
-      expect(cfg.plugins[0]).toEqual({
-        uses: [
-          {
-            plugin: {
-              owner: "repo-3",
-              repo: "plugin-3",
-              ref: undefined,
-              workflowId,
-            },
-            runsOn: [],
-            skipBotEvents: true,
-            with: {
-              setting1: false,
-            },
+      expect(cfg.plugins).toMatchObject({
+        "repo-3/plugin-3": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting1: false,
           },
-        ],
-      });
-      expect(cfg.plugins.slice(1)).toEqual([
-        {
-          uses: [
-            {
-              plugin: {
-                owner: "repo-1",
-                repo: "plugin-1",
-                ref: undefined,
-                workflowId: "compute.yml",
-              },
-              skipBotEvents: true,
-              runsOn: [],
-              with: {
-                setting2: true,
-              },
-            },
-          ],
         },
-      ]);
+        "repo-1/plugin-1": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting2: true,
+          },
+        },
+        "uses-1/plugin-1": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            settings1: "enabled",
+          },
+        },
+        "repo-2/plugin-2": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting2: true,
+          },
+        },
+      });
     });
   });
 });

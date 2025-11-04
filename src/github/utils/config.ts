@@ -111,8 +111,8 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
     const manifest = await getManifest(context, pluginIdentifier);
 
-    let runsOn = pluginSettings.runsOn ?? [];
-    let shouldSkipBotEvents = pluginSettings.skipBotEvents;
+    let runsOn = pluginSettings?.runsOn ?? [];
+    let shouldSkipBotEvents = typeof pluginSettings?.skipBotEvents !== "undefined" ? pluginSettings?.skipBotEvents : true;
 
     if (manifest) {
       if (!runsOn.length) {
@@ -125,6 +125,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
     resolvedPlugins[pluginKey] = {
       ...pluginSettings,
+      with: pluginSettings?.with ?? {},
       runsOn,
       skipBotEvents: shouldSkipBotEvents,
     };

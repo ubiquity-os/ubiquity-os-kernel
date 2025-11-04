@@ -1,13 +1,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
+import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { config } from "dotenv";
+import { GitHubContext } from "../src/github/github-context";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { parsePluginIdentifier } from "../src/github/types/plugin-configuration";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
+import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 
 config({ path: ".dev.vars" });
 
@@ -52,11 +54,10 @@ describe("Configuration tests", () => {
       } else if (args.path === CONFIG_FULL_PATH) {
         data = `
         plugins:
-          - uses:
-            - plugin: ubiquity/user-activity-watcher:compute.yml@fork/pull/1
-              skipBotEvents: false
-              with:
-                settings1: 'enabled'`;
+          ubiquity/user-activity-watcher:compute.yml@fork/pull/1:
+            skipBotEvents: false
+            with:
+              settings1: 'enabled'`;
       } else {
         throw new Error("Not Found");
       }
@@ -89,22 +90,13 @@ describe("Configuration tests", () => {
       eventHandler: eventHandler,
       logger,
     } as unknown as GitHubContext);
-    expect(cfg.plugins[0]).toEqual({
-      uses: [
-        {
-          plugin: {
-            owner: "ubiquity",
-            repo: "user-activity-watcher",
-            workflowId: "compute.yml",
-            ref: "fork/pull/1",
-          },
-          runsOn: [],
-          skipBotEvents: false,
-          with: {
-            settings1: "enabled",
-          },
-        },
-      ],
+    const pluginKey = "ubiquity/user-activity-watcher:compute.yml@fork/pull/1";
+    expect(cfg.plugins[pluginKey]).toEqual({
+      runsOn: [],
+      skipBotEvents: false,
+      with: {
+        settings1: "enabled",
+      },
     });
   });
   it("Should retrieve the configuration manifest from the proper branch if specified", async () => {
@@ -196,11 +188,10 @@ describe("Configuration tests", () => {
       } else if (args.path === CONFIG_FULL_PATH) {
         data = `
         plugins:
-          - uses:
-            - plugin: ubiquity/test-plugin
-              skipBotEvents: false
-              with:
-                settings1: 'enabled'`;
+          ubiquity/test-plugin:
+            skipBotEvents: false
+            with:
+              settings1: 'enabled'`;
       } else {
         throw new Error("Not Found");
       }
@@ -238,8 +229,23 @@ describe("Configuration tests", () => {
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);
-    expect(cfg.plugins[0].uses[0].skipBotEvents).toEqual(false);
-    await expect(shouldSkipPlugin(context, cfg.plugins[0], issueOpened)).resolves.toEqual(false);
+    const [pluginKey, pluginSettings] = Object.entries(cfg.plugins)[0];
+    expect(pluginSettings).not.toBeNull();
+    if (!pluginSettings) {
+      throw new Error("Expected plugin settings");
+    }
+    expect(pluginSettings.skipBotEvents).toEqual(false);
+    await expect(
+      shouldSkipPlugin(
+        context,
+        {
+          key: pluginKey,
+          target: parsePluginIdentifier(pluginKey),
+          settings: pluginSettings,
+        },
+        issueOpened as EmitterWebhookEventName
+      )
+    ).resolves.toEqual(false);
   });
   it("should return dev config if environment is not production", async () => {
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
@@ -259,17 +265,15 @@ describe("Configuration tests", () => {
       } else if (args.path === CONFIG_FULL_PATH) {
         data = `
         plugins:
-          - uses:
-            - plugin: ubiquity/production-plugin
-              with:
-                settings1: 'enabled'`;
+          ubiquity/production-plugin:
+            with:
+              settings1: 'enabled'`;
       } else if (args.path === DEV_CONFIG_FULL_PATH) {
         data = `
         plugins:
-          - uses:
-            - plugin: ubiquity/test-plugin
-              with:
-                settings1: 'enabled'`;
+          ubiquity/test-plugin:
+            with:
+              settings1: 'enabled'`;
       } else {
         throw new Error("Not Found");
       }
@@ -304,11 +308,13 @@ describe("Configuration tests", () => {
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);
-    expect(cfg.plugins[0].uses[0].plugin).toMatchObject({ owner: "ubiquity", repo: "test-plugin" });
+    let [pluginKey] = Object.keys(cfg.plugins);
+    expect(parsePluginIdentifier(pluginKey)).toMatchObject({ owner: "ubiquity", repo: "test-plugin" });
 
     context.eventHandler = { environment: "production" } as GitHubEventHandler;
 
     const cfg2 = await getConfig(context);
-    expect(cfg2.plugins[0].uses[0].plugin).toMatchObject({ owner: "ubiquity", repo: "production-plugin" });
+    [pluginKey] = Object.keys(cfg2.plugins);
+    expect(parsePluginIdentifier(pluginKey)).toMatchObject({ owner: "ubiquity", repo: "production-plugin" });
   });
 });

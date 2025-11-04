@@ -26,7 +26,7 @@ function formatPluginTarget(target: string | GithubPlugin) {
 }
 
 export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
-  if (plugin.settings.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
+  if (plugin.settings?.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
     context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
     return true;
   }
@@ -54,7 +54,7 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
       return false;
     }
   }
-  return !plugin.settings.runsOn?.includes(event);
+  return !plugin.settings?.runsOn?.includes(event);
 }
 
 export async function getPluginsForEvent(

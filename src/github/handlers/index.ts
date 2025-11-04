@@ -67,9 +67,9 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       pluginChain: [
         {
           plugin,
-          with: settings.with,
-          runsOn: settings.runsOn ?? [],
-          skipBotEvents: settings.skipBotEvents,
+          with: settings?.with ?? {},
+          runsOn: settings?.runsOn ?? [],
+          skipBotEvents: settings?.skipBotEvents,
         },
       ],
       outputs: new Array(1),
@@ -78,7 +78,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings.with, token, ref, null);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
     state.inputs[0] = inputs;
     await eventHandler.pluginChainState.put(stateId, state);
