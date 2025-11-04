@@ -41,7 +41,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
       return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
     }
   }
-  context.logger.error({ owner, repository }, "YAML could not be decoded");
+  context.logger.error({ owner, repository, errors }, "YAML could not be decoded");
   return { config: null, errors, rawData };
 }
 
@@ -173,7 +173,7 @@ export function parseYaml(context: GitHubContext, data: null | string) {
       return { yaml: parsedData ?? null, errors: null };
     }
   } catch (error) {
-    context.logger.error({ err: error }, "Error parsing YAML");
+    context.logger.error({ error }, "Error parsing YAML");
     return { errors: [error] as YAMLError[], yaml: null };
   }
   context.logger.debug("Could not parse YAML");

@@ -1,5 +1,6 @@
 import { Validator } from "@cfworker/json-schema";
 import { ValueErrorType } from "@sinclair/typebox/value";
+import { YAMLException } from "js-yaml";
 import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
@@ -59,6 +60,8 @@ function constructErrorBody(
       body.push("> [!CAUTION]\n");
       if (error instanceof YAMLError) {
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.linePos?.[0].line || 0}`);
+      } else if (error instanceof YAMLException) {
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.mark.line || 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
@@ -72,11 +75,11 @@ function constructErrorBody(
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${linePosStart.line}`);
       }
       const message = [];
-      if (error instanceof YAMLError) {
+      if (error instanceof YAMLError || error instanceof YAMLException) {
         message.push(error.message);
       } else {
         message.push(`path: ${error.path}\n`);
-        message.push(`value: ${error.value}\n`);
+        message.push(`value: ${JSON.stringify(error.value)}\n`);
         message.push(`message: ${error.message}`);
       }
       body.push(`\n> \`\`\`yml\n`);
@@ -199,7 +202,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
         body
       );
     }
-  } catch (e) {
-    context.logger.error({ err: e }, "handlePushEventError");
+  } catch (error) {
+    context.logger.error({ error }, "handlePushEventError");
   }
 }
