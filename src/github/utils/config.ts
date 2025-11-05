@@ -112,7 +112,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     const manifest = await getManifest(context, pluginIdentifier);
 
     let runsOn = pluginSettings?.runsOn ?? [];
-    let shouldSkipBotEvents = typeof pluginSettings?.skipBotEvents !== "undefined" ? pluginSettings?.skipBotEvents : true;
+    let shouldSkipBotEvents = pluginSettings?.skipBotEvents;
 
     if (manifest) {
       if (!runsOn.length) {
