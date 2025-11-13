@@ -1,7 +1,7 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
-import { isGithubPlugin, PluginConfiguration } from "../types/plugin-configuration";
+import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
@@ -53,16 +53,22 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   const commands = [...embeddedCommands];
   const config = await getConfig(context);
-  const pluginsWithManifest: { plugin: PluginConfiguration["plugins"][0]["uses"][0]; manifest: Manifest }[] = [];
-  for (let i = 0; i < config.plugins.length; ++i) {
-    const plugin = config.plugins[i].uses[0];
-
-    const manifest = await getManifest(context, plugin.plugin);
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+    let target: string | GithubPlugin;
+    try {
+      target = parsePluginIdentifier(pluginKey);
+    } catch (error) {
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
+    const manifest = await getManifest(context, target);
     if (!manifest?.commands) {
       continue;
     }
     pluginsWithManifest.push({
-      plugin: plugin,
+      target,
+      settings: pluginSettings,
       manifest,
     });
     for (const [name, command] of Object.entries(manifest.commands)) {
@@ -185,9 +191,9 @@ The input will include the following fields:
     context.logger.warn({ command: command.name }, `No plugin found for command`);
     return;
   }
-  const {
-    plugin: { plugin, with: settings },
-  } = pluginWithManifest;
+
+  const plugin = pluginWithManifest.target;
+  const settings = pluginWithManifest.settings?.with;
 
   // call plugin
   const isGithubPluginObject = isGithubPlugin(plugin);

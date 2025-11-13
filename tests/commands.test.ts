@@ -45,14 +45,8 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
     return {
       data: `
       plugins:
-        - name: "Run on comment created"
-          uses:
-            - id: plugin-A
-              plugin: https://plugin-a.internal
-        - name: "Some Action plugin"
-          uses:
-            - id: plugin-B
-              plugin: ubiquity-os/plugin-b
+        https://plugin-a.internal: {}
+        ubiquity-os/plugin-b: {}
       `,
     };
   } else if (params?.path === "manifest.json") {
@@ -330,10 +324,7 @@ describe("Event related tests", () => {
         return {
           data: `
           plugins:
-            - name: "Some Action plugin"
-              uses:
-                - id: plugin-B
-                  plugin: ubiquity-os/plugin-b
+            ubiquity-os/plugin-b: {}
           `,
         };
       } else if (params?.path === "manifest.json") {

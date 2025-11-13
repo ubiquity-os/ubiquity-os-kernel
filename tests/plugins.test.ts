@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { EmitterWebhookEventName } from "@octokit/webhooks";
+import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
-import { shouldSkipPlugin } from "../src/github/utils/plugins";
-import { PluginConfiguration } from "../src/github/types/plugin-configuration";
+import { ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
-import { http, HttpResponse } from "msw";
 
 beforeAll(() => {
   server.listen();
@@ -39,9 +39,26 @@ describe("Plugin tests", () => {
         });
       })
     );
-    const pluginChain = {
-      uses: [{ skipBotEvents: true, plugin: pluginAddress }],
-    } as PluginConfiguration["plugins"][0];
+    const basePlugin: ResolvedPlugin = {
+      key: pluginAddress,
+      target: pluginAddress,
+      settings: {
+        skipBotEvents: true,
+        runsOn: [],
+        with: {},
+      },
+    };
+    function pluginWithRunsOn(runsOn: EmitterWebhookEventName[]): ResolvedPlugin {
+      return {
+        key: basePlugin.key,
+        target: basePlugin.target,
+        settings: {
+          with: basePlugin.settings?.with ?? {},
+          skipBotEvents: basePlugin.settings?.skipBotEvents,
+          runsOn,
+        },
+      };
+    }
 
     // Skip bot comment
     await expect(
@@ -54,7 +71,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        pluginChain,
+        basePlugin,
         issueCommentCreated
       )
     ).resolves.toBe(true);
@@ -74,7 +91,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        pluginChain,
+        basePlugin,
         issueCommentCreated
       )
     ).resolves.toBe(true);
@@ -94,7 +111,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        pluginChain,
+        basePlugin,
         issueCommentCreated
       )
     ).resolves.toBe(false);
@@ -111,9 +128,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        {
-          uses: [{ skipBotEvents: true, runsOn: [pullRequestOpened], plugin: pluginAddress }],
-        } as PluginConfiguration["plugins"][0],
+        pluginWithRunsOn([pullRequestOpened]),
         pullRequestOpened
       )
     ).resolves.toBe(false);
@@ -130,9 +145,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        {
-          uses: [{ skipBotEvents: true, runsOn: [pullRequestOpened], plugin: pluginAddress }],
-        } as PluginConfiguration["plugins"][0],
+        pluginWithRunsOn([pullRequestOpened]),
         "pull_request.closed"
       )
     ).resolves.toBe(true);
@@ -169,9 +182,7 @@ describe("Plugin tests", () => {
             },
           },
         } as unknown as GitHubContext,
-        {
-          uses: [{ skipBotEvents: true, runsOn: [issueCommentCreated], plugin: pluginAddress }],
-        } as PluginConfiguration["plugins"][0],
+        pluginWithRunsOn([issueCommentCreated]),
         pullRequestCommentCreated
       )
     ).resolves.toBe(false);
@@ -209,9 +220,7 @@ describe("Plugin tests", () => {
           },
           logger,
         } as unknown as GitHubContext,
-        {
-          uses: [{ skipBotEvents: true, runsOn: [issueCommentCreated], plugin: pluginAddress }],
-        } as PluginConfiguration["plugins"][0],
+        pluginWithRunsOn([issueCommentCreated]),
         pullRequestCommentCreated
       )
     ).resolves.toBe(true);
