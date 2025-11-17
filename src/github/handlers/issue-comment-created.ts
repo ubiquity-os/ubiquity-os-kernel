@@ -73,6 +73,13 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   }
   // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
   const previousComment = await getPreviousComment(context);
+  context.logger.debug(
+    {
+      previousComment: previousComment?.user?.login,
+      issueAuthor,
+    },
+    "isUserHelpRequest"
+  );
   return previousComment?.user?.login !== issueAuthor;
 }
 
@@ -148,10 +155,11 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
         type: "function",
         function: {
           name: name,
+          description: command.description,
           parameters: command.parameters
             ? {
                 ...command.parameters,
-                required: Object.keys(command.parameters.properties),
+                required: Object.keys(command.parameters?.properties ?? {}),
                 additionalProperties: false,
               }
             : undefined,
@@ -160,6 +168,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       });
     }
   }
+
+  context.logger.debug(commands, "Available commands");
 
   const response = await context.openAi.chat.completions.create({
     model: context.llm,
@@ -220,7 +230,7 @@ Follow these rules exactly. If uncertain, DO NOT call a tool.
       },
     ],
     temperature: 0.3,
-    max_tokens: 1024,
+    max_completion_tokens: 1024,
     frequency_penalty: 0,
     presence_penalty: 0,
     tools: commands,
@@ -230,11 +240,11 @@ Follow these rules exactly. If uncertain, DO NOT call a tool.
     },
   });
 
-  if (response.choices.length === 0) {
+  context.logger.debug({ response }, "LLM response");
+
+  if (!response?.choices?.length) {
     return;
   }
-
-  context.logger.debug({ response }, "LLM response");
 
   const toolCalls = response.choices[0].message.tool_calls;
   if (!toolCalls?.length) {
@@ -280,7 +290,7 @@ Follow these rules exactly. If uncertain, DO NOT call a tool.
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin }, "Will attempt to call a plugin to answer the help request.");
+  context.logger.info({ plugin, isGithubPluginObject }, "Will attempt to call a plugin to answer the help request.");
   try {
     if (!isGithubPluginObject) {
       await dispatchWorker(plugin, await inputs.getInputs());
