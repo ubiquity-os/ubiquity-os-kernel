@@ -49,6 +49,8 @@ function calculateSignature(payload: string, secret: string) {
   return `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
 }
 
+const issueCommentCreatedEvent = "issue_comment.created";
+
 beforeAll(() => {
   server.listen();
 });
@@ -65,7 +67,23 @@ describe("handleEvent", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin",
-          "ubiquity:listeners": ["issue_comment.created"],
+          "ubiquity:listeners": [issueCommentCreatedEvent],
+          commands: {
+            foo: {
+              description: "foo command",
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquity:example": "/bar foo",
+            },
+          },
+        })
+      ),
+      http.get("https://plugin-b.internal/manifest.json", () =>
+        HttpResponse.json({
+          name: "plugin",
+          "ubiquity:listeners": [issueCommentCreatedEvent],
           commands: {
             foo: {
               description: "foo command",
@@ -80,7 +98,7 @@ describe("handleEvent", () => {
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
         const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  - uses:\n    - plugin: "https://plugin-a.internal"\n  - uses:\n    - plugin: "https://plugin-a.internal"`;
+        const yamlContent = `plugins:\n  https://plugin-a.internal: {}\n  https://plugin-b.internal: {}`;
         if (acceptHeader === "application/vnd.github.v3.raw") {
           return HttpResponse.text(yamlContent);
         } else {
@@ -156,7 +174,7 @@ describe("handleEvent", () => {
     const res = await app.request("http://localhost:8080", {
       method: "POST",
       headers: {
-        "x-github-event": "issue_comment.created",
+        "x-github-event": issueCommentCreatedEvent,
         "x-hub-signature-256": signature,
         "x-github-delivery": "mocked_delivery_id",
         "content-type": "application/json",

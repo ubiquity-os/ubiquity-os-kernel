@@ -77,16 +77,11 @@ describe("Push related tests", () => {
                 return {
                   data: `
                     plugins:
-                      - name: "Run on comment created"
-                        uses:
-                          - id: plugin-A
-                            plugin: https://plugin-a.internal
-                            with:
-                              arg: "true"
-                      - name: "Some Action plugin"
-                        uses:
-                          - id: plugin-B
-                            plugin: ubiquity-os/plugin-b
+                      https://plugin-a.internal:
+                        with:
+                          arg: "true"
+                      ubiquity-os/plugin-b:
+                        with: {}
                     `,
                 };
               } else if (params?.path === "manifest.json") {
