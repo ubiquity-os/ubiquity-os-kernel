@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { drop } from "@mswjs/data";
 import { customOctokit as Octokit } from "@ubiquity-os/plugin-sdk/octokit";
+import { GitHubContext } from "../src/github/github-context";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { logger } from "../src/logger/logger";
 import { db } from "./__mocks__/db";
 import { server } from "./__mocks__/node";
-import { GitHubContext } from "../src/github/github-context";
-import { logger } from "../src/logger/logger";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
 const commentCreateEvent = "issue_comment.created";
@@ -102,6 +102,7 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
       action: "created",
       repository: { owner: { login: "test_acc" } },
       comment: { body: commentBody },
+      issue: { user: { login: "test_acc2" }, number: 1 },
     } as GitHubContext<"issue_comment.created">["payload"],
     logger: logger,
     octokit: octokit as unknown as InstanceType<typeof Octokit>,

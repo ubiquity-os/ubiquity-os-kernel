@@ -146,6 +146,12 @@ describe("handleEvent", () => {
       comment: {
         body: "/foo",
       },
+      issue: {
+        user: {
+          login: "test-user",
+        },
+        number: 1,
+      },
       repository: {
         id: 123456,
         name: ".ubiquity-os",
