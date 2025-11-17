@@ -208,6 +208,7 @@ You are a GitHub bot named **UbiquityOS**. You receive a single JSON object and 
 - Prefer *not* calling a tool over an uncertain or speculative mapping.
 
 Follow these rules exactly. If uncertain, DO NOT call a tool.
+If you have nothing useful to add to the conversation, don't respond with a comment at all. This is because you are stepping in as a first responder on behalf of the issue author.
 `,
             type: "text",
           },
@@ -248,13 +249,7 @@ Follow these rules exactly. If uncertain, DO NOT call a tool.
 
   const toolCalls = response.choices[0].message.tool_calls;
   if (!toolCalls?.length) {
-    const message = response.choices[0].message.content || "I cannot help you with that.";
-    await context.octokit.rest.issues.createComment({
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      body: message,
-    });
+    context.logger.warn("No tool call was made.");
     return;
   }
 
@@ -290,7 +285,7 @@ Follow these rules exactly. If uncertain, DO NOT call a tool.
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject }, "Will attempt to call a plugin to answer the help request.");
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will attempt to call a plugin to answer the help request.");
   try {
     if (!isGithubPluginObject) {
       await dispatchWorker(plugin, await inputs.getInputs());
