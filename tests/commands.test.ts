@@ -253,7 +253,7 @@ describe("Event related tests", () => {
     });
   });
 
-  it("Should tell the user it cannot help with arbitrary requests", async () => {
+  it("Should not answer with arbitrary requests", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
         return params;
@@ -299,17 +299,7 @@ describe("Event related tests", () => {
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls).toEqual([
-      [
-        {
-          body: "Sorry, but I can't help with that.",
-          issue_number: 1,
-          owner: "ubiquity",
-          repo: name,
-        },
-      ],
-    ]);
+    expect(spy).toBeCalledTimes(0);
   });
 
   it("Should not post the help menu when /help command if there is no available command", async () => {
