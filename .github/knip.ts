@@ -6,7 +6,7 @@ const config: KnipConfig = {
   ignore: ["jest.config.ts"],
   ignoreBinaries: ["i"],
   ignoreExportsUsedInFile: true,
-  ignoreDependencies: ["@mswjs/data", "esbuild", "eslint-config-prettier", "eslint-plugin-prettier", "msw", "ts-node"],
+  ignoreDependencies: ["esbuild", "eslint-config-prettier", "eslint-plugin-prettier", "msw", "ts-node"],
 };
 
 export default config;
