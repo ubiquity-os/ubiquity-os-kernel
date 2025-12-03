@@ -31,7 +31,6 @@
     "knip-ci": "knip --no-exit-code --reporter json --config .github/knip.ts",
     "jest:test": "jest --coverage",
     "plugin:hello-world": "tsx tests/__mocks__/hello-world-plugin.ts",
-    "setup-kv": "bun --env-file=.dev.vars scripts/setup-kv-namespace.ts",
     "setup": "tsx ./scripts/setup.ts",
     "start:azure": "run-p proxy build:watch start",
     "start:bun": "run-p proxy start",

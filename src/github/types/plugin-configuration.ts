@@ -33,17 +33,6 @@ export function parsePluginIdentifier(value: string): string | GithubPlugin {
   };
 }
 
-function githubPluginType() {
-  return T.Transform(T.String())
-    .Decode(parsePluginIdentifier)
-    .Encode((value) => {
-      if (typeof value === "string") {
-        return value;
-      }
-      return `${value.owner}/${value.repo}${value.workflowId ? ":" + value.workflowId : ""}${value.ref ? "@" + value.ref : ""}`;
-    });
-}
-
 type IntoStringLiteralUnion<T> = { [K in keyof T]: T[K] extends string ? TLiteral<T[K]> : never };
 
 export function stringLiteralUnion<T extends string[]>(values: readonly [...T]): Union<IntoStringLiteralUnion<T>> {
@@ -54,21 +43,6 @@ export function stringLiteralUnion<T extends string[]>(values: readonly [...T]):
 const emitterType = stringLiteralUnion(emitterEventNames);
 
 const runsOnSchema = T.Array(emitterType, { default: [] });
-
-const pluginInvocationSchema = T.Object(
-  {
-    id: T.Optional(T.String()),
-    plugin: githubPluginType(),
-    with: T.Record(T.String(), T.Unknown(), { default: {} }),
-    runsOn: T.Optional(runsOnSchema),
-    skipBotEvents: T.Optional(T.Boolean()),
-  },
-  { default: {} }
-);
-
-export const pluginChainSchema = T.Array(pluginInvocationSchema, { minItems: 1, default: [] });
-
-export type PluginChain = StaticDecode<typeof pluginChainSchema>;
 
 // We accept null when a key has no following body
 const pluginSettingsSchema = T.Union(

@@ -299,6 +299,6 @@ If you have nothing useful to add to the conversation, don't respond with a comm
       });
     }
   } catch (e) {
-    context.logger.error({ plugin, err: e }, "An error occurred while processing plugin chain; skipping plugin");
+    context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
   }
 }

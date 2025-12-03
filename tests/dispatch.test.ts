@@ -12,17 +12,6 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/utils/kv-store", () => ({
-  CloudflareKv: jest.fn().mockImplementation(() => ({
-    get: jest.fn(),
-    put: jest.fn(),
-  })),
-  EmptyStore: jest.fn().mockImplementation(() => ({
-    get: jest.fn(),
-    put: jest.fn(),
-  })),
-}));
-
 jest.mock("../src/github/types/plugin", () => {
   const originalModule: typeof import("../src/github/types/plugin") = jest.requireActual("../src/github/types/plugin");
 
@@ -120,7 +109,7 @@ describe("handleEvent", () => {
     );
   });
 
-  it("should not stop the plugin chain if dispatch throws an error", async () => {
+  it("should continue dispatching plugins if dispatch throws an error", async () => {
     jest.mock("../src/github/github-client", () => {
       return {
         customOctokit: jest.fn().mockReturnValue(new Octokit()),

@@ -6,15 +6,11 @@ import { logger } from "../logger/logger";
 
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
-import { PluginChainState } from "./types/plugin";
-import { KvStore } from "./utils/kv-store";
-
 export type Options = {
   environment: "production" | "development";
   webhookSecret: string;
   appId: string | number;
   privateKey: string;
-  pluginChainState: KvStore<PluginChainState>;
   llmClient: OpenAI;
   llm: string;
   logger?: typeof logger;
@@ -25,7 +21,6 @@ export class GitHubEventHandler {
   public on: Webhooks<SimplifiedContext>["on"];
   public onAny: Webhooks<SimplifiedContext>["onAny"];
   public onError: Webhooks<SimplifiedContext>["onError"];
-  public pluginChainState: KvStore<PluginChainState>;
 
   readonly environment: "production" | "development";
   private readonly _webhookSecret: string;
@@ -40,7 +35,6 @@ export class GitHubEventHandler {
     this._privateKey = options.privateKey;
     this._appId = Number(options.appId);
     this._webhookSecret = options.webhookSecret;
-    this.pluginChainState = options.pluginChainState;
     this._llmClient = options.llmClient;
     this.llm = options.llm;
 
