@@ -11,9 +11,7 @@ export const envSchema = T.Object({
   X25519_PRIVATE_KEY: T.Optional(T.String()),
 });
 
-export type Env = Static<typeof envSchema> & {
-  PLUGIN_CHAIN_STATE: KVNamespace;
-};
+export type Env = Static<typeof envSchema>;
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

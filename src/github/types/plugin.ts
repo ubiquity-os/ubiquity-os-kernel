@@ -1,19 +1,7 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
-import { StaticDecode, Type } from "@sinclair/typebox";
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
 import { CommandCall } from "../../types/command";
-import { jsonType } from "../../types/util";
 import { GitHubEventHandler } from "../github-event-handler";
-import { PluginChain } from "./plugin-configuration";
-
-export const expressionRegex = /^\s*\${{\s*(\S+)\s*}}\s*$/;
-
-export const pluginOutputSchema = Type.Object({
-  state_id: Type.String(), // GitHub forces snake_case
-  output: jsonType(Type.Record(Type.String(), Type.Unknown()), true),
-});
-
-export type PluginOutput = StaticDecode<typeof pluginOutputSchema>;
 
 export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
   public eventHandler: GitHubEventHandler;
@@ -62,14 +50,3 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     };
   }
 }
-
-export type PluginChainState<T extends EmitterWebhookEventName = EmitterWebhookEventName> = {
-  eventId: string;
-  eventName: T;
-  eventPayload: EmitterWebhookEvent<T>["payload"];
-  currentPlugin: number;
-  pluginChain: PluginChain;
-  inputs: PluginInput[];
-  outputs: PluginOutput[];
-  additionalProperties?: Record<string, unknown>;
-};

@@ -8,7 +8,6 @@ import { getPluginsForEvent } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
 import handlePushEvent from "./push-event";
-import { repositoryDispatch } from "./repository-dispatch";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: typeof pinoLogger) {
   return async (event: EmitterWebhookEvent) => {
@@ -21,7 +20,6 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 }
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
-  eventHandler.on("repository_dispatch", repositoryDispatch);
   eventHandler.on("issue_comment.created", issueCommentCreated);
   eventHandler.on("push", handlePushEvent);
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
@@ -58,30 +56,9 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     context.logger.debug({ plugin: pluginEntry.key }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
-
-    const state = {
-      eventId: context.id,
-      eventName: context.key,
-      eventPayload: event.payload,
-      currentPlugin: 0,
-      pluginChain: [
-        {
-          plugin,
-          with: settings?.with ?? {},
-          runsOn: settings?.runsOn ?? [],
-          skipBotEvents: settings?.skipBotEvents,
-        },
-      ],
-      outputs: new Array(1),
-      inputs: new Array(1),
-    };
-
     const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
-
-    state.inputs[0] = inputs;
-    await eventHandler.pluginChainState.put(stateId, state);
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {

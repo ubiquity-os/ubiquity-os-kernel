@@ -1,11 +1,11 @@
-import http from "http";
+import { confirm, input } from "@inquirer/prompts";
+import { Octokit } from "@octokit/core";
 import fs from "fs";
-import path from "path";
+import http from "http";
+import NodeRSA from "node-rsa";
 import open from "open";
 import ora, { Ora } from "ora";
-import NodeRSA from "node-rsa";
-import { Octokit } from "@octokit/core";
-import { confirm, input } from "@inquirer/prompts";
+import path from "path";
 
 const PORT = 3000;
 const DEV_ENV_FILE = ".dev.vars";
@@ -24,7 +24,7 @@ const manifestTemplate = {
     contents: "write",
     members: "read",
   },
-  default_events: ["issues", "issue_comment", "label", "pull_request", "push", "repository", "repository_dispatch"],
+  default_events: ["issues", "issue_comment", "label", "pull_request", "push", "repository"],
 };
 
 class GithubAppSetup {
