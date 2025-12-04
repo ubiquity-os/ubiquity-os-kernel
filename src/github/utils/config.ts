@@ -101,7 +101,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   );
 
   for (const [pluginKey, pluginSettings] of Object.entries(mergedConfiguration.plugins)) {
-    let pluginIdentifier: string | GithubPlugin;
+    let pluginIdentifier: GithubPlugin;
     try {
       pluginIdentifier = parsePluginIdentifier(pluginKey);
     } catch (error) {

@@ -1,9 +1,9 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
-import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
+import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
-import { getManifest } from "../utils/plugins";
+import { getManifest, getWorkerUrlFromManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { callPersonalAgent } from "./personal-agent";
@@ -132,9 +132,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   const commands = [...embeddedCommands];
   const config = await getConfig(context);
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const pluginsWithManifest: { target: GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
-    let target: string | GithubPlugin;
+    let target: GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
@@ -277,18 +277,18 @@ If you have nothing useful to add to the conversation, don't respond with a comm
 
   const plugin = pluginWithManifest.target;
   const settings = pluginWithManifest.settings?.with;
+  const { manifest } = pluginWithManifest;
+  const workerUrl = getWorkerUrlFromManifest(manifest);
 
-  // call plugin
-  const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
-  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+  const ref = workerUrl ? workerUrl : plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject, command }, "Will attempt to call a plugin to answer the help request.");
+  context.logger.info({ plugin, worker: Boolean(workerUrl), command }, "Will attempt to call a plugin to answer the help request.");
   try {
-    if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, await inputs.getInputs());
+    if (workerUrl) {
+      await dispatchWorker(workerUrl, await inputs.getInputs());
     } else {
       await dispatchWorkflow(context, {
         owner: plugin.owner,

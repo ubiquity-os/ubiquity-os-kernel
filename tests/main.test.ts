@@ -42,19 +42,25 @@ afterAll(() => {
 describe("Worker tests", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              homepage_url: "https://plugin-a.internal",
+              commands: {
+                foo: {
+                  description: "foo command",
+                  "ubiquity:example": "/foo bar",
+                },
+                bar: {
+                  description: "bar command",
+                  "ubiquity:example": "/bar foo",
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
         })
       )
     );
@@ -132,11 +138,28 @@ describe("Worker tests", () => {
         octokit: {
           rest: {
             repos: {
-              getContent() {
+              getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+                if (params?.path === "manifest.json") {
+                  return {
+                    data: {
+                      content: Buffer.from(
+                        JSON.stringify({
+                          name: "plugin",
+                          commands: {
+                            foo: {
+                              description: "foo command",
+                              "ubiquity:example": "/foo",
+                            },
+                          },
+                        })
+                      ).toString("base64"),
+                    },
+                  };
+                }
                 return {
                   data: `
                   plugins:
-                    https://plugin-a.internal: {}
+                    ubiquity-os/plugin-a: {}
                   `,
                 };
               },
@@ -148,7 +171,7 @@ describe("Worker tests", () => {
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       expect(cfg.plugins).toEqual({
-        "https://plugin-a.internal": {
+        "ubiquity-os/plugin-a": {
           runsOn: [],
           skipBotEvents: true,
           with: {},

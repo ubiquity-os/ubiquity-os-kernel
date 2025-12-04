@@ -3,7 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context";
-import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
+import { GithubPlugin, PluginConfiguration, PluginSettings, parsePluginIdentifier } from "../types/plugin-configuration";
 
 const _manifestCache: Record<string, Manifest> = {};
 
@@ -15,14 +15,23 @@ function isCommentCreatedPayload(
 
 export type ResolvedPlugin = {
   key: string;
-  target: string | GithubPlugin;
+  target: GithubPlugin;
   settings: PluginSettings;
 };
 
-function formatPluginTarget(target: string | GithubPlugin) {
-  return typeof target === "string"
-    ? target
-    : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+type ManifestWithHomepageUrl = Manifest & { homepage_url?: string };
+
+function formatPluginTarget(target: GithubPlugin) {
+  return `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+}
+
+export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
+  if (!manifest) {
+    return null;
+  }
+  const candidate = manifest as ManifestWithHomepageUrl;
+  const homepageUrl = candidate.homepage_url;
+  return typeof homepageUrl === "string" && homepageUrl.length ? homepageUrl : null;
 }
 
 export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
@@ -64,7 +73,7 @@ export async function getPluginsForEvent(
 ): Promise<ResolvedPlugin[]> {
   const allowedPlugins: ResolvedPlugin[] = [];
   for (const [pluginKey, settings] of Object.entries(plugins)) {
-    let target: string | GithubPlugin;
+    let target: GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
@@ -83,11 +92,11 @@ export async function getPluginsForEvent(
   return allowedPlugins;
 }
 
-export function getManifest(context: GitHubContext, plugin: string | GithubPlugin) {
-  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
+export function getManifest(context: GitHubContext, plugin: GithubPlugin) {
+  return fetchRepositoryManifest(context, plugin);
 }
 
-async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
+async function fetchRepositoryManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   if (_manifestCache[manifestKey]) {
     return _manifestCache[manifestKey];
@@ -108,23 +117,6 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     }
   } catch (e) {
     context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
-  }
-  return null;
-}
-
-async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
-  if (_manifestCache[url]) {
-    return _manifestCache[url];
-  }
-  const manifestUrl = `${url}/manifest.json`;
-  try {
-    const result = await fetch(manifestUrl);
-    const jsonData = await result.json();
-    const manifest = decodeManifest(context, jsonData);
-    _manifestCache[url] = manifest;
-    return manifest;
-  } catch (e) {
-    context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
   }
   return null;
 }

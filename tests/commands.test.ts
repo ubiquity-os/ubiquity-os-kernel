@@ -1,12 +1,10 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
-import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
-import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
@@ -20,17 +18,10 @@ config({ path: ".dev.vars" });
 const name = "ubiquity-os-kernel";
 const eventName = "issue_comment.created";
 
-beforeAll(() => {
-  server.listen();
-});
 afterEach(() => {
-  server.resetHandlers();
   jest.clearAllMocks();
   jest.resetAllMocks();
   jest.resetModules();
-});
-afterAll(() => {
-  server.close();
 });
 
 const eventHandler = {
@@ -45,15 +36,28 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
     return {
       data: `
       plugins:
-        https://plugin-a.internal: {}
+        ubiquity-os/plugin-a: {}
         ubiquity-os/plugin-b: {}
       `,
     };
   } else if (params?.path === "manifest.json") {
-    return {
-      data: {
-        content: btoa(
-          JSON.stringify({
+    const manifest =
+      params?.repo === "plugin-a"
+        ? {
+            name: "plugin-A",
+            homepage_url: "https://plugin-a.internal",
+            commands: {
+              foo: {
+                description: "foo command",
+                "ubiquity:example": "/foo bar",
+              },
+              bar: {
+                description: "bar command",
+                "ubiquity:example": "/bar foo",
+              },
+            },
+          }
+        : {
             name: "plugin-B",
             commands: {
               hello: {
@@ -70,8 +74,10 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
                 },
               },
             },
-          })
-        ),
+          };
+    return {
+      data: {
+        content: Buffer.from(JSON.stringify(manifest)).toString("base64"),
       },
     };
   } else {
@@ -91,26 +97,6 @@ const payload = {
 };
 
 describe("Event related tests", () => {
-  beforeEach(() => {
-    server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
-        HttpResponse.json({
-          name: "plugin-A",
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        })
-      )
-    );
-  });
-
   it("Should post the help menu", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {

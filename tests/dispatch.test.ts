@@ -53,41 +53,53 @@ afterAll(() => {
 describe("handleEvent", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
-          "ubiquity:listeners": [issueCommentCreatedEvent],
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              homepage_url: "https://plugin-a.internal",
+              "ubiquity:listeners": [issueCommentCreatedEvent],
+              commands: {
+                foo: {
+                  description: "foo command",
+                  "ubiquity:example": "/foo bar",
+                },
+                bar: {
+                  description: "bar command",
+                  "ubiquity:example": "/bar foo",
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
         })
       ),
-      http.get("https://plugin-b.internal/manifest.json", () =>
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-b/contents/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
-          "ubiquity:listeners": [issueCommentCreatedEvent],
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              homepage_url: "https://plugin-b.internal",
+              "ubiquity:listeners": [issueCommentCreatedEvent],
+              commands: {
+                foo: {
+                  description: "foo command",
+                  "ubiquity:example": "/foo bar",
+                },
+                bar: {
+                  description: "bar command",
+                  "ubiquity:example": "/bar foo",
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
         })
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
         const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  https://plugin-a.internal: {}\n  https://plugin-b.internal: {}`;
+        const yamlContent = `plugins:\n  ubiquity-os/plugin-a: {}\n  ubiquity-os/plugin-b: {}`;
         if (acceptHeader === "application/vnd.github.v3.raw") {
           return HttpResponse.text(yamlContent);
         } else {

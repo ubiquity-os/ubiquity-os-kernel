@@ -11,16 +11,7 @@ export type GithubPlugin = {
   ref?: string;
 };
 
-const urlRegex = /^https?:\/\/\S+?$/;
-
-export function isGithubPlugin(plugin: string | GithubPlugin): plugin is GithubPlugin {
-  return typeof plugin !== "string";
-}
-
-export function parsePluginIdentifier(value: string): string | GithubPlugin {
-  if (urlRegex.test(value)) {
-    return value;
-  }
+export function parsePluginIdentifier(value: string): GithubPlugin {
   const matches = value.match(pluginNameRegex);
   if (!matches) {
     throw new Error(`Invalid plugin name: ${value}`);
