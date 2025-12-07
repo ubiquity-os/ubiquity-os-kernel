@@ -1,11 +1,8 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { Value } from "@sinclair/typebox/value";
-import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
-import { Buffer } from "node:buffer";
+import { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
+import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
-import { GithubPlugin, PluginConfiguration, PluginSettings, parsePluginIdentifier } from "../types/plugin-configuration";
-
-const _manifestCache: Record<string, Manifest> = {};
+import { GithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration";
 
 function isCommentCreatedPayload(
   payload: GitHubContext["payload"]
@@ -93,42 +90,6 @@ export async function getPluginsForEvent(
 }
 
 export function getManifest(context: GitHubContext, plugin: GithubPlugin) {
-  return fetchRepositoryManifest(context, plugin);
-}
-
-async function fetchRepositoryManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
-  const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
-  if (_manifestCache[manifestKey]) {
-    return _manifestCache[manifestKey];
-  }
-  try {
-    const { data } = await context.octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: "manifest.json",
-      ref,
-    });
-    if ("content" in data) {
-      const content = Buffer.from(data.content, "base64").toString();
-      const contentParsed = JSON.parse(content);
-      const manifest = decodeManifest(context, contentParsed);
-      _manifestCache[manifestKey] = manifest;
-      return manifest;
-    }
-  } catch (e) {
-    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
-  }
-  return null;
-}
-
-function decodeManifest(context: GitHubContext, manifest: unknown) {
-  const errors = [...Value.Errors(manifestSchema, manifest)];
-  if (errors.length) {
-    for (const error of errors) {
-      context.logger.error({ error }, "Manifest validation error");
-    }
-    throw new Error("Manifest is invalid.");
-  }
-  const defaultManifest = Value.Default(manifestSchema, manifest);
-  return defaultManifest as Manifest;
+  const cfgHandler = new ConfigurationHandler(context.logger, context.octokit);
+  return cfgHandler.getManifest(plugin);
 }
