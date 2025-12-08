@@ -48,7 +48,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
         warn: (message, metadata) => this.logger.warn(metadata, message),
       },
       this.octokit,
-      process.env.ENVIRONMENT === "production" ? "production" : "development"
+      eventHandler.environment === "production" ? "production" : "development"
     );
   }
 }
