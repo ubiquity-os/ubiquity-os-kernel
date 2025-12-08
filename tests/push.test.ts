@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";

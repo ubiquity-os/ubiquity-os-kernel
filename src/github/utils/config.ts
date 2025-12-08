@@ -1,5 +1,5 @@
 import { Value } from "@sinclair/typebox/value";
-import { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
+import { Record } from "openai/core";
 import { GitHubContext } from "../github-context";
 import { configSchema, GithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
@@ -9,8 +9,7 @@ export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
 export const CONFIG_ORG_REPO = ".ubiquity-os";
 
 export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
-  const cfgHandler = new ConfigurationHandler(context.logger, context.octokit);
-  return cfgHandler.getConfiguration({ owner, repo: repository });
+  return context.configurationHandler.getConfiguration({ owner, repo: repository });
 }
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
@@ -49,7 +48,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     try {
       pluginIdentifier = parsePluginIdentifier(pluginKey);
     } catch (error) {
-      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping!");
       continue;
     }
 

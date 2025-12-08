@@ -1,6 +1,5 @@
 import { emitterEventNames } from "@octokit/webhooks";
-import { StaticDecode, Type as T, TLiteral, Union } from "@sinclair/typebox";
-import { StandardValidator } from "typebox-validators";
+import { StaticDecode, TLiteral, Type as T, Union } from "@sinclair/typebox";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)*))?$");
 
@@ -61,7 +60,5 @@ export const configSchema = T.Object(
     additionalProperties: true,
   }
 );
-
-export const configSchemaValidator = new StandardValidator(configSchema);
 
 export type PluginConfiguration = StaticDecode<typeof configSchema>;

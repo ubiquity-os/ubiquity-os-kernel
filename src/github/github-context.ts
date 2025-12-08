@@ -1,4 +1,5 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
+import { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
 import OpenAI from "openai";
 import { logger as pinoLogger } from "../logger/logger";
 import { customOctokit } from "./github-client";
@@ -16,6 +17,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   public openAi: OpenAI;
   public llm: string;
   public logger = pinoLogger;
+  public configurationHandler: ConfigurationHandler;
 
   constructor(
     eventHandler: InstanceType<typeof GitHubEventHandler>,
@@ -38,6 +40,15 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     this.llm = eventHandler.llm;
     const instigator = "repository" in this.payload ? this.payload.repository?.html_url : undefined;
     this.logger = logger.child({ name: this.key, instigator });
+    this.configurationHandler = new ConfigurationHandler(
+      {
+        debug: (message, metadata) => this.logger.debug(metadata, message),
+        error: (message, metadata) => this.logger.error(metadata, message),
+        info: (message, metadata) => this.logger.info(metadata, message),
+        warn: (message, metadata) => this.logger.warn(metadata, message),
+      },
+      this.octokit
+    );
   }
 }
 

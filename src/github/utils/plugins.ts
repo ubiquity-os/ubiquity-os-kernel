@@ -1,5 +1,4 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration";
@@ -90,6 +89,5 @@ export async function getPluginsForEvent(
 }
 
 export function getManifest(context: GitHubContext, plugin: GithubPlugin) {
-  const cfgHandler = new ConfigurationHandler(context.logger, context.octokit);
-  return cfgHandler.getManifest(plugin);
+  return context.configurationHandler.getManifest(plugin);
 }
