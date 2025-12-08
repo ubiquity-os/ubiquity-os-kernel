@@ -48,7 +48,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     try {
       pluginIdentifier = parsePluginIdentifier(pluginKey);
     } catch (error) {
-      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping!");
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
 
