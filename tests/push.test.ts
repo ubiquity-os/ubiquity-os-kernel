@@ -7,6 +7,7 @@ import handlePushEvent from "../src/github/handlers/push-event";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
 import "./__mocks__/webhooks";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -35,6 +36,68 @@ describe("Push related tests", () => {
       },
     };
     const createCommitComment = jest.fn();
+    const manifestMap = {
+      "plugin-a": {
+        name: "plugin",
+        homepage_url: "https://plugin-a.internal",
+        commands: {
+          action: {
+            description: "action",
+            "ubiquity:example": "/action",
+          },
+        },
+        configuration: {
+          default: {},
+          type: "object",
+          properties: {
+            arg: {
+              type: "number",
+            },
+          },
+          required: ["arg"],
+        },
+      },
+      "plugin-b": {
+        name: "plugin",
+        commands: {
+          action: {
+            description: "action",
+            "ubiquity:example": "/action",
+          },
+        },
+        configuration: {
+          default: {},
+          type: "object",
+          properties: {
+            arg: {
+              type: "number",
+            },
+          },
+          required: ["arg"],
+        },
+      },
+    };
+
+    const configurationHandler = createConfigurationHandler({
+      getConfigurationFromRepo: async () => ({
+        config: {
+          plugins: {
+            "ubiquity-os/plugin-a": {
+              with: {
+                arg: "true",
+              },
+            },
+            "ubiquity-os/plugin-b": {
+              with: {},
+            },
+          },
+        },
+        errors: null,
+        rawData: `plugins:\n  ubiquity-os/plugin-a:\n    with:\n      arg: "true"\n  ubiquity-os/plugin-b:\n    with: {}`,
+      }),
+      getManifest: async (plugin) => manifestMap[plugin.repo as keyof typeof manifestMap] ?? null,
+    });
+
     const context = {
       id: "",
       key: "issue_comment.created",
@@ -111,6 +174,7 @@ describe("Push related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         repository: {
           owner: { login: "ubiquity" },

@@ -58,6 +58,7 @@ describe("handleEvent", () => {
           content: Buffer.from(
             JSON.stringify({
               name: "plugin",
+              short_name: "plugin-a",
               homepage_url: "https://plugin-a.internal",
               "ubiquity:listeners": [issueCommentCreatedEvent],
               commands: {
@@ -80,6 +81,7 @@ describe("handleEvent", () => {
           content: Buffer.from(
             JSON.stringify({
               name: "plugin",
+              short_name: "plugin-b",
               homepage_url: "https://plugin-b.internal",
               "ubiquity:listeners": [issueCommentCreatedEvent],
               commands: {

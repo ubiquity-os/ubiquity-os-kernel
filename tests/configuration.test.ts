@@ -1,20 +1,20 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { parsePluginIdentifier } from "../src/github/types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
+import { getConfig } from "../src/github/utils/config";
 import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
 
 config({ path: ".dev.vars" });
 
 const issueOpened = "issues.opened";
-const manifestPath = "manifest.json";
 const repo = {
   owner: { login: "ubiquity" },
   name: "conversation-rewards",
@@ -36,42 +36,31 @@ afterAll(() => {
 
 describe("Configuration tests", () => {
   it("Should properly parse the Action path if a branch and workflow are specified", async () => {
-    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-      let data: string;
-      if (args.path === manifestPath) {
-        data = `
-          {
-            "name": "plugin",
-            "commands": {
-              "command": {
-                "description": "description",
-                "ubiquity:example": "/command"
-              }
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity/user-activity-watcher:compute.yml@fork/pull/1": {
+            skipBotEvents: false,
+            with: {
+              settings1: "enabled",
             },
-            "skipBotEvents": false
-          }
-          `;
-      } else if (args.path === CONFIG_FULL_PATH) {
-        data = `
-        plugins:
-          ubiquity/user-activity-watcher:compute.yml@fork/pull/1:
-            skipBotEvents: false
-            with:
-              settings1: 'enabled'`;
-      } else {
-        throw new Error("Not Found");
-      }
-
-      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
-        return {
-          data: {
-            content: Buffer.from(data).toString("base64"),
+            runsOn: [],
           },
-        };
-      } else if (args.mediaType?.format === "raw") {
-        return { data };
-      }
-    }
+        },
+      },
+      manifests: {
+        "user-activity-watcher": {
+          name: "plugin",
+          commands: {
+            command: {
+              description: "description",
+              "ubiquity:example": "/command",
+            },
+          },
+          skipBotEvents: false,
+        },
+      },
+    });
 
     const cfg = await getConfig({
       key: issueOpened,
@@ -80,13 +69,8 @@ describe("Configuration tests", () => {
       payload: {
         repository: repo,
       } as unknown as GitHubContext<"issues.closed">["payload"],
-      octokit: {
-        rest: {
-          repos: {
-            getContent,
-          },
-        },
-      },
+      octokit: {},
+      configurationHandler,
       eventHandler: eventHandler,
       logger,
     } as unknown as GitHubContext);
@@ -132,80 +116,49 @@ describe("Configuration tests", () => {
         skipBotEvents: true,
       },
     };
-    function getContent({ ref }: Record<string, string>) {
-      return {
-        data: {
-          content: Buffer.from(JSON.stringify(ref ? content["withRef"] : content["withoutRef"])).toString("base64"),
-        },
-      };
-    }
+    const configurationHandler = createConfigurationHandler({
+      getManifest: async ({ ref: manifestRef }: { ref?: string }) => {
+        return manifestRef ? content["withRef"] : content["withoutRef"];
+      },
+    });
     let manifest = await getManifest(
       {
-        octokit: {
-          rest: {
-            repos: {
-              getContent,
-            },
-          },
-        },
+        configurationHandler,
       } as unknown as GitHubContext,
       { owner, repo, ref, workflowId }
     );
     expect(manifest).toEqual(content["withRef"]);
     ref = undefined;
     repo = "repo-2";
-    manifest = await getManifest(
-      {
-        octokit: {
-          rest: {
-            repos: {
-              getContent,
-            },
-          },
-        },
-      } as unknown as GitHubContext,
-      { owner, repo, ref, workflowId }
-    );
+    manifest = await getManifest({ configurationHandler } as unknown as GitHubContext, { owner, repo, ref, workflowId });
     expect(manifest).toEqual(content["withoutRef"]);
   });
   it("should not skip bot event if skipBotEvents is set to false", async () => {
-    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-      let data: string;
-      if (args.path === manifestPath) {
-        data = `
-          {
-            "name": "plugin",
-            "commands": {
-              "command": {
-                "description": "description",
-                "ubiquity:example": "/command"
-              }
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity/test-plugin": {
+            skipBotEvents: false,
+            with: {
+              settings1: "enabled",
             },
-            "skipBotEvents": true,
-            "ubiquity:listeners": ["${issueOpened}"]
-          }
-          `;
-      } else if (args.path === CONFIG_FULL_PATH) {
-        data = `
-        plugins:
-          ubiquity/test-plugin:
-            skipBotEvents: false
-            with:
-              settings1: 'enabled'`;
-      } else {
-        throw new Error("Not Found");
-      }
-
-      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
-        return {
-          data: {
-            content: Buffer.from(data).toString("base64"),
           },
-        };
-      } else if (args.mediaType?.format === "raw") {
-        return { data };
-      }
-    }
+        },
+      },
+      manifests: {
+        "test-plugin": {
+          name: "plugin",
+          commands: {
+            command: {
+              description: "description",
+              "ubiquity:example": "/command",
+            },
+          },
+          skipBotEvents: true,
+          "ubiquity:listeners": [issueOpened],
+        },
+      },
+    });
 
     const context = {
       key: issueOpened,
@@ -217,15 +170,10 @@ describe("Configuration tests", () => {
           type: "Bot",
         },
       } as unknown as GitHubContext<"issues.closed">["payload"],
-      octokit: {
-        rest: {
-          repos: {
-            getContent,
-          },
-        },
-      },
+      octokit: {},
       eventHandler: eventHandler,
       logger,
+      configurationHandler,
     } as unknown as GitHubContext;
 
     const cfg = await getConfig(context);
@@ -248,46 +196,33 @@ describe("Configuration tests", () => {
     ).resolves.toEqual(false);
   });
   it("should return dev config if environment is not production", async () => {
-    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-      let data: string;
-      if (args.path === manifestPath) {
-        data = `
-          {
-            "name": "plugin",
-            "commands": {
-              "command": {
-                "description": "description",
-                "ubiquity:example": "/command"
-              }
-            }
-          }
-          `;
-      } else if (args.path === CONFIG_FULL_PATH) {
-        data = `
-        plugins:
-          ubiquity/production-plugin:
-            with:
-              settings1: 'enabled'`;
-      } else if (args.path === DEV_CONFIG_FULL_PATH) {
-        data = `
-        plugins:
-          ubiquity/test-plugin:
-            with:
-              settings1: 'enabled'`;
-      } else {
-        throw new Error("Not Found");
-      }
-
-      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
-        return {
-          data: {
-            content: Buffer.from(data).toString("base64"),
+    const manifest = {
+      name: "plugin",
+      commands: {
+        command: {
+          description: "description",
+          "ubiquity:example": "/command",
+        },
+      },
+    };
+    const devConfig = {
+      plugins: {
+        "ubiquity/test-plugin": {
+          with: {
+            settings1: "enabled",
           },
-        };
-      } else if (args.mediaType?.format === "raw") {
-        return { data };
-      }
-    }
+        },
+      },
+    };
+    const prodConfig = {
+      plugins: {
+        "ubiquity/production-plugin": {
+          with: {
+            settings1: "enabled",
+          },
+        },
+      },
+    };
 
     const context = {
       key: issueOpened,
@@ -296,16 +231,18 @@ describe("Configuration tests", () => {
       payload: {
         repository: repo,
       } as unknown as GitHubContext<"issues.closed">["payload"],
-      octokit: {
-        rest: {
-          repos: {
-            getContent,
-          },
-        },
-      },
+      octokit: {},
       eventHandler: { environment: "development" } as GitHubEventHandler,
       logger,
     } as unknown as GitHubContext;
+
+    context.configurationHandler = createConfigurationHandler({
+      getConfiguration: async () => (context.eventHandler.environment === "development" ? devConfig : prodConfig),
+      manifests: {
+        "test-plugin": manifest,
+        "production-plugin": manifest,
+      },
+    }) as unknown as ConfigurationHandler;
 
     const cfg = await getConfig(context);
     let [pluginKey] = Object.keys(cfg.plugins);

@@ -3,6 +3,7 @@ import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../src/github/github-context";
 import { ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 afterEach(() => {
   jest.clearAllMocks();
@@ -36,25 +37,9 @@ describe("Plugin tests", () => {
         },
       },
     };
-    const getContent = jest.fn(async ({ repo }: { repo: string }) => {
-      const manifest = manifestMap[repo];
-      if (!manifest) {
-        throw new Error(`No manifest for repo ${repo}`);
-      }
-      return {
-        data: {
-          content: Buffer.from(JSON.stringify(manifest)).toString("base64"),
-        },
-      };
-    });
+    const configurationHandler = createConfigurationHandler({ manifests: manifestMap });
     const baseContext = {
-      octokit: {
-        rest: {
-          repos: {
-            getContent,
-          },
-        },
-      },
+      configurationHandler,
       logger,
     } as Partial<GitHubContext>;
 

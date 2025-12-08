@@ -3,9 +3,9 @@ import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
 import "./__mocks__/webhooks";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -17,6 +17,11 @@ config({ path: ".dev.vars" });
 
 const name = "ubiquity-os-kernel";
 const eventName = "issue_comment.created";
+const fooDescription = "foo command";
+const barDescription = "bar command";
+const helloDescription = "This command says hello to the username provided in the parameters.";
+const helloExample = "/hello @pavlovcik";
+const helloUsernameDescription = "the user to say hello to";
 
 afterEach(() => {
   jest.clearAllMocks();
@@ -31,60 +36,6 @@ const eventHandler = {
   logger: logger,
 } as unknown as GitHubEventHandler;
 
-function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-  if (params?.path === CONFIG_FULL_PATH) {
-    return {
-      data: `
-      plugins:
-        ubiquity-os/plugin-a: {}
-        ubiquity-os/plugin-b: {}
-      `,
-    };
-  } else if (params?.path === "manifest.json") {
-    const manifest =
-      params?.repo === "plugin-a"
-        ? {
-            name: "plugin-A",
-            homepage_url: "https://plugin-a.internal",
-            commands: {
-              foo: {
-                description: "foo command",
-                "ubiquity:example": "/foo bar",
-              },
-              bar: {
-                description: "bar command",
-                "ubiquity:example": "/bar foo",
-              },
-            },
-          }
-        : {
-            name: "plugin-B",
-            commands: {
-              hello: {
-                description: "This command says hello to the username provided in the parameters.",
-                "ubiquity:example": "/hello @pavlovcik",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    username: {
-                      type: "string",
-                      description: "the user to say hello to",
-                    },
-                  },
-                },
-              },
-            },
-          };
-    return {
-      data: {
-        content: Buffer.from(JSON.stringify(manifest)).toString("base64"),
-      },
-    };
-  } else {
-    throw new Error("Not found");
-  }
-}
-
 const payload = {
   repository: {
     owner: { login: "ubiquity" },
@@ -98,6 +49,49 @@ const payload = {
 
 describe("Event related tests", () => {
   it("Should post the help menu", async () => {
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity-os/plugin-a": { with: {} },
+          "ubiquity-os/plugin-b": { with: {} },
+        },
+      },
+      manifests: {
+        "plugin-a": {
+          name: "plugin-A",
+          homepage_url: "https://plugin-a.internal",
+          commands: {
+            foo: {
+              description: fooDescription,
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: barDescription,
+              "ubiquity:example": "/bar foo",
+            },
+          },
+        },
+        "plugin-b": {
+          name: "plugin-B",
+          commands: {
+            hello: {
+              description: helloDescription,
+              "ubiquity:example": helloExample,
+              parameters: {
+                type: "object",
+                properties: {
+                  username: {
+                    type: "string",
+                    description: helloUsernameDescription,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
         return params;
@@ -112,9 +106,6 @@ describe("Event related tests", () => {
       octokit: {
         rest: {
           issues,
-          repos: {
-            getContent: jest.fn(getContent),
-          },
         },
       },
       openAi: {
@@ -143,6 +134,7 @@ describe("Event related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         ...payload,
         comment: {
@@ -167,6 +159,48 @@ describe("Event related tests", () => {
   });
 
   it("Should call appropriate plugin", async () => {
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity-os/plugin-a": { with: {} },
+          "ubiquity-os/plugin-b": { with: {} },
+        },
+      },
+      manifests: {
+        "plugin-a": {
+          name: "plugin-A",
+          commands: {
+            foo: {
+              description: fooDescription,
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: barDescription,
+              "ubiquity:example": "/bar foo",
+            },
+          },
+        },
+        "plugin-b": {
+          name: "plugin-B",
+          commands: {
+            hello: {
+              description: helloDescription,
+              "ubiquity:example": helloExample,
+              parameters: {
+                type: "object",
+                properties: {
+                  username: {
+                    type: "string",
+                    description: helloUsernameDescription,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
     const dispatchWorkflow = jest.fn();
     jest.mock("../src/github/utils/workflow-dispatch", () => ({
       getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
@@ -187,9 +221,6 @@ describe("Event related tests", () => {
       octokit: {
         rest: {
           issues,
-          repos: {
-            getContent: jest.fn(getContent),
-          },
         },
       },
       openAi: {
@@ -218,6 +249,7 @@ describe("Event related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         ...payload,
         comment: {
@@ -240,6 +272,48 @@ describe("Event related tests", () => {
   });
 
   it("Should not answer with arbitrary requests", async () => {
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity-os/plugin-a": { with: {} },
+          "ubiquity-os/plugin-b": { with: {} },
+        },
+      },
+      manifests: {
+        "plugin-a": {
+          name: "plugin-A",
+          commands: {
+            foo: {
+              description: fooDescription,
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: barDescription,
+              "ubiquity:example": "/bar foo",
+            },
+          },
+        },
+        "plugin-b": {
+          name: "plugin-B",
+          commands: {
+            hello: {
+              description: helloDescription,
+              "ubiquity:example": helloExample,
+              parameters: {
+                type: "object",
+                properties: {
+                  username: {
+                    type: "string",
+                    description: helloUsernameDescription,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
         return params;
@@ -254,9 +328,6 @@ describe("Event related tests", () => {
       octokit: {
         rest: {
           issues,
-          repos: {
-            getContent: jest.fn(getContent),
-          },
         },
       },
       openAi: {
@@ -277,6 +348,7 @@ describe("Event related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         ...payload,
         comment: {
@@ -295,27 +367,17 @@ describe("Event related tests", () => {
       },
     };
     const spy = jest.spyOn(issues, "createComment");
-    const getContent = jest.fn((params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) => {
-      if (params?.path === CONFIG_FULL_PATH) {
-        return {
-          data: `
-          plugins:
-            ubiquity-os/plugin-b: {}
-          `,
-        };
-      } else if (params?.path === "manifest.json") {
-        return {
-          data: {
-            content: btoa(
-              JSON.stringify({
-                name: "plugin",
-              })
-            ),
-          },
-        };
-      } else {
-        throw new Error("Not found");
-      }
+    const configurationHandler = createConfigurationHandler({
+      configuration: {
+        plugins: {
+          "ubiquity-os/plugin-b": { with: {} },
+        },
+      },
+      manifests: {
+        "plugin-b": {
+          name: "plugin",
+        },
+      },
     });
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -324,12 +386,10 @@ describe("Event related tests", () => {
       octokit: {
         rest: {
           issues,
-          repos: {
-            getContent: getContent,
-          },
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         ...payload,
         comment: {
