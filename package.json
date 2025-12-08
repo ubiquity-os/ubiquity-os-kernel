@@ -64,7 +64,7 @@
     "@octokit/webhooks": "^14.2.0",
     "@octokit/webhooks-types": "^7.6.1",
     "@sinclair/typebox": "^0.34.30",
-    "@ubiquity-os/plugin-sdk": "^3.5.2",
+    "@ubiquity-os/plugin-sdk": "^3.5.3",
     "dotenv": "16.4.5",
     "hono": "^4.10.7",
     "js-yaml": "^4.1.1",

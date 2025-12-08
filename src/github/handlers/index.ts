@@ -56,7 +56,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const stateId = crypto.randomUUID();
     const manifest = await getManifest(context, plugin);
     const workerUrl = getWorkerUrlFromManifest(manifest);
-    const ref = workerUrl ? workerUrl : plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
+    const ref = workerUrl ? workerUrl : (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)));
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
@@ -64,7 +64,10 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     try {
       context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, "Dispatching event");
       if (workerUrl) {
-        await dispatchWorker(workerUrl, await inputs.getInputs());
+        const res = await dispatchWorker(workerUrl, await inputs.getInputs());
+        if (res.status >= 300) {
+          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res) }, "Error response on dispatch event");
+        }
       } else {
         await dispatchWorkflow(context, {
           owner: plugin.owner,
@@ -79,4 +82,12 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       context.logger.error({ plugin: pluginEntry.key, err: e }, "Error processing plugin; skipping");
     }
   }
+}
+
+async function safeJson(response: Response) {
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return response.json();
+  }
+  return await response.text();
 }
