@@ -1,5 +1,4 @@
 import { Value } from "@sinclair/typebox/value";
-import { Record } from "openai/core";
 import { GitHubContext } from "../github-context";
 import { configSchema, GithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration";
 import { getManifest } from "./plugins";
