@@ -142,6 +142,7 @@ describe("Configuration tests", () => {
             with: {
               settings1: "enabled",
             },
+            runsOn: [issueOpened],
           },
         },
       },

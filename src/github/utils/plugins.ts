@@ -15,8 +15,6 @@ export type ResolvedPlugin = {
   settings: PluginSettings;
 };
 
-type ManifestWithHomepageUrl = Manifest & { homepage_url?: string };
-
 function formatPluginTarget(target: GithubPlugin) {
   return `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
 }
@@ -25,8 +23,7 @@ export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
   if (!manifest) {
     return null;
   }
-  const candidate = manifest as ManifestWithHomepageUrl;
-  const homepageUrl = candidate.homepage_url;
+  const homepageUrl = manifest.homepage_url;
   return typeof homepageUrl === "string" && homepageUrl.length ? homepageUrl : null;
 }
 

@@ -135,7 +135,7 @@ describe("Worker tests", () => {
       const configurationHandler = createConfigurationHandler({
         configuration: {
           plugins: {
-            "ubiquity-os/plugin-a": { with: {} },
+            "ubiquity-os/plugin-a": { with: {}, skipBotEvents: true, runsOn: [] },
           },
         },
         manifests: {
@@ -212,21 +212,29 @@ describe("Worker tests", () => {
               with: {
                 setting1: false,
               },
+              runsOn: [],
+              skipBotEvents: true,
             },
             "repo-1/plugin-1": {
               with: {
                 setting2: true,
               },
+              runsOn: [],
+              skipBotEvents: true,
             },
             "uses-1/plugin-1": {
               with: {
                 settings1: "enabled",
               },
+              runsOn: [],
+              skipBotEvents: true,
             },
             "repo-2/plugin-2": {
               with: {
                 setting2: true,
               },
+              runsOn: [],
+              skipBotEvents: true,
             },
           },
         },
