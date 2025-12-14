@@ -145,10 +145,10 @@ All settings are optional; defaults should be safe.
   - Passed as `codex exec -m <model>`
 - `sandbox`: `"read-only" | "workspace-write" | "danger-full-access"`
   - Default: `"workspace-write"`
-  - Passed as `codex exec --sandbox <mode>`
+  - Passed as `codex exec --sandbox <mode>` (or the equivalent global `codex --sandbox <mode> exec …`)
 - `askForApproval`: `"untrusted" | "on-failure" | "on-request" | "never"`
   - Default: `"never"` for CI/headless runs
-  - Passed as `codex exec -a <policy>`
+  - Passed as a *global* flag: `codex -a <policy> exec …` (note: `-a` must appear before `exec`)
 - `codexProfile`: `string | null`
   - Default: `null`
   - Passed as `codex exec --profile <name>` when set
@@ -255,17 +255,14 @@ and rely on `inputs.authToken` for write operations.
 8. Run Codex
    - Use `codex exec` (non-interactive)
    - Recommended flags for CI:
+     - `codex -a never exec …` (avoid interactive approvals in headless runners)
      - `--sandbox workspace-write`
-     - `-a never`
-     - `--json` (capture thread/task id + logs)
-     - `--output-last-message` (capture final summary)
-9. Apply changes
-   - Extract `thread_id` from the JSONL output (`type: thread.started`)
-   - Run `codex apply <thread_id>`
-10. If no diff, comment and exit
-11. Commit + push branch
-12. Create/update PR
-13. Comment back with PR link + summary
+     - `--json` (optional; easier machine parsing/logging)
+     - `--output-last-message` (capture final summary for PR body/comment)
+9. If no diff (`git diff --name-only` empty), comment and exit
+10. Commit + push branch
+11. Create/update PR
+12. Comment back with PR link + summary
 
 ## Prompt Construction (what we pass to Codex)
 
@@ -328,8 +325,6 @@ Rejection behavior:
 
 - If Codex fails:
   - Post a comment with a short failure summary and link to logs (workflow run URL).
-- If `codex apply` produces conflicts or can’t apply:
-  - Post a comment and stop (do not push partial state).
 - If no changes are produced:
   - Post a “no diff produced” comment, suggest refining the task.
 - Always include `stateId` in logs and (optionally) in comments for traceability.
@@ -382,4 +377,3 @@ Kernel/org config change (in `.ubiquity-os` repo):
 - Do we want an explicit “dry run” mode that only comments a plan/review?
 - Should we support a two-step approval flow for external contributors (request → maintainer approves)?
 - Should we integrate with existing label/assignment workflow (e.g., require `Priority:` label before allowing `/codex`)?
-

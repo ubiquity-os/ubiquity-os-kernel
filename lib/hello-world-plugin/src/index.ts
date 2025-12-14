@@ -1,7 +1,7 @@
 import { Context } from "@ubiquity-os/plugin-sdk";
 
-interface PluginSettings {}
-interface Env {}
+type PluginSettings = Record<string, never>;
+type Env = Record<string, never>;
 interface Command {
   name: "hello";
   parameters: Record<string, never>;

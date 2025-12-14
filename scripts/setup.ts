@@ -96,7 +96,7 @@ class GithubAppSetup {
     try {
       fs.accessSync(file);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
