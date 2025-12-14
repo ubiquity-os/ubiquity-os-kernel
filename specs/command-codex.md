@@ -26,6 +26,30 @@ via `src/github/handlers/issue-comment-created.ts`, which calls `commandRouter(c
 
 `command-codex` plugs into this existing command pipeline by defining a `codex` command in its `manifest.json`.
 
+## Reference Implementations (in this repo)
+
+The kernel already has working examples of both plugin _interfaces_:
+
+### GitHub Actions plugins (workflow_dispatch)
+
+These show the “standard” `compute.yml` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection):
+
+- `lib/command-ask/.github/workflows/compute.yml`
+- `lib/daemon-pull-review/.github/workflows/compute.yml`
+
+### Worker plugin (HTTP)
+
+This shows the simplest manifest/command declaration pattern (no args, command name routing in code):
+
+- `lib/hello-world-plugin/manifest.json`
+- `lib/hello-world-plugin/src/index.ts`
+
+### Kernel input shape (minimal plugin)
+
+This mock demonstrates the kernel payload contract (compressed `eventPayload`, JSON-stringified `settings` and `command`, plus `authToken`) and a minimal Octokit comment response:
+
+- `tests/__mocks__/hello-world-plugin.ts`
+
 ## Goals
 
 - Provide an **agentic “make changes in repo”** capability triggered by a GitHub comment.
@@ -110,7 +134,23 @@ Define a single command:
   - `ubiquity:example`: `/codex add a unit test for X`
   - `parameters`: keep minimal (see note below)
 
-Recommended schema:
+Recommended schema (matching the “hello world” pattern):
+
+- Use **no tool parameters**, and parse the user’s task from the original comment body.
+- This keeps the kernel tool schema trivial and avoids “required args” friction.
+
+```json
+{}
+```
+
+Task extraction rule (plugin-side, required safety check):
+
+- Only proceed if the comment includes an explicit invocation:
+  - starts with `/codex` (after optional `@UbiquityOS` rewrite), or
+  - starts with `@ubiquityos codex`
+- The `task` is the remaining text after the invocation token.
+
+Alternative schema (acceptable if you prefer kernel-side arg extraction):
 
 ```json
 {
@@ -121,7 +161,7 @@ Recommended schema:
 }
 ```
 
-Important note: the kernel currently treats all `parameters.properties` as required when building tool schemas. To avoid “optional parameter” issues, keep the command schema small (one required string like `task`) and put advanced tuning in plugin `settings` instead.
+Important note: the kernel currently treats all `parameters.properties` as required when building tool schemas. If you define `task`, it will be required. Prefer putting advanced tuning in plugin `settings` instead of adding many parameters.
 
 ## Plugin Settings (`with:`) — Proposed Configuration Surface
 
@@ -137,6 +177,9 @@ All settings are optional; defaults should be safe.
   - If set, require `owner/name` match.
 - `denyForkPRs`: `boolean`
   - Default: `true`
+- `requireExplicitInvocation`: `boolean`
+  - Default: `true`
+  - If true, refuse to run unless the comment clearly contains `/codex` or `@ubiquityos codex` (prevents accidental invocation via the kernel’s LLM router).
 
 ### Codex execution controls
 
@@ -148,7 +191,7 @@ All settings are optional; defaults should be safe.
   - Passed as `codex exec --sandbox <mode>` (or the equivalent global `codex --sandbox <mode> exec …`)
 - `askForApproval`: `"untrusted" | "on-failure" | "on-request" | "never"`
   - Default: `"never"` for CI/headless runs
-  - Passed as a *global* flag: `codex -a <policy> exec …` (note: `-a` must appear before `exec`)
+  - Passed as a _global_ flag: `codex -a <policy> exec …` (note: `-a` must appear before `exec`)
 - `codexProfile`: `string | null`
   - Default: `null`
   - Passed as `codex exec --profile <name>` when set
@@ -213,7 +256,8 @@ Optional (only if needed for your org setup):
 - Mask `inputs.authToken` and `OPENAI_API_KEY` immediately (GitHub Actions masking).
 - Do not print decompressed payloads that may contain sensitive data.
 - Prefer `actions/checkout` with `persist-credentials: false` so credentials aren’t left in `.git/config` during agent execution.
-- Only inject a push-capable credential *after* Codex finishes, right before pushing.
+- Only inject a push-capable credential _after_ Codex finishes, right before pushing.
+- Do not expose `inputs.authToken`/`GITHUB_TOKEN`/`GH_TOKEN` to the Codex step unless explicitly needed (treat prompt-injection as a first-class threat).
 
 ## GitHub Actions Workflow Spec (`compute.yml`)
 
@@ -245,24 +289,64 @@ and rely on `inputs.authToken` for write operations.
    - Use `ubiquity-os/compress-action@main` (already used by other plugins)
 2. Parse `settings` and `command`
 3. Authorization checks
-4. Determine target context
+4. Confirm explicit invocation (`/codex` or `@ubiquityos codex`); extract `task`
+5. Determine target context
    - Issue vs PR
    - For PR: fetch PR details; deny forks if configured
-5. Checkout target repo (fetch-depth 0)
-6. Create working branch
-7. Install Codex CLI
+6. Checkout target repo (fetch-depth 0)
+7. Create working branch
+8. Install Codex CLI
    - `npm install -g @openai/codex`
-8. Run Codex
+9. Run Codex
    - Use `codex exec` (non-interactive)
    - Recommended flags for CI:
      - `codex -a never exec …` (avoid interactive approvals in headless runners)
      - `--sandbox workspace-write`
      - `--json` (optional; easier machine parsing/logging)
      - `--output-last-message` (capture final summary for PR body/comment)
-9. If no diff (`git diff --name-only` empty), comment and exit
-10. Commit + push branch
-11. Create/update PR
-12. Comment back with PR link + summary
+10. If no diff (`git diff --name-only` empty), comment and exit
+11. Commit + push branch
+12. Create/update PR
+13. Comment back with PR link + summary
+
+### Proposed plugin repository layout
+
+Mirror the “workflow-first” style used by `lib/command-ask` and `lib/daemon-pull-review`, with a small amount of helper code only if needed:
+
+```
+command-codex/
+  manifest.json
+  README.md
+  .github/workflows/compute.yml
+  # optional (if bash becomes too complex)
+  package.json
+  tsconfig.json
+  src/
+    main.ts
+    github.ts
+    parse.ts
+    prompt.ts
+```
+
+Two viable implementation styles:
+
+1. **YAML + `gh` + `jq` only** (closest to `command-ask`): simplest repo, fastest to ship.
+2. **YAML orchestrates, Node/Bun does logic** (closest to `personal-agent-bridge`): better ergonomics for parsing/templating and GitHub API calls.
+
+### Workflow architecture (aligned with existing plugins)
+
+Pattern to copy (from `lib/command-ask/.github/workflows/compute.yml`):
+
+- `workflow_dispatch` inputs match kernel contract
+- `ubiquity-os/compress-action@main` to decompress payload
+- `actions/checkout@v5` using `token: ${{ inputs.authToken }}` and `persist-credentials: false`
+- Use GitHub Actions **environments** (`development` vs `main`) for secrets
+
+Key additional considerations for Codex:
+
+- Run `codex` in the checked-out target repo directory.
+- Do **not** pass GitHub tokens into the Codex step unless required.
+- Create PR + comments in later steps using `inputs.authToken` (as `GH_TOKEN`) once Codex completes.
 
 ## Prompt Construction (what we pass to Codex)
 
@@ -272,7 +356,7 @@ Codex should receive a structured prompt that includes:
 - Issue/PR number and link
 - Issue/PR title + body (truncate safely)
 - The triggering comment body
-- The parsed `task` from command parameters
+- The parsed `task` (from command args and/or the comment body)
 - Explicit constraints:
   - Do not access or print secrets
   - Do not modify CI secrets or workflows unless requested
@@ -308,6 +392,7 @@ Minimum checks:
 
 - `payload.comment.user.type === "User"`
 - `payload.comment.author_association` in `allowedAuthorAssociations`
+- `requireExplicitInvocation === true` implies: comment must clearly contain `/codex` or `@ubiquityos codex`
 - If PR context and `denyForkPRs`:
   - Ensure `pull_request.head.repo.full_name === pull_request.base.repo.full_name`
 
@@ -338,6 +423,35 @@ Rejection behavior:
   - Files changed (from `git diff --name-only`)
   - Test results (if run)
 
+## Implementation Plan
+
+1. Scaffold `ubiquity-os-marketplace/command-codex`
+   - Add `manifest.json` with `commands.codex`
+   - Add `.github/workflows/compute.yml` matching kernel inputs (copy from `lib/command-ask/.github/workflows/compute.yml`)
+   - Add `README.md` documenting usage and restrictions
+2. Add secrets to plugin repo environments
+   - `OPENAI_API_KEY` in `development` and `main`
+3. Ship “comment-only” MVP (fast feedback loop)
+   - Decompress payload, enforce auth + explicit invocation, run `codex exec`, comment a short summary
+4. Add PR mode
+   - Create branch, commit changes, push, create PR, comment link back
+   - If no changes, comment and exit cleanly
+5. Add safety hardening
+   - Ensure Codex step has no GitHub tokens in env
+   - Deny fork PR contexts by default
+   - Add basic allowlist/role checks
+
+## Test Plan (end-to-end)
+
+1. In a test repo where the kernel App is installed, enable the plugin in `.github/.ubiquity-os.config.dev.yml`:
+   - `ubiquity-os-marketplace/command-codex@development:`
+2. Ensure the plugin repo has `OPENAI_API_KEY` set in the `development` environment.
+3. Post a comment on an issue: `/codex add a small file named TEST.txt with the word hello`
+4. Verify:
+   - A `workflow_dispatch` run starts in the plugin repo
+   - A branch + PR is created (or “no diff” comment is posted)
+   - A comment is posted back on the original issue with the outcome and PR link
+
 ## Acceptance Criteria
 
 - A user can invoke `/codex <task>` (or `@ubiquityos codex <task>`) and receive a PR link with changes.
@@ -357,6 +471,8 @@ Files to create in `ubiquity-os-marketplace/command-codex`:
 - `.github/workflows/compute.yml`
   - `workflow_dispatch` inputs compatible with kernel
   - Implements the flow above
+- `README.md`
+  - Documents `/codex` usage and safety constraints
 - `src/` (optional but recommended)
   - Small Node/Bun scripts for:
     - parsing inputs safely

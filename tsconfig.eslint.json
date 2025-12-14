@@ -1,11 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": [
-    "*.ts",
-    "*.mjs",
-    "src/**/*.ts",
-    "scripts/**/*.ts",
-    "tests/**/*.ts",
-    "lib/hello-world-plugin/**/*.ts"
-  ]
+  "include": ["*.ts", "*.mjs", "src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "lib/hello-world-plugin/**/*.ts"]
 }

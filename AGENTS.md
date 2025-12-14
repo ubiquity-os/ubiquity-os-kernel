@@ -31,6 +31,7 @@ Note: `bun test` is not used for this suite (tests rely on Jest-only APIs like `
 ## 🔌 Local HTTP Plugin Dispatch (Optional)
 
 `scripts/test-command.ts` is a local harness that:
+
 - Downloads a repo config from GitHub (`.github/.ubiquity-os.config.dev.yml` then `.github/.ubiquity-os.config.yml`)
 - Caches it to `.test-cache/config.yml` (first run downloads + exits; rerun to execute)
 - Fetches each HTTP plugin's `manifest.json`
@@ -51,6 +52,7 @@ bun run scripts/test-command.ts hello https://github.com/0x4007/ubiquity-os-sand
 ```
 
 Limitations:
+
 - Only HTTP plugins (config keys that are URLs) are supported; GitHub Action plugins are not executed by this tool.
 - `/help` and `@UbiquityOS …` routing is not implemented (slash-command dispatch only).
 - The harness currently uses a mock plugin `authToken`, so plugins that call GitHub typically return `401 Unauthorized` (expected). To fully exercise a plugin, update `scripts/test-command.ts` to pass a real token and use a sandbox repo/issue.
@@ -60,6 +62,7 @@ Limitations:
 For complete autonomous testing of plugin commands, use the simplified CLI with GitHub CLI verification:
 
 ### **Prerequisites**
+
 ```bash
 # Install GitHub CLI and authenticate
 gh auth login
@@ -72,24 +75,28 @@ export APP_PRIVATE_KEY="$(cat path/to/private-key.pem)"
 ### **Complete E2E Test Flow**
 
 1. **Start your plugin locally** (if testing HTTP plugins):
+
 ```bash
 # Example for hello-world plugin
 bun run plugin:hello-world  # Runs on http://127.0.0.1:9090
 ```
 
 2. **Execute command via test harness**:
+
 ```bash
 # Simple syntax: command + GitHub URL
 bun run test-command hello https://github.com/0x4007/ubiquity-os-sandbox/issues/2
 ```
 
 3. **Verify comment was posted**:
+
 ```bash
 # Check the latest comment on the issue
 gh issue view 2 --repo 0x4007/ubiquity-os-sandbox --comments --json comments | jq '.comments[-1].body'
 ```
 
 4. **Full autonomous verification**:
+
 ```bash
 # One-liner to test and verify
 bun run scripts/test-command.ts hello https://github.com/0x4007/ubiquity-os-sandbox/issues/2 && \
@@ -148,6 +155,7 @@ fi
 ```
 
 Usage:
+
 ```bash
 chmod +x test-plugin-e2e.sh
 ./test-plugin-e2e.sh hello https://github.com/0x4007/ubiquity-os-sandbox/issues/2
@@ -156,6 +164,7 @@ chmod +x test-plugin-e2e.sh
 ## 🧩 Kernel Config Paths
 
 The kernel loads and merges plugin config from:
+
 - Repo config: `.github/.ubiquity-os.config.yml` (production) or `.github/.ubiquity-os.config.dev.yml` (development)
 - Org repo config: `<OWNER>/.ubiquity-os` using the same paths
 

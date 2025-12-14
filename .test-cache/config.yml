@@ -40,25 +40,25 @@ plugins:
         - MEMBER
         - ADMIN
       requiredLabelsToStart:
-        - name: 'Priority: 0 (Regression)'
+        - name: "Priority: 0 (Regression)"
           allowedRoles:
             - collaborator
             - contributor
-        - name: 'Priority: 1 (Normal)'
+        - name: "Priority: 1 (Normal)"
           allowedRoles:
             - collaborator
             - contributor
-        - name: 'Priority: 2 (Medium)'
+        - name: "Priority: 2 (Medium)"
           allowedRoles:
             - collaborator
             - contributor
-        - name: 'Priority: 3 (High)'
+        - name: "Priority: 3 (High)"
           allowedRoles:
             - collaborator
-        - name: 'Priority: 4 (Urgent)'
+        - name: "Priority: 4 (Urgent)"
           allowedRoles:
             - collaborator
-        - name: 'Priority: 5 (Emergency)'
+        - name: "Priority: 5 (Emergency)"
           allowedRoles:
             - collaborator
       taskAccessControl:
@@ -128,30 +128,30 @@ plugins:
     with:
       labels:
         time:
-          - name: 'Time: <15 Minutes'
+          - name: "Time: <15 Minutes"
             collaboratorOnly: false
-          - name: 'Time: <1 Hour'
+          - name: "Time: <1 Hour"
             collaboratorOnly: false
-          - name: 'Time: <2 Hours'
+          - name: "Time: <2 Hours"
             collaboratorOnly: false
-          - name: 'Time: <4 Hours'
+          - name: "Time: <4 Hours"
             collaboratorOnly: false
-          - name: 'Time: <1 Day'
+          - name: "Time: <1 Day"
             collaboratorOnly: false
-          - name: 'Time: <1 Week'
+          - name: "Time: <1 Week"
             collaboratorOnly: false
         priority:
-          - name: 'Priority: 0 (Regression)'
+          - name: "Priority: 0 (Regression)"
             collaboratorOnly: false
-          - name: 'Priority: 1 (Normal)'
+          - name: "Priority: 1 (Normal)"
             collaboratorOnly: false
-          - name: 'Priority: 2 (Medium)'
+          - name: "Priority: 2 (Medium)"
             collaboratorOnly: false
-          - name: 'Priority: 3 (High)'
+          - name: "Priority: 3 (High)"
             collaboratorOnly: false
-          - name: 'Priority: 4 (Urgent)'
+          - name: "Priority: 4 (Urgent)"
             collaboratorOnly: false
-          - name: 'Priority: 5 (Emergency)'
+          - name: "Priority: 5 (Emergency)"
             collaboratorOnly: false
       basePriceMultiplier: 3
       globalConfigUpdate:
@@ -547,30 +547,30 @@ teamMembersOnly:
   - MEMBER
   - ADMIN
 timeLabels:
-  - name: 'Time: <15 Minutes'
+  - name: "Time: <15 Minutes"
     collaboratorOnly: false
-  - name: 'Time: <1 Hour'
+  - name: "Time: <1 Hour"
     collaboratorOnly: false
-  - name: 'Time: <2 Hours'
+  - name: "Time: <2 Hours"
     collaboratorOnly: false
-  - name: 'Time: <4 Hours'
+  - name: "Time: <4 Hours"
     collaboratorOnly: false
-  - name: 'Time: <1 Day'
+  - name: "Time: <1 Day"
     collaboratorOnly: false
-  - name: 'Time: <1 Week'
+  - name: "Time: <1 Week"
     collaboratorOnly: false
 priorityLabels:
-  - name: 'Priority: 0 (Regression)'
+  - name: "Priority: 0 (Regression)"
     collaboratorOnly: false
-  - name: 'Priority: 1 (Normal)'
+  - name: "Priority: 1 (Normal)"
     collaboratorOnly: false
-  - name: 'Priority: 2 (Medium)'
+  - name: "Priority: 2 (Medium)"
     collaboratorOnly: false
-  - name: 'Priority: 3 (High)'
+  - name: "Priority: 3 (High)"
     collaboratorOnly: false
-  - name: 'Priority: 4 (Urgent)'
+  - name: "Priority: 4 (Urgent)"
     collaboratorOnly: false
-  - name: 'Priority: 5 (Emergency)'
+  - name: "Priority: 5 (Emergency)"
     collaboratorOnly: false
 tcrHtmlConfig:
   a: *ref_0
