@@ -4,8 +4,9 @@ import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import OpenAI from "openai";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { CONFIG_FULL_PATH } from "../src/github/utils/config";
+import { DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
+import helloWorldManifest from "./__mocks__/manifest.json";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -67,17 +68,6 @@ const TEST_PRIVATE_KEY = "test-private-key";
 const TEST_WEBHOOK_SECRET = "test-secret";
 const TEST_MODEL = "test-model";
 
-type TestManifestCommand = {
-  description?: string;
-  parameters?: unknown;
-  strict?: boolean;
-};
-
-type TestManifest = {
-  name: string;
-  commands?: Record<string, TestManifestCommand>;
-};
-
 // Helper to create fake event
 function createFakeEvent(org: string, repo: string, commentBody: string): EmitterWebhookEvent {
   return {
@@ -118,99 +108,21 @@ function mockConfigResponse() {
   return {
     data: `
 plugins:
-  ubiquity-os-marketplace/command-ask@development:
-    with:
-      model: google/gemini-2.5-flash
-  ubiquity-os-marketplace/personal-agent-bridge@development: {}
-  ubiquity-os-marketplace/text-vector-embeddings@development: {}
-  https://command-query-development.deno.dev: {}
-  https://daemon-xp-development.deno.dev: {}
-  http://127.0.0.1:9090: {}
+  ${TEST_HELLO_WORLD_URL}: {}
 `,
-  };
-}
-
-// Mock manifest responses
-function mockManifestResponse(pluginKey: string) {
-  const manifests: Record<string, TestManifest> = {
-    "ubiquity-os-marketplace/command-ask@development": {
-      name: "command-ask",
-      commands: {
-        hello: {
-          description: "Greet Ubiquibot!",
-          parameters: undefined,
-          strict: true,
-        },
-      },
-    },
-    "ubiquity-os-marketplace/personal-agent-bridge@development": {
-      name: "personal-agent-bridge",
-    },
-    "ubiquity-os-marketplace/text-vector-embeddings@development": {
-      name: "text-vector-embeddings",
-    },
-    "https://command-query-development.deno.dev": {
-      name: "command-query",
-      commands: {
-        query: {
-          description: "Returns wallet info",
-        },
-      },
-    },
-    "https://daemon-xp-development.deno.dev": {
-      name: "daemon-xp",
-    },
-    [TEST_HELLO_WORLD_URL]: {
-      name: "hello-world-plugin",
-      commands: {
-        hello: {
-          description: "Greet Ubiquibot!",
-        },
-      },
-    },
-  };
-
-  const manifest = manifests[pluginKey];
-  if (!manifest) {
-    throw new Error(`No manifest for ${pluginKey}`);
-  }
-
-  return {
-    data: {
-      content: btoa(JSON.stringify(manifest)),
-    },
   };
 }
 
 describe("Kernel Event Processing Tests", () => {
   beforeEach(() => {
-    // Setup MSW handlers
-    server.use(
-      http.get("https://api.github.com/repos/:org/:repo/contents/:path", ({ params }) => {
-        const { repo, path } = params as { org: string; repo: string; path: string };
+    (mockOctokit.rest.repos.getContent as jest.Mock).mockImplementation(async ({ path, mediaType }: { path: string; mediaType?: { format?: string } }) => {
+      if (path === DEV_CONFIG_FULL_PATH && mediaType?.format === "raw") {
+        return { data: mockConfigResponse().data, headers: {} };
+      }
+      throw Object.assign(new Error("Not Found"), { status: 404 });
+    });
 
-        if (path === CONFIG_FULL_PATH) {
-          return HttpResponse.json(mockConfigResponse());
-        } else if (path === "manifest.json") {
-          // Extract plugin key from repo (simplified mapping)
-          const pluginKey = `ubiquity-os-marketplace/${repo}@development`;
-          try {
-            return HttpResponse.json(mockManifestResponse(pluginKey));
-          } catch {
-            return HttpResponse.json({ error: "Not found" }, { status: 404 });
-          }
-        }
-
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
-      }),
-
-      // Mock worker manifests
-      http.get("https://command-query-development.deno.dev/manifest.json", () =>
-        HttpResponse.json(mockManifestResponse("https://command-query-development.deno.dev"))
-      ),
-      http.get("https://daemon-xp-development.deno.dev/manifest.json", () => HttpResponse.json(mockManifestResponse("https://daemon-xp-development.deno.dev"))),
-      http.get(`${TEST_HELLO_WORLD_URL}/manifest.json`, () => HttpResponse.json(mockManifestResponse(TEST_HELLO_WORLD_URL)))
-    );
+    server.use(http.get(`${TEST_HELLO_WORLD_URL}/manifest.json`, () => HttpResponse.json(helloWorldManifest)));
 
     // Mock OpenAI for command routing
     (mockOpenAi.chat.completions.create as jest.Mock).mockResolvedValue({
@@ -255,6 +167,7 @@ describe("Kernel Event Processing Tests", () => {
       llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
+    jest.spyOn(eventHandler, "getToken").mockResolvedValue("mock-token");
 
     // Bind handlers
     const { bindHandlers } = await import("../src/github/handlers/index");
@@ -273,6 +186,9 @@ describe("Kernel Event Processing Tests", () => {
 
     // Trigger event processing
     await eventHandler.webhooks.receive(fakeEvent);
+
+    // Slash commands should bypass LLM routing
+    expect(mockOpenAi.chat.completions.create).not.toHaveBeenCalled();
 
     // Verify dispatches
     expect(mockDispatchWorker).toHaveBeenCalledWith(
@@ -297,6 +213,7 @@ describe("Kernel Event Processing Tests", () => {
       llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
+    jest.spyOn(eventHandler, "getToken").mockResolvedValue("mock-token");
 
     // Mock transformEvent
     jest.spyOn(eventHandler, "transformEvent").mockReturnValue({
@@ -322,7 +239,7 @@ describe("Kernel Event Processing Tests", () => {
     // Verify help menu was posted
     expect(mockCreateComment).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.stringContaining("Available Commands"),
+        body: expect.stringContaining("| Command | Description | Example |"),
         issue_number: 1,
         owner: TEST_ORG,
         repo: TEST_REPO,

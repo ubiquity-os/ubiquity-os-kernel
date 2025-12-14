@@ -7,16 +7,32 @@ Last updated: 2025-12-14
 
 Add a new marketplace plugin, `ubiquity-os-marketplace/command-codex`, that allows trusted users to trigger agentic coding via GitHub comments (e.g. `/codex …` or `@ubiquityos …`). The plugin runs on **GitHub Actions**, wraps the **OpenAI Codex CLI** (`codex exec`), applies any produced diff, and returns results by opening/updating a PR and commenting back on the issue/PR.
 
+Authentication goal: use **ChatGPT/Codex subscription auth** (not per-request API keys) by restoring Codex’s `auth.json` from a GitHub Actions secret (`CODEX_AUTH_JSON_B64`). The workflow should gracefully detect “unauthorized” and comment back with steps to refresh the secret.
+
 This is intentionally implemented as a plugin (not in-kernel), so the kernel can stay lightweight and deployment-target agnostic (Deno Deploy, Workers, etc.), while agentic code execution happens in a sandboxed CI runner.
+
+Migration note (important): while the kernel is migrating to the `action.yml` workflow entrypoint default, all marketplace plugin references should pin to `@fix/action-entry` (e.g., `ubiquity-os-marketplace/command-codex@fix/action-entry`) until the migration merges back to each plugin’s default branch.
 
 ## Background / Existing Kernel Behavior
 
-The kernel already detects and routes:
+The kernel routes issue comments using two distinct paths (see `src/github/handlers/issue-comment-created.ts`):
 
-- Mentions prefixed with `@ubiquityos`
-- Slash commands (rewritten to look like a bot mention)
+### 1) Slash commands (no LLM, deterministic)
 
-via `src/github/handlers/issue-comment-created.ts`, which calls `commandRouter(context)` for those cases. `commandRouter`:
+Examples: `/hello`, `/wallet`, `/codex …`
+
+1. Loads enabled plugins from `.github/.ubiquity-os.config*.yml` (org + repo configs)
+2. Fetches each plugin’s `manifest.json`
+3. Finds the first plugin whose `manifest.commands` contains the slash command name
+4. Dispatches that plugin directly via `workflow_dispatch` (GitHub Actions) or HTTP (Workers)
+
+This is the preferred path for `command-codex`: `/codex <task>` is a direct invocation and does not require the kernel “brain”.
+
+Note: `@ubiquityos /codex …` is treated as a slash command too (the mention is ignored and the `/…` portion is dispatched directly).
+
+### 2) Mentions (LLM “brain” routing)
+
+Examples: `@ubiquityos please …`, `@ubiquityos codex …`
 
 1. Loads enabled plugins from `.github/.ubiquity-os.config*.yml` (org + repo configs)
 2. Fetches each plugin’s `manifest.json`
@@ -24,7 +40,7 @@ via `src/github/handlers/issue-comment-created.ts`, which calls `commandRouter(c
 4. Lets an LLM choose a single tool call
 5. Dispatches the selected plugin via `workflow_dispatch` (GitHub Actions) or HTTP (Workers)
 
-`command-codex` plugs into this existing command pipeline by defining a `codex` command in its `manifest.json`.
+`command-codex` plugs into this path by defining a `codex` command in its `manifest.json`, allowing the kernel to select it for natural-language `@ubiquityos …` requests.
 
 ## Reference Implementations (in this repo)
 
@@ -32,10 +48,27 @@ The kernel already has working examples of both plugin _interfaces_:
 
 ### GitHub Actions plugins (workflow_dispatch)
 
-These show the “standard” `compute.yml` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection):
+These show the “standard” `workflow_dispatch` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection). During the `action.yml` migration, plugins should also expose an `action.yml` workflow entrypoint on `@fix/action-entry`.
 
 - `lib/command-ask/.github/workflows/compute.yml`
 - `lib/daemon-pull-review/.github/workflows/compute.yml`
+
+### Optional: Codex GitHub Action (`openai/codex-action`) (API key auth)
+
+OpenAI publishes `openai/codex-action`, a composite action that installs the Codex CLI, configures a local Responses API proxy, and supports runner hardening via `safety-strategy` (default `drop-sudo`). It’s a good option if you choose to authenticate with an API key (pay-per-request).
+
+- https://github.com/openai/codex-action
+- Notable inputs: `prompt`, `prompt-file`, `working-directory`, `sandbox`, `model`, `effort`, `codex-args`, `safety-strategy`, `allow-bots`
+- Notable output: `final-message` (Codex’s last message from `codex exec`)
+
+Terminology (so it’s easier to reason about):
+
+- Workflow-actor permission check: the action refuses to run unless the workflow actor has repo write access (or is explicitly allowed via `allow-users`, or `allow-bots: true` for GitHub Apps/bots). This prevents arbitrary commenters from triggering a run that has access to secrets.
+- Responses proxy: the action runs `@openai/codex-responses-api-proxy` locally and configures Codex to talk to it, so the Codex process never needs direct access to the API key value (reduces key leakage risk).
+
+Important: `openai/codex-action` is designed around API-key authentication (it starts a Responses proxy and expects `openai-api-key`). If you want to use ChatGPT/Codex subscription auth (`auth.json`), run `codex exec` directly after restoring `auth.json` (don’t use this action).
+
+Note: you generally **do not** need to vendor this action (submodule/copy). Prefer `uses: openai/codex-action@v1` (or pin to a commit SHA) unless you need to customize or audit a fork.
 
 ### Worker plugin (HTTP)
 
@@ -54,7 +87,7 @@ This mock demonstrates the kernel payload contract (compressed `eventPayload`, J
 
 - Provide an **agentic “make changes in repo”** capability triggered by a GitHub comment.
 - Run in **GitHub Actions** (not in kernel runtime).
-- Use **Codex CLI** in non-interactive mode (`codex exec`) to produce a diff and/or edits.
+- Use **Codex CLI** in non-interactive mode (`codex exec`) to produce edits and run commands/tests as needed.
 - Produce a **PR (or PR update)** and **comment** back with a short summary + link.
 - Enforce **strict authorization** (only trusted roles can run it).
 - Avoid leaking secrets (mask tokens; minimize token exposure to agent runtime).
@@ -71,7 +104,7 @@ This mock demonstrates the kernel payload contract (compressed `eventPayload`, J
 
 ### Invocation (recommended)
 
-Use explicit triggers to remove ambiguity and prevent the kernel LLM from choosing the wrong tool:
+Prefer explicit triggers. `/codex` is deterministic and bypasses the kernel LLM; `@ubiquityos codex …` keeps LLM routing but makes tool selection unambiguous:
 
 - `/codex <task>`
 - `@ubiquityos codex <task>`
@@ -98,16 +131,31 @@ Optional enhancements:
 
 ### High-level flow
 
-1. User posts comment `/codex …` or `@ubiquityos …` on an issue/PR.
-2. Kernel `issue_comment.created` handler routes into `commandRouter`.
-3. Kernel LLM selects the `codex` tool (based on `manifest.commands.codex`).
-4. Kernel dispatches `workflow_dispatch` to the plugin repo (`command-codex`), passing:
+There are two supported invocation flows:
+
+#### A) `/codex …` (direct command, no LLM)
+
+1. User posts comment `/codex …` on an issue/PR.
+2. Kernel parses the slash command name and resolves the target plugin by scanning enabled plugin manifests for `commands.codex`.
+3. Kernel dispatches `workflow_dispatch` to the plugin repo (`command-codex`), passing:
+   - `eventPayload` (compressed JSON of the GitHub event payload, including the full comment body)
+   - `authToken` (GitHub App installation token minted by kernel)
+   - `settings` (plugin config `with:` serialized as JSON)
+   - `command` (the slash command name + parsed JSON arguments, if any)
+   - `stateId`, `eventName`, `ref`, `signature`, etc.
+4. Plugin workflow runs Codex and posts results (PR/comment).
+
+#### B) `@ubiquityos …` (LLM “brain” chooses a tool)
+
+1. User posts a natural-language mention `@ubiquityos …` on an issue/PR.
+2. Kernel routes into `commandRouter` and the LLM selects the `codex` tool (based on `manifest.commands.codex`).
+3. Kernel dispatches `workflow_dispatch` to the plugin repo (`command-codex`), passing:
    - `eventPayload` (compressed JSON of the GitHub event payload)
    - `authToken` (GitHub App installation token minted by kernel)
    - `settings` (plugin config `with:` serialized as JSON)
    - `command` (selected tool name + JSON arguments)
    - `stateId`, `eventName`, `ref`, `signature`, etc.
-5. Plugin workflow:
+4. Plugin workflow:
    - Decompresses payload
    - Validates authorization and safety constraints
    - Checks out the target repository using `authToken`
@@ -185,18 +233,24 @@ All settings are optional; defaults should be safe.
 
 - `model`: `string`
   - Default: omit (Codex CLI default)
-  - Passed as `codex exec -m <model>`
+  - Passed as `codex exec --model <model>` (or `-m`)
+- `effort`: `string | null`
+  - Default: `null`
+  - Passed via Codex config: `codex exec --config model_reasoning_effort="<effort>"`
 - `sandbox`: `"read-only" | "workspace-write" | "danger-full-access"`
   - Default: `"workspace-write"`
   - Passed as `codex exec --sandbox <mode>` (or the equivalent global `codex --sandbox <mode> exec …`)
-- `askForApproval`: `"untrusted" | "on-failure" | "on-request" | "never"`
-  - Default: `"never"` for CI/headless runs
-  - Passed as a _global_ flag: `codex -a <policy> exec …` (note: `-a` must appear before `exec`)
-- `codexProfile`: `string | null`
+- `codexArgs`: `string | null`
   - Default: `null`
-  - Passed as `codex exec --profile <name>` when set
+  - Extra args passed through to `codex exec` (e.g., `--json`, `--output-schema ...`, `--config ...`).
+
+Note: if you use the API-key-based `openai/codex-action`, you can add runner hardening via its `safety-strategy` input (e.g. `drop-sudo`). The subscription-auth (restored `auth.json`) flow typically relies on sandboxing plus strict token minimization instead.
+- `passAuthTokenToCodex`: `boolean`
+  - Default: `false`
+  - If true, expose `inputs.authToken` to Codex as `GH_TOKEN` (enables `gh`/GitHub API access inside the agent; increases prompt-injection blast radius).
 - `maxRuntimeMinutes`: `number`
-  - Default: `20` (enforced by job timeout)
+  - Default: `360` (GitHub Actions job timeout)
+  - Recommendation: keep `<= 60` unless you implement GitHub token refresh
 
 ### Git/PR behavior
 
@@ -242,24 +296,38 @@ Rationale:
 
 ### Codex / LLM access (store in plugin secrets)
 
-Store these in the plugin repo GitHub **Environments** (recommended split: `development` and `main`), or repo secrets:
+Primary (subscription auth, preferred for this plugin):
 
-- `OPENAI_API_KEY` (required): used by Codex CLI.
+- `CODEX_AUTH_JSON_B64` (base64 of a logged-in Codex CLI `auth.json`)
+  - Produced on a trusted local machine after `codex login --device-auth` (or `codex login`)
+  - Encode:
+    - macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`
+    - Linux: `base64 -w0 ~/.codex/auth.json`
+  - Set (example using GitHub CLI + repo environments):
+    - `base64 -i ~/.codex/auth.json | tr -d '\n' | gh secret set CODEX_AUTH_JSON_B64 -R <OWNER/REPO> -e development`
+    - `base64 -i ~/.codex/auth.json | tr -d '\n' | gh secret set CODEX_AUTH_JSON_B64 -R <OWNER/REPO> -e main`
 
-Optional (only if needed for your org setup):
+Optional fallback (pay-per-request API key, more CI-stable):
 
-- `OPENAI_ORG`
-- `OPENAI_PROJECT`
+- `OPENAI_API_KEY`
+  - Used via `printenv OPENAI_API_KEY | codex login --with-api-key`
+
+Stability note: ChatGPT subscription auth is interactive and can expire/revoke; CI runs should detect auth failures (401/403) and comment back with refresh instructions instead of failing silently.
 
 ### Token/secret handling requirements
 
-- Mask `inputs.authToken` and `OPENAI_API_KEY` immediately (GitHub Actions masking).
+- Mask `inputs.authToken`, `CODEX_AUTH_JSON_B64`, and `OPENAI_API_KEY` immediately (GitHub Actions masking).
 - Do not print decompressed payloads that may contain sensitive data.
 - Prefer `actions/checkout` with `persist-credentials: false` so credentials aren’t left in `.git/config` during agent execution.
 - Only inject a push-capable credential _after_ Codex finishes, right before pushing.
-- Do not expose `inputs.authToken`/`GITHUB_TOKEN`/`GH_TOKEN` to the Codex step unless explicitly needed (treat prompt-injection as a first-class threat).
+- Avoid exposing `inputs.authToken`/`GITHUB_TOKEN`/`GH_TOKEN` to the Codex step unless you explicitly want a fully autonomous agent (treat prompt-injection as a first-class threat).
+- IMPORTANT: GitHub App installation tokens expire after ~1 hour. If you expect long-running jobs (up to 6 hours), plan for token refresh (see “Full Access Mode” below).
 
-## GitHub Actions Workflow Spec (`compute.yml`)
+## GitHub Actions Workflow Spec (`action.yml` entry)
+
+The kernel dispatches GitHub Actions plugins via `workflow_dispatch` and (during migration) defaults the workflow id to `action.yml` unless explicitly specified in the plugin key.
+
+Config examples should use `owner/repo@fix/action-entry` (defaults to `action.yml`). The legacy explicit form `owner/repo:compute.yml@fix/action-entry` still works.
 
 ### Inputs
 
@@ -283,6 +351,28 @@ permissions:
 
 and rely on `inputs.authToken` for write operations.
 
+## Full Access Mode (Autonomous Agent)
+
+If you want Codex to behave like a “CI coding agent” with full access to the runner, configure the workflow so Codex can run arbitrary commands and talk to GitHub directly.
+
+Recommended knobs:
+
+- Run `codex exec` with `--sandbox danger-full-access` (enables outbound network and unrestricted filesystem access on the runner).
+- Provide GitHub auth to Codex **only if needed**:
+  - `env: GH_TOKEN: ${{ inputs.authToken }}` (and/or `GITHUB_TOKEN`)
+  - Codex can then use `gh` and `git` to create branches/PRs/comments itself.
+
+Hardening note:
+
+- If you want runner-level hardening like “drop sudo”, `openai/codex-action` supports `safety-strategy` — but it’s primarily designed for API-key auth. Subscription-auth runs should rely on sandboxing plus strict token minimization.
+
+Token lifetime caveat (critical):
+
+- `inputs.authToken` (GitHub App installation token) expires after ~1 hour.
+- If Codex must access GitHub after that, you need a renewable mechanism:
+  - Provide GitHub App credentials (`APP_ID`, `APP_PRIVATE_KEY`) and a small helper script to mint fresh installation tokens on demand, OR
+  - Keep GitHub write operations outside the Codex step and mint a fresh token “just-in-time” for PR/commenting in later workflow steps.
+
 ### Recommended job outline
 
 1. Decompress `eventPayload`
@@ -295,28 +385,34 @@ and rely on `inputs.authToken` for write operations.
    - For PR: fetch PR details; deny forks if configured
 6. Checkout target repo (fetch-depth 0)
 7. Create working branch
-8. Install Codex CLI
-   - `npm install -g @openai/codex`
-9. Run Codex
-   - Use `codex exec` (non-interactive)
-   - Recommended flags for CI:
-     - `codex -a never exec …` (avoid interactive approvals in headless runners)
-     - `--sandbox workspace-write`
-     - `--json` (optional; easier machine parsing/logging)
-     - `--output-last-message` (capture final summary for PR body/comment)
-10. If no diff (`git diff --name-only` empty), comment and exit
-11. Commit + push branch
-12. Create/update PR
-13. Comment back with PR link + summary
+8. Install Codex CLI + resolve auth
+   - `actions/setup-node` then `npm i -g @openai/codex@<pinned>`
+   - Restore subscription auth: write `${CODEX_AUTH_JSON_B64}` → `${CODEX_HOME}/auth.json`, then `codex login status`
+   - If auth missing/invalid, comment back with refresh instructions and stop
+   - Optional fallback: if `OPENAI_API_KEY` is present, run `printenv OPENAI_API_KEY | codex login --with-api-key`
+9. Run Codex (`codex exec`)
+   - `codex -a never exec --sandbox <mode> --json - < .codex.prompt.txt | tee .codex.events.jsonl`
+   - `--output-last-message .codex.last-message.md` for summary capture
+10. Handle failures (especially auth)
+   - If `codex exec` fails, scan `.codex.events.jsonl` for `401 Unauthorized` / `403 Forbidden` / `Not logged in`
+   - If matched: comment “auth expired/invalid; refresh `CODEX_AUTH_JSON_B64`”
+   - Else: comment a short failure summary + workflow logs URL
+11. If no diff (`git diff --name-only` empty), comment and exit
+12. Commit + push branch
+13. Create/update PR
+14. Comment back with PR link + summary
 
 ### Proposed plugin repository layout
 
-Mirror the “workflow-first” style used by `lib/command-ask` and `lib/daemon-pull-review`, with a small amount of helper code only if needed:
+During the `action.yml` migration, prefer an `action.yml` composite entry with a thin workflow wrapper at `.github/workflows/action.yml`:
 
 ```
 command-codex/
+  action.yml
   manifest.json
   README.md
+  .github/workflows/action.yml
+  # optional legacy wrapper (if needed temporarily)
   .github/workflows/compute.yml
   # optional (if bash becomes too complex)
   package.json
@@ -335,12 +431,11 @@ Two viable implementation styles:
 
 ### Workflow architecture (aligned with existing plugins)
 
-Pattern to copy (from `lib/command-ask/.github/workflows/compute.yml`):
+Pattern to copy (from marketplace plugins on `@fix/action-entry`):
 
-- `workflow_dispatch` inputs match kernel contract
-- `ubiquity-os/compress-action@main` to decompress payload
-- `actions/checkout@v5` using `token: ${{ inputs.authToken }}` and `persist-credentials: false`
-- Use GitHub Actions **environments** (`development` vs `main`) for secrets
+- `.github/workflows/action.yml` declares `workflow_dispatch` inputs and calls the composite action (`uses: ./action.yml`), passing through `inputs.*`.
+- Root `action.yml` (composite) contains the real steps: decompress payload, checkout target repo with `inputs.authToken` + `persist-credentials: false`, run Codex, then PR/comment.
+- Use GitHub Actions **environments** (`development` vs `main`) for secrets.
 
 Key additional considerations for Codex:
 
@@ -357,6 +452,7 @@ Codex should receive a structured prompt that includes:
 - Issue/PR title + body (truncate safely)
 - The triggering comment body
 - The parsed `task` (from command args and/or the comment body)
+- Optional repo guidance from `AGENTS.md` (Codex automatically discovers/merges it when present in the checked-out repo)
 - Explicit constraints:
   - Do not access or print secrets
   - Do not modify CI secrets or workflows unless requested
@@ -427,10 +523,11 @@ Rejection behavior:
 
 1. Scaffold `ubiquity-os-marketplace/command-codex`
    - Add `manifest.json` with `commands.codex`
-   - Add `.github/workflows/compute.yml` matching kernel inputs (copy from `lib/command-ask/.github/workflows/compute.yml`)
+   - Add `.github/workflows/action.yml` + root `action.yml` matching kernel inputs (on branch `fix/action-entry`)
    - Add `README.md` documenting usage and restrictions
 2. Add secrets to plugin repo environments
-   - `OPENAI_API_KEY` in `development` and `main`
+   - `CODEX_AUTH_JSON_B64` in `development` and `main`
+   - Optional fallback: `OPENAI_API_KEY`
 3. Ship “comment-only” MVP (fast feedback loop)
    - Decompress payload, enforce auth + explicit invocation, run `codex exec`, comment a short summary
 4. Add PR mode
@@ -444,8 +541,8 @@ Rejection behavior:
 ## Test Plan (end-to-end)
 
 1. In a test repo where the kernel App is installed, enable the plugin in `.github/.ubiquity-os.config.dev.yml`:
-   - `ubiquity-os-marketplace/command-codex@development:`
-2. Ensure the plugin repo has `OPENAI_API_KEY` set in the `development` environment.
+   - `ubiquity-os-marketplace/command-codex@fix/action-entry:`
+2. Ensure the plugin repo has `CODEX_AUTH_JSON_B64` set in the `development` environment (optional fallback: `OPENAI_API_KEY`).
 3. Post a comment on an issue: `/codex add a small file named TEST.txt with the word hello`
 4. Verify:
    - A `workflow_dispatch` run starts in the plugin repo
@@ -457,7 +554,8 @@ Rejection behavior:
 - A user can invoke `/codex <task>` (or `@ubiquityos codex <task>`) and receive a PR link with changes.
 - Only users with `author_association` in `allowedAuthorAssociations` can trigger a run.
 - The plugin checks out the target repo using `inputs.authToken` (not `GITHUB_TOKEN`).
-- Secrets (`OPENAI_API_KEY`, `inputs.authToken`) are not printed in logs and are masked.
+- Secrets (`CODEX_AUTH_JSON_B64`, `OPENAI_API_KEY` if used, `inputs.authToken`) are not printed in logs and are masked.
+- If Codex subscription auth is missing/expired, the plugin comments back with steps to refresh `CODEX_AUTH_JSON_B64`.
 - If Codex produces no diff, the plugin comments a clear “no changes” outcome.
 - Fork PRs are denied by default (configurable).
 
@@ -468,7 +566,7 @@ Files to create in `ubiquity-os-marketplace/command-codex`:
 - `manifest.json`
   - Defines `commands.codex`
   - Defines `configuration` schema for `with:` settings
-- `.github/workflows/compute.yml`
+- `.github/workflows/action.yml` + root `action.yml`
   - `workflow_dispatch` inputs compatible with kernel
   - Implements the flow above
 - `README.md`
@@ -484,7 +582,7 @@ Kernel/org config change (in `.ubiquity-os` repo):
 
 - `.github/.ubiquity-os.config.yml` and/or `.github/.ubiquity-os.config.dev.yml`
   - Add plugin entry:
-    - `ubiquity-os-marketplace/command-codex@<ref>:`
+    - `ubiquity-os-marketplace/command-codex@fix/action-entry:`
       - `with:` defaults + policy overrides
 
 ## Open Questions

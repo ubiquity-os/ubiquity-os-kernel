@@ -170,8 +170,7 @@ describe("Event related tests", () => {
       [
         {
           body:
-            "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
-            " all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |",
+            "| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |\n\n###### UbiquityOS Production [v7.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v7.0.0) [159ea6e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/159ea6e)",
           issue_number: 1,
           owner: "ubiquity",
           repo: name,
@@ -245,8 +244,8 @@ describe("Event related tests", () => {
     expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
       owner: "ubiquity-os",
       repository: "plugin-b",
-      ref: "main",
-      workflowId: "compute.yml",
+      ref: "fix/action-entry",
+      workflowId: "action.yml",
       inputs: {
         command: JSON.stringify({ name: "hello", parameters: { username: "pavlovcik" } }),
       },

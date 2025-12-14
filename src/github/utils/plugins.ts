@@ -7,12 +7,6 @@ import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, pars
 
 const _manifestCache: Record<string, Manifest> = {};
 
-function isCommentCreatedPayload(
-  payload: GitHubContext["payload"]
-): payload is GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">["payload"] {
-  return "comment" in payload && typeof payload.comment !== "string";
-}
-
 export type ResolvedPlugin = {
   key: string;
   target: string | GithubPlugin;
@@ -29,30 +23,6 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
   if (plugin.settings?.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
     context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
     return true;
-  }
-  const commentEvents = ["issue_comment.created", "pull_request_review_comment.created"] as EmitterWebhookEventName[];
-  if (commentEvents.includes(context.key)) {
-    const manifest = await getManifest(context, plugin.target);
-    if (
-      manifest?.commands &&
-      !manifest["ubiquity:listeners"]?.includes(context.key as keyof Manifest["ubiquity:listeners"]) &&
-      isCommentCreatedPayload(context.payload) &&
-      context.payload.comment?.body.trim().startsWith(`/`) &&
-      Object.keys(manifest.commands).length
-    ) {
-      if (
-        !Object.keys(manifest.commands).some(
-          (command) => isCommentCreatedPayload(context.payload) && context.payload.comment?.body.trim().startsWith(`/${command}`)
-        )
-      ) {
-        context.logger.debug(
-          { manifest: manifest.name, command: context.payload.comment?.body.trim(), commands: Object.keys(manifest.commands) },
-          "Skipping plugin because of chain command mismatch"
-        );
-        return true;
-      }
-      return false;
-    }
   }
   return !plugin.settings?.runsOn?.includes(event);
 }
@@ -94,20 +64,24 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
   }
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 5000); // 5s timeout
-    const { data } = await context.octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: "manifest.json",
-      ref,
-      request: { signal: controller.signal },
-    });
-    if ("content" in data) {
-      const content = Buffer.from(data.content, "base64").toString();
-      const contentParsed = JSON.parse(content);
-      const manifest = decodeManifest(context, contentParsed);
-      _manifestCache[manifestKey] = manifest;
-      return manifest;
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    try {
+      const { data } = await context.octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path: "manifest.json",
+        ref,
+        request: { signal: controller.signal },
+      });
+      if ("content" in data) {
+        const content = Buffer.from(data.content, "base64").toString();
+        const contentParsed = JSON.parse(content);
+        const manifest = decodeManifest(context, contentParsed);
+        _manifestCache[manifestKey] = manifest;
+        return manifest;
+      }
+    } finally {
+      clearTimeout(timeout);
     }
   } catch (e) {
     context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
@@ -122,12 +96,16 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
   const manifestUrl = `${url}/manifest.json`;
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 5000); // 5s timeout
-    const result = await fetch(manifestUrl, { signal: controller.signal });
-    const jsonData = await result.json();
-    const manifest = decodeManifest(context, jsonData);
-    _manifestCache[url] = manifest;
-    return manifest;
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    try {
+      const result = await fetch(manifestUrl, { signal: controller.signal });
+      const jsonData = await result.json();
+      const manifest = decodeManifest(context, jsonData);
+      _manifestCache[url] = manifest;
+      return manifest;
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (e) {
     context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
   }

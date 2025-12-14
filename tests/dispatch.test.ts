@@ -12,10 +12,8 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-PLUGIN_TYPE = "../src/github/types/plugin";
-
-jest.mock(PLUGIN_TYPE, () => {
-  const originalModule: typeof import(PLUGIN_TYPE) = jest.requireActual(PLUGIN_TYPE);
+jest.mock("../src/github/types/plugin", () => {
+  const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>("../src/github/types/plugin");
 
   return {
     ...originalModule,
@@ -41,6 +39,7 @@ function calculateSignature(payload: string, secret: string) {
 }
 
 const issueCommentCreatedEvent = "issue_comment.created";
+const FOO_COMMAND = "foo";
 
 beforeAll(() => {
   server.listen();
@@ -60,7 +59,7 @@ describe("handleEvent", () => {
           name: "plugin",
           "ubiquity:listeners": [issueCommentCreatedEvent],
           commands: {
-            foo: {
+            [FOO_COMMAND]: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
@@ -76,7 +75,7 @@ describe("handleEvent", () => {
           name: "plugin",
           "ubiquity:listeners": [issueCommentCreatedEvent],
           commands: {
-            foo: {
+            [FOO_COMMAND]: {
               description: "foo command",
               "ubiquity:example": "/foo bar",
             },
@@ -180,8 +179,8 @@ describe("handleEvent", () => {
     });
 
     expect(res).toBeTruthy();
-    // 2 calls means the execution didn't break
-    expect(dispatchWorker).toHaveBeenCalledTimes(2);
+    // Slash command dispatch + event dispatch means 3 calls; ensure execution didn't break.
+    expect(dispatchWorker).toHaveBeenCalledTimes(3);
 
     dispatchWorker.mockReset();
   });

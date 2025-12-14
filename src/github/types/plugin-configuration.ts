@@ -28,8 +28,8 @@ export function parsePluginIdentifier(value: string): string | GithubPlugin {
   return {
     owner: matches[1],
     repo: matches[2],
-    workflowId: matches[3] || "compute.yml",
-    ref: matches[4] || undefined,
+    workflowId: matches[3] || "action.yml",
+    ref: matches[4] || "fix/action-entry",
   };
 }
 

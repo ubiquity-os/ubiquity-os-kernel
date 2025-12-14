@@ -173,16 +173,20 @@ async function download({ context, repository, owner }: { context: GitHubContext
   try {
     context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 5000); // 5s timeout
-    const { data, headers } = await context.octokit.rest.repos.getContent({
-      owner,
-      repo: repository,
-      path: filePath,
-      mediaType: { format: "raw" },
-      request: { signal: controller.signal },
-    });
-    context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
-    return data as unknown as string; // this will be a string if media format is raw
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    try {
+      const { data, headers } = await context.octokit.rest.repos.getContent({
+        owner,
+        repo: repository,
+        path: filePath,
+        mediaType: { format: "raw" },
+        request: { signal: controller.signal },
+      });
+      context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
+      return data as unknown as string; // this will be a string if media format is raw
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (err) {
     // In case of a missing config, do not log it as an error
     if (err && typeof err === "object" && "status" in err && err.status === 404) {
