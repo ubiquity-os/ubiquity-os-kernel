@@ -23,7 +23,7 @@ async function getInstallationOctokitForOrg(context: GitHubContext, owner: strin
 export async function dispatchWorkflow(context: GitHubContext, options: WorkflowDispatchOptions) {
   const authenticatedOctokit = await getInstallationOctokitForOrg(context, options.owner);
 
-  const candidates = [options.workflowId];
+  const candidates = [options.ref === "fix/action-entry" ? "action.yml" : options.workflowId];
 
   let lastError: unknown;
   for (let i = 0; i < candidates.length; i++) {

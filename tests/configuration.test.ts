@@ -35,6 +35,15 @@ afterAll(() => {
 });
 
 describe("Configuration tests", () => {
+  it("should default to action.yml workflow for fix/action-entry refs", () => {
+    expect(parsePluginIdentifier("ubiquity/test-plugin@fix/action-entry")).toMatchObject({
+      owner: "ubiquity",
+      repo: "test-plugin",
+      workflowId: "action.yml",
+      ref: "fix/action-entry",
+    });
+  });
+
   it("Should properly parse the Action path if a branch and workflow are specified", async () => {
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
       let data: string;
@@ -54,7 +63,7 @@ describe("Configuration tests", () => {
       } else if (args.path === CONFIG_FULL_PATH) {
         data = `
         plugins:
-          ubiquity/user-activity-watcher:compute.yml@fork/pull/1:
+          ubiquity/user-activity-watcher:action.yml@fork/pull/1:
             skipBotEvents: false
             with:
               settings1: 'enabled'`;
@@ -90,7 +99,7 @@ describe("Configuration tests", () => {
       eventHandler: eventHandler,
       logger,
     } as unknown as GitHubContext);
-    const pluginKey = "ubiquity/user-activity-watcher:compute.yml@fork/pull/1";
+    const pluginKey = "ubiquity/user-activity-watcher:action.yml@fork/pull/1";
     expect(cfg.plugins[pluginKey]).toEqual({
       runsOn: [],
       skipBotEvents: false,
@@ -103,7 +112,7 @@ describe("Configuration tests", () => {
     let repo = "ubiquity-os-kernel";
     let ref: string | undefined = "fork/pull/1";
     const owner = "ubiquity";
-    const workflowId = "compute.yml";
+    const workflowId = "action.yml";
     const content: Record<string, object> = {
       withRef: {
         name: "plugin",

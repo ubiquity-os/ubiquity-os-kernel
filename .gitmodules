@@ -1,3 +1,7 @@
+[submodule "lib/command-codex"]
+	path = lib/command-codex
+	url = https://github.com/ubiquity-os-marketplace/command-codex.git
+	branch = fix/action-entry
 [submodule "lib/command-start-stop"]
 	path = lib/command-start-stop
 	url = https://github.com/ubiquity-os-marketplace/command-start-stop.git
@@ -53,12 +57,4 @@
 [submodule "lib/daemon-spec-rewriter"]
 	path = lib/daemon-spec-rewriter
 	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
-	branch = fix/action-entry
-[submodule "lib/personal-agent-bridge"]
-	path = lib/personal-agent-bridge
-	url = https://github.com/ubiquity-os-marketplace/personal-agent-bridge.git
-	branch = fix/action-entry
-[submodule "lib/personal-agent"]
-	path = lib/personal-agent
-	url = https://github.com/ubiquity-os-marketplace/personal-agent.git
 	branch = fix/action-entry

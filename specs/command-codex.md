@@ -50,8 +50,8 @@ The kernel already has working examples of both plugin _interfaces_:
 
 These show the “standard” `workflow_dispatch` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection). During the `action.yml` migration, plugins should also expose an `action.yml` workflow entrypoint on `@fix/action-entry`.
 
-- `lib/command-ask/.github/workflows/compute.yml`
-- `lib/daemon-pull-review/.github/workflows/compute.yml`
+- `lib/command-ask/.github/workflows/action.yml`
+- `lib/daemon-pull-review/.github/workflows/action.yml`
 
 ### Optional: Codex GitHub Action (`openai/codex-action`) (API key auth)
 
@@ -325,9 +325,9 @@ Stability note: ChatGPT subscription auth is interactive and can expire/revoke; 
 
 ## GitHub Actions Workflow Spec (`action.yml` entry)
 
-The kernel dispatches GitHub Actions plugins via `workflow_dispatch` and (during migration) defaults the workflow id to `action.yml` unless explicitly specified in the plugin key.
+The kernel dispatches GitHub Actions plugins via `workflow_dispatch`. During the `fix/action-entry` migration, the kernel treats `action.yml` as the only supported workflow entrypoint for `@fix/action-entry` (even if the plugin key includes an explicit workflow id).
 
-Config examples should use `owner/repo@fix/action-entry` (defaults to `action.yml`). The legacy explicit form `owner/repo:compute.yml@fix/action-entry` still works.
+Config examples should use `owner/repo@fix/action-entry` (defaults to `action.yml`).
 
 ### Inputs
 
@@ -412,8 +412,6 @@ command-codex/
   manifest.json
   README.md
   .github/workflows/action.yml
-  # optional legacy wrapper (if needed temporarily)
-  .github/workflows/compute.yml
   # optional (if bash becomes too complex)
   package.json
   tsconfig.json
@@ -427,7 +425,7 @@ command-codex/
 Two viable implementation styles:
 
 1. **YAML + `gh` + `jq` only** (closest to `command-ask`): simplest repo, fastest to ship.
-2. **YAML orchestrates, Node/Bun does logic** (closest to `personal-agent-bridge`): better ergonomics for parsing/templating and GitHub API calls.
+2. **YAML orchestrates, Node/Bun does logic**: better ergonomics for parsing/templating and GitHub API calls.
 
 ### Workflow architecture (aligned with existing plugins)
 
