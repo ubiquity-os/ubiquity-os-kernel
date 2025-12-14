@@ -178,6 +178,100 @@ lsof -nP -iTCP:9090 -sTCP:LISTEN
 bun run jest:test -- --clearCache
 ```
 
+## 🤖 LLM SDK & ai.ubq.fi Integration
+
+Plugins can securely call the ai.ubq.fi LLM endpoint using inherited GitHub authentication—no manual tokens needed. The kernel dispatches with short-lived installation tokens, and the API verifies repo access.
+
+### LLM SDK Overview
+
+The `lib/llm-sdk/` provides a unified `callLlm()` function for plugins:
+
+- **HTTP Plugins**: Import and call directly.
+- **GitHub Actions Plugins**: Use the composite action or CLI wrapper.
+- **Kernel**: Direct import for internal use.
+
+#### Usage Examples
+
+**HTTP Plugin**:
+```typescript
+import { PluginInput, createPlugin } from '@ubiquity-os/plugin-sdk';
+import { callLlm } from '@ubiquity-os/llm-sdk';
+
+export default createPlugin({
+  async onCommand(input: PluginInput) {
+    const result = await callLlm({ messages: [{ role: 'user', content: 'Hello!' }] }, input);
+    // result: ChatCompletion or AsyncIterable<ChatCompletionChunk>
+  }
+});
+```
+
+**GitHub Actions Plugin**:
+```yaml
+- uses: ./.github/actions/llm-call
+  with:
+    auth-token: ${{ inputs.authToken }}
+    owner: ${{ github.repository_owner }}
+    repo: ${{ github.event.repository.name }}
+    messages: '[{"role":"user","content":"Query"}]'
+```
+
+### Security & Verification
+
+Plugins inherit `authToken` (GitHub app installation token) from kernel dispatch. The API (`ai.ubq.fi/serve.ts`) verifies:
+
+1. **Token Format**: Must start with 'gh' and include `X-GitHub-Owner/Repo` headers.
+2. **Repo Access Check**: Uses Octokit to list authenticated repos (paginated to handle >100 repos), confirms token grants access to the exact owner/repo.
+3. **Caching**: Verifications cached for 5 min per token+repo to reduce API calls.
+4. **Installation Scoping**: Tokens are per-installation; repo check implicitly verifies installation validity. Optional explicit `X-GitHub-Installation-Id` header for extra assurance.
+
+#### GitHub Token Verification Flow
+
+```typescript
+// In requireClientAuth()
+if (token.startsWith('gh') && req.headers.has('X-GitHub-Owner') && req.headers.has('X-GitHub-Repo')) {
+  const owner = req.headers.get('X-GitHub-Owner')!;
+  const repo = req.headers.get('X-GitHub-Repo')!;
+  const cacheKey = await sha256Base64Url(token + owner + repo);
+  if (cached) return null; // Allow
+
+  const octokit = new Octokit({ auth: token });
+  let page = 1, hasAccess = false;
+  while (!hasAccess) {
+    const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({ per_page: 100, page });
+    hasAccess = repos.some(r => r.owner.login === owner && r.name === repo);
+    if (hasAccess || repos.length < 100) break;
+    page++; // Paginate
+  }
+  if (hasAccess) {
+    cache.set(cacheKey, Date.now() + 5 * 60_000);
+    return null; // Allow
+  }
+  return openaiError(401, 'Invalid GitHub token for repo', 'invalid_auth_for_repo');
+}
+```
+
+- **Pagination**: Loops through repo pages to avoid false negatives for large orgs.
+- **No Storage**: Tokens verified on-the-fly; not persisted.
+- **Fallback**: Existing API keys/KV auth still work.
+
+### Testing LLM Calls
+
+Use the test harness with LLM-enabled plugins:
+
+```bash
+# Test plugin that calls LLM
+bun run test-command llm-query https://github.com/0x4007/ubiquity-os-sandbox/issues/5
+# Verify response in issue comments
+```
+
+### Relevant Files
+
+- `lib/llm-sdk/index.ts` - Core callLlm function
+- `lib/llm-sdk/action.yml` - Composite action
+- `lib/ai.ubq.fi/serve.ts` - API with GitHub verification
+- `src/github/handlers/index.ts` - Dispatch with authToken
+- `lib/plugin-sdk/src/signature.ts` - PluginInput types
+
 ## 🔗 Relevant Files
 
 - `scripts/test-command.ts`
