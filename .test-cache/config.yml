@@ -1,0 +1,597 @@
+plugins:
+  ubiquity-os-marketplace/command-ask@development:
+    with:
+      model: google/gemini-2.5-flash
+      openRouterBaseUrl: https://openrouter.ai/api/v1
+      similarityThreshold: 0.9
+      maxDepth: 3
+    runsOn:
+      - issue_comment.created
+      - issue_comment.edited
+      - pull_request_review_comment.created
+      - pull_request_review.submitted
+    skipBotEvents: true
+  https://command-config-development.deno.dev:
+    with:
+      model: google/gemini-2.5-flash
+    runsOn: []
+    skipBotEvents: true
+  https://command-query-development.deno.dev:
+    with:
+      allowPublicQuery: true
+    runsOn:
+      - issue_comment.created
+    skipBotEvents: true
+  https://command-start-stop-develop.deno.dev:
+    with:
+      reviewDelayTolerance: 3 Days
+      taskStaleTimeoutDuration: 30 Days
+      startRequiresWallet: true
+      assignedIssueScope: org
+      maxConcurrentTasks:
+        collaborator: 2
+        contributor: 2
+      emptyWalletText: >-
+        Please set your wallet address with the /wallet command first and try
+        again.
+      rolesWithReviewAuthority:
+        - COLLABORATOR
+        - OWNER
+        - MEMBER
+        - ADMIN
+      requiredLabelsToStart:
+        - name: 'Priority: 0 (Regression)'
+          allowedRoles:
+            - collaborator
+            - contributor
+        - name: 'Priority: 1 (Normal)'
+          allowedRoles:
+            - collaborator
+            - contributor
+        - name: 'Priority: 2 (Medium)'
+          allowedRoles:
+            - collaborator
+            - contributor
+        - name: 'Priority: 3 (High)'
+          allowedRoles:
+            - collaborator
+        - name: 'Priority: 4 (Urgent)'
+          allowedRoles:
+            - collaborator
+        - name: 'Priority: 5 (Emergency)'
+          allowedRoles:
+            - collaborator
+      taskAccessControl:
+        usdPriceMax:
+          contributor: -1
+          collaborator: Infinity
+    runsOn:
+      - issues.unassigned
+      - pull_request.opened
+      - pull_request.edited
+    skipBotEvents: true
+  https://command-wallet-development.deno.dev:
+    with:
+      registerWalletWithVerification: false
+    runsOn: []
+    skipBotEvents: false
+  ubiquity-os-marketplace/daemon-disqualifier@development:
+    with:
+      warning: 7 days
+      eventWhitelist:
+        - pull_request.review_requested
+        - pull_request.ready_for_review
+        - pull_request_review_comment.created
+        - issue_comment.created
+        - push
+      watch:
+        optOut:
+          - ubiquibot
+          - launch-party
+          - staging
+          - production
+      disqualification: 14 days
+      prioritySpeed: true
+      pullRequestRequired: true
+    runsOn:
+      - issues.assigned
+      - issue_comment.edited
+      - issues.reopened
+    skipBotEvents: false
+  ubiquity-os-marketplace/daemon-merging@development:
+    with:
+      approvalsRequired:
+        collaborator: 1
+        contributor: 2
+      mergeTimeout:
+        collaborator: 3.5 days
+        contributor: 7 days
+      repos:
+        monitor: []
+        ignore:
+          - ubiquibot
+          - launch-party
+          - staging
+          - production
+      allowedReviewerRoles:
+        - COLLABORATOR
+        - MEMBER
+        - OWNER
+    runsOn:
+      - issues.assigned
+      - issues.edited
+      - issues.unassigned
+      - issues.closed
+      - issues.reopened
+    skipBotEvents: false
+  https://daemon-pricing-development.deno.dev:
+    with:
+      labels:
+        time:
+          - name: 'Time: <15 Minutes'
+            collaboratorOnly: false
+          - name: 'Time: <1 Hour'
+            collaboratorOnly: false
+          - name: 'Time: <2 Hours'
+            collaboratorOnly: false
+          - name: 'Time: <4 Hours'
+            collaboratorOnly: false
+          - name: 'Time: <1 Day'
+            collaboratorOnly: false
+          - name: 'Time: <1 Week'
+            collaboratorOnly: false
+        priority:
+          - name: 'Priority: 0 (Regression)'
+            collaboratorOnly: false
+          - name: 'Priority: 1 (Normal)'
+            collaboratorOnly: false
+          - name: 'Priority: 2 (Medium)'
+            collaboratorOnly: false
+          - name: 'Priority: 3 (High)'
+            collaboratorOnly: false
+          - name: 'Priority: 4 (Urgent)'
+            collaboratorOnly: false
+          - name: 'Priority: 5 (Emergency)'
+            collaboratorOnly: false
+      basePriceMultiplier: 3
+      globalConfigUpdate:
+        excludeRepos: []
+      shouldFundContributorClosedIssue: false
+    runsOn:
+      - repository.created
+      - issues.opened
+      - issues.labeled
+      - issues.unlabeled
+      - label.edited
+      - push
+    skipBotEvents: false
+  ubiquity-os-marketplace/personal-agent-bridge@development:
+    with: {}
+    runsOn:
+      - issue_comment.created
+    skipBotEvents: true
+  ubiquity-os-marketplace/text-conversation-rewards@development:
+    with:
+      rewards:
+        evmNetworkId: 100
+        evmPrivateEncrypted: >-
+          gdo_iiUND1poZaibNme5oUsG1g8RDEmtI41uLgZjxW8WwxnQZb0DHkOBcISuwobxyKEyzeGQC9KzjkWXv0_OCv-kuUHy4myWNIhs4j3odyvh1XUP7pZFeuVEiASmKQBGkzlKRii5dA0liXtHnhciZQi5N8E7-cdOMbA
+      incentives:
+        requirePriceLabel: true
+        limitRewards: true
+        collaboratorOnlyPaymentInvocation: true
+        contentEvaluator:
+          enabled: true
+          openAi:
+            endpoint: https://openrouter.ai/api/v1
+            model: google/gemini-2.5-flash
+          multipliers:
+            - role:
+                - ISSUE_SPECIFICATION
+              relevance: 1
+        externalContent:
+          llmImageModel:
+            model: openai/gpt-4o
+          llmWebsiteModel:
+            model: google/gemini-2.5-flash
+        userExtractor:
+          redeemTask: true
+        dataPurge:
+          skipCommentsWhileAssigned: exact
+        reviewIncentivizer: {}
+        formattingEvaluator:
+          multipliers:
+            - role:
+                - ISSUE_AUTHOR
+                - PULL_SPECIFICATION
+                - ISSUE_COLLABORATOR
+                - PULL_COLLABORATOR
+              multiplier: 2
+              rewards:
+                wordValue: 0.1
+                html:
+                  a:
+                    score: 1
+                    countWords: true
+                  code:
+                    score: 1
+                    countWords: false
+                  img:
+                    score: 1
+                    countWords: false
+                  h1:
+                    score: 1
+                    countWords: true
+                  h2:
+                    score: 1
+                    countWords: true
+                  h3:
+                    score: 1
+                    countWords: true
+                  h4:
+                    score: 1
+                    countWords: true
+                  h5:
+                    score: 1
+                    countWords: true
+                  h6:
+                    score: 1
+                    countWords: true
+                  br:
+                    score: 0
+                    countWords: true
+                  p:
+                    score: 0
+                    countWords: true
+                  em:
+                    score: 0
+                    countWords: true
+                  ul:
+                    score: 0
+                    countWords: true
+                  td:
+                    score: 0
+                    countWords: true
+                  hr:
+                    score: 0
+                    countWords: true
+                  ol:
+                    score: 0
+                    countWords: true
+                  pre:
+                    score: 0
+                    countWords: false
+                  strong:
+                    score: 0
+                    countWords: false
+                  blockquote:
+                    score: 0
+                    countWords: false
+                  li:
+                    score: 0.1
+                    countWords: true
+            - role:
+                - ISSUE_SPECIFICATION
+              multiplier: 3
+              rewards:
+                wordValue: 0.1
+                html:
+                  a:
+                    score: 1
+                    countWords: true
+                  code:
+                    score: 1
+                    countWords: false
+                  img:
+                    score: 1
+                    countWords: false
+                  h1:
+                    score: 1
+                    countWords: true
+                  h2:
+                    score: 1
+                    countWords: true
+                  h3:
+                    score: 1
+                    countWords: true
+                  h4:
+                    score: 1
+                    countWords: true
+                  h5:
+                    score: 1
+                    countWords: true
+                  h6:
+                    score: 1
+                    countWords: true
+                  br:
+                    score: 0
+                    countWords: true
+                  p:
+                    score: 0
+                    countWords: true
+                  em:
+                    score: 0
+                    countWords: true
+                  ul:
+                    score: 0
+                    countWords: true
+                  td:
+                    score: 0
+                    countWords: true
+                  hr:
+                    score: 0
+                    countWords: true
+                  ol:
+                    score: 0
+                    countWords: true
+                  pre:
+                    score: 0
+                    countWords: false
+                  strong:
+                    score: 0
+                    countWords: false
+                  blockquote:
+                    score: 0
+                    countWords: false
+                  li:
+                    score: 0.1
+                    countWords: true
+            - role:
+                - ISSUE_CONTRIBUTOR
+                - ISSUE_ASSIGNEE
+              multiplier: 1
+              rewards:
+                wordValue: 0.1
+                html:
+                  a:
+                    score: 1
+                    countWords: true
+                  code:
+                    score: 1
+                    countWords: false
+                  img:
+                    score: 1
+                    countWords: false
+                  h1:
+                    score: 1
+                    countWords: true
+                  h2:
+                    score: 1
+                    countWords: true
+                  h3:
+                    score: 1
+                    countWords: true
+                  h4:
+                    score: 1
+                    countWords: true
+                  h5:
+                    score: 1
+                    countWords: true
+                  h6:
+                    score: 1
+                    countWords: true
+                  br:
+                    score: 0
+                    countWords: true
+                  p:
+                    score: 0
+                    countWords: true
+                  em:
+                    score: 0
+                    countWords: true
+                  ul:
+                    score: 0
+                    countWords: true
+                  td:
+                    score: 0
+                    countWords: true
+                  hr:
+                    score: 0
+                    countWords: true
+                  ol:
+                    score: 0
+                    countWords: true
+                  pre:
+                    score: 0
+                    countWords: false
+                  strong:
+                    score: 0
+                    countWords: false
+                  blockquote:
+                    score: 0
+                    countWords: false
+                  li:
+                    score: 0.1
+                    countWords: true
+            - role:
+                - PULL_AUTHOR
+                - PULL_CONTRIBUTOR
+                - PULL_ASSIGNEE
+              multiplier: 0
+              rewards:
+                wordValue: 0
+                html:
+                  a:
+                    score: 1
+                    countWords: true
+                  code:
+                    score: 1
+                    countWords: false
+                  img:
+                    score: 1
+                    countWords: false
+                  h1:
+                    score: 1
+                    countWords: true
+                  h2:
+                    score: 1
+                    countWords: true
+                  h3:
+                    score: 1
+                    countWords: true
+                  h4:
+                    score: 1
+                    countWords: true
+                  h5:
+                    score: 1
+                    countWords: true
+                  h6:
+                    score: 1
+                    countWords: true
+                  br:
+                    score: 0
+                    countWords: true
+                  p:
+                    score: 0
+                    countWords: true
+                  em:
+                    score: 0
+                    countWords: true
+                  ul:
+                    score: 0
+                    countWords: true
+                  td:
+                    score: 0
+                    countWords: true
+                  hr:
+                    score: 0
+                    countWords: true
+                  ol:
+                    score: 0
+                    countWords: true
+                  pre:
+                    score: 0
+                    countWords: false
+                  strong:
+                    score: 0
+                    countWords: false
+                  blockquote:
+                    score: 0
+                    countWords: false
+                  li:
+                    score: 0.1
+                    countWords: true
+        permitGeneration: {}
+        simplificationIncentivizer: {}
+        payment:
+          automaticTransferMode: false
+        githubComment:
+          post: true
+          debug: false
+      dataCollection:
+        maxAttempts: 10
+        delayMs: 1000
+    runsOn:
+      - issues.closed
+      - pull_request.closed
+    skipBotEvents: false
+  ubiquity-os-marketplace/text-vector-embeddings@development:
+    with:
+      matchThreshold: 0.95
+      warningThreshold: 0.75
+      jobMatchingThreshold: 0.8
+      alwaysRecommend: 0
+    runsOn:
+      - issue_comment.created
+      - issue_comment.edited
+      - issue_comment.deleted
+      - issues.opened
+      - issues.edited
+      - issues.deleted
+      - issues.labeled
+      - issues.closed
+    skipBotEvents: false
+  ubiquity-os-marketplace/daemon-spec-rewriter@development:
+    with: {}
+    runsOn:
+      - issues.labeled
+      - issues.assigned
+      - issues.unassigned
+      - issues.edited
+      - issues.reopened
+      - issues.unlabeled
+    skipBotEvents: true
+  https://daemon-xp-development.deno.dev:
+    with: {}
+    runsOn:
+      - issues.unassigned
+      - issue_comment.created
+      - pull_request_review_comment.created
+      - pull_request_review.submitted
+    skipBotEvents: false
+  http://127.0.0.1:9090:
+    with: {}
+    runsOn:
+      - issue_comment.created
+    skipBotEvents: true
+zeroTrue: &ref_2
+  score: 0
+  countWords: true
+zeroFalse: &ref_3
+  score: 0
+  countWords: false
+oneTrue: &ref_0
+  score: 1
+  countWords: true
+oneFalse: &ref_1
+  score: 1
+  countWords: false
+allRoles:
+  - collaborator
+  - contributor
+collaboratorOnly:
+  - collaborator
+teamMembersOnly:
+  - COLLABORATOR
+  - OWNER
+  - MEMBER
+  - ADMIN
+timeLabels:
+  - name: 'Time: <15 Minutes'
+    collaboratorOnly: false
+  - name: 'Time: <1 Hour'
+    collaboratorOnly: false
+  - name: 'Time: <2 Hours'
+    collaboratorOnly: false
+  - name: 'Time: <4 Hours'
+    collaboratorOnly: false
+  - name: 'Time: <1 Day'
+    collaboratorOnly: false
+  - name: 'Time: <1 Week'
+    collaboratorOnly: false
+priorityLabels:
+  - name: 'Priority: 0 (Regression)'
+    collaboratorOnly: false
+  - name: 'Priority: 1 (Normal)'
+    collaboratorOnly: false
+  - name: 'Priority: 2 (Medium)'
+    collaboratorOnly: false
+  - name: 'Priority: 3 (High)'
+    collaboratorOnly: false
+  - name: 'Priority: 4 (Urgent)'
+    collaboratorOnly: false
+  - name: 'Priority: 5 (Emergency)'
+    collaboratorOnly: false
+tcrHtmlConfig:
+  a: *ref_0
+  code: *ref_1
+  img: *ref_1
+  h1: *ref_0
+  h2: *ref_0
+  h3: *ref_0
+  h4: *ref_0
+  h5: *ref_0
+  h6: *ref_0
+  br: *ref_2
+  p: *ref_2
+  em: *ref_2
+  ul: *ref_2
+  td: *ref_2
+  hr: *ref_2
+  ol: *ref_2
+  pre: *ref_3
+  strong: *ref_3
+  blockquote: *ref_3
+  li:
+    score: 0.1
+    countWords: true

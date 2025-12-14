@@ -1,0 +1,60 @@
+[submodule "lib/command-start-stop"]
+	path = lib/command-start-stop
+	url = https://github.com/ubiquity-os-marketplace/command-start-stop.git
+[submodule "lib/daemon-planner"]
+	path = lib/daemon-planner
+	url = https://github.com/ubiquity-os-marketplace/daemon-planner.git
+[submodule "lib/text-conversation-rewards"]
+	path = lib/text-conversation-rewards
+	url = https://github.com/ubiquity-os-marketplace/text-conversation-rewards.git
+[submodule "lib/text-vector-embeddings"]
+	path = lib/text-vector-embeddings
+	url = https://github.com/ubiquity-os-marketplace/text-vector-embeddings.git
+[submodule "lib/command-query"]
+	path = lib/command-query
+	url = https://github.com/ubiquity-os-marketplace/command-query.git
+[submodule "lib/command-ask"]
+	path = lib/command-ask
+	url = https://github.com/ubiquity-os-marketplace/command-ask.git
+[submodule "lib/daemon-pull-review"]
+	path = lib/daemon-pull-review
+	url = https://github.com/ubiquity-os-marketplace/daemon-pull-review.git
+[submodule "lib/daemon-xp"]
+	path = lib/daemon-xp
+	url = https://github.com/ubiquity-os-marketplace/daemon-xp.git
+[submodule "lib/daemon-pricing"]
+	path = lib/daemon-pricing
+	url = https://github.com/ubiquity-os-marketplace/daemon-pricing.git
+[submodule "lib/command-config"]
+	path = lib/command-config
+	url = https://github.com/ubiquity-os-marketplace/command-config.git
+[submodule "lib/daemon-disqualifier"]
+	path = lib/daemon-disqualifier
+	url = https://github.com/ubiquity-os-marketplace/daemon-disqualifier.git
+[submodule "lib/command-wallet"]
+	path = lib/command-wallet
+	url = https://github.com/ubiquity-os-marketplace/command-wallet.git
+[submodule "lib/daemon-merging"]
+	path = lib/daemon-merging
+	url = https://github.com/ubiquity-os-marketplace/daemon-merging.git
+[submodule "lib/daemon-spec-rewriter"]
+	path = lib/daemon-spec-rewriter
+	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
+[submodule "lib/personal-agent-bridge"]
+	path = lib/personal-agent-bridge
+	url = https://github.com/ubiquity-os-marketplace/personal-agent-bridge.git
+[submodule "lib/.github"]
+	path = lib/.github
+	url = https://github.com/ubiquity-os-marketplace/.github.git
+[submodule "lib/.github-private"]
+	path = lib/.github-private
+	url = https://github.com/ubiquity-os-marketplace/.github-private.git
+[submodule "lib/.ubiquity-os"]
+	path = lib/.ubiquity-os
+	url = https://github.com/ubiquity-os-marketplace/.ubiquity-os.git
+[submodule "lib/personal-agent"]
+	path = lib/personal-agent
+	url = https://github.com/ubiquity-os-marketplace/personal-agent.git
+[submodule "lib/ubiquity-os-kernel-telegram"]
+	path = lib/ubiquity-os-kernel-telegram
+	url = https://github.com/ubiquity-os-marketplace/ubiquity-os-kernel-telegram.git
