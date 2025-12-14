@@ -184,18 +184,17 @@ Plugins can securely call the ai.ubq.fi LLM endpoint using inherited GitHub auth
 
 ### LLM SDK Overview
 
-The `lib/llm-sdk/` provides a unified `callLlm()` function for plugins:
+The LLM functionality is integrated into `@ubiquity-os/plugin-sdk` as `callLlm()`:
 
-- **HTTP Plugins**: Import and call directly.
-- **GitHub Actions Plugins**: Use the composite action or CLI wrapper.
+- **HTTP Plugins**: Import `callLlm` from plugin-sdk.
+- **GitHub Actions Plugins**: Use the composite action.
 - **Kernel**: Direct import for internal use.
 
 #### Usage Examples
 
 **HTTP Plugin**:
 ```typescript
-import { PluginInput, createPlugin } from '@ubiquity-os/plugin-sdk';
-import { callLlm } from '@ubiquity-os/llm-sdk';
+import { PluginInput, createPlugin, callLlm } from '@ubiquity-os/plugin-sdk';
 
 export default createPlugin({
   async onCommand(input: PluginInput) {
@@ -266,8 +265,8 @@ bun run test-command llm-query https://github.com/0x4007/ubiquity-os-sandbox/iss
 
 ### Relevant Files
 
-- `lib/llm-sdk/index.ts` - Core callLlm function
-- `lib/llm-sdk/action.yml` - Composite action
+- `lib/plugin-sdk/src/llm/index.ts` - Core callLlm function
+- `lib/plugin-sdk/.github/actions/llm-call/action.yml` - Composite action
 - `lib/ai.ubq.fi/serve.ts` - API with GitHub verification
 - `src/github/handlers/index.ts` - Dispatch with authToken
 - `lib/plugin-sdk/src/signature.ts` - PluginInput types
