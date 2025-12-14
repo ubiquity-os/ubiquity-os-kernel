@@ -93,11 +93,14 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
     return _manifestCache[manifestKey];
   }
   try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000); // 5s timeout
     const { data } = await context.octokit.rest.repos.getContent({
       owner,
       repo,
       path: "manifest.json",
       ref,
+      request: { signal: controller.signal },
     });
     if ("content" in data) {
       const content = Buffer.from(data.content, "base64").toString();
@@ -118,7 +121,9 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
   }
   const manifestUrl = `${url}/manifest.json`;
   try {
-    const result = await fetch(manifestUrl);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const result = await fetch(manifestUrl, { signal: controller.signal });
     const jsonData = await result.json();
     const manifest = decodeManifest(context, jsonData);
     _manifestCache[url] = manifest;

@@ -84,10 +84,17 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 }
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`/help`)) {
+  const body = context.payload.comment.body.trim();
+  const bodyLower = body.toLowerCase();
+
+  if (bodyLower.startsWith(`/help`)) {
     await postHelpCommand(context);
-  } else if (body.startsWith(`@ubiquityos`)) {
+  } else if (bodyLower.startsWith(`@ubiquityos`)) {
+    await commandRouter(context);
+  } else if (body.startsWith(`/`)) {
+    // Route all slash commands to the command router
+    // Prepend @ubiquityos to make it look like a bot mention for the AI
+    context.payload.comment.body = `@ubiquityos ${body}`;
     await commandRouter(context);
   } else if (await isUserHelpRequest(context)) {
     const issueAuthor = context.payload.issue.user?.login;
@@ -171,8 +178,12 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   context.logger.debug(commands, "Available commands");
 
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 10000); // 10s timeout
+
   const response = await context.openAi.chat.completions.create({
     model: context.llm,
+    signal: controller.signal,
     messages: [
       {
         role: "system",

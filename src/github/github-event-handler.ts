@@ -55,12 +55,18 @@ export class GitHubEventHandler {
       this.logger.github({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      this.logger.github({ err: error }, "Webhook error");
+      this.logger.github({ err: error, secret: this._webhookSecret.substring(0, 10) + "..." }, "Webhook error - check secret match");
     });
   }
 
   async signPayload(payload: string) {
     return signPayload(payload, this._privateKey);
+  }
+
+  getPublicKey() {
+    // For now, return the private key as plugins may need it for verification
+    // In production, this should extract the public key from the private key
+    return this._privateKey;
   }
 
   transformEvent(event: EmitterWebhookEvent) {

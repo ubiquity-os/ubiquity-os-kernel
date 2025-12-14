@@ -15,12 +15,12 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
 }
 
 export async function postHelpCommand(context: GitHubContext<"issue_comment.created">) {
-  const comments = [
-    "### Available Commands\n\n",
-    "| Command | Description | Example |",
-    "|---|---|---|",
-    "| `/help` | List all available commands. | `/help` |",
-  ];
+  // Get kernel version and commit hash
+  const version = await getPackageVersion();
+  const commitHash = await getCommitHash();
+  const environment = context.eventHandler.environment;
+
+  const comments = ["| Command | Description | Example |", "|---|---|---|", "| `/help` | List all available commands. | `/help` |"];
   const commands: string[] = [];
   const configuration = await getConfig(context);
   for (const [pluginKey] of Object.entries(configuration.plugins)) {
@@ -36,13 +36,32 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   if (!commands.length) {
     context.logger.warn("No commands found, will not post the help command message.");
   } else {
+    const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [v${version}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${version}) [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
     await context.octokit.rest.issues.createComment({
-      body: comments.concat(commands.sort()).join("\n"),
+      body: comments.concat(commands.sort()).join("\n") + footer,
       issue_number: context.payload.issue.number,
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
     });
   }
+}
+
+/**
+ * Get the package version
+ */
+async function getPackageVersion(): Promise<string> {
+  // In Cloudflare Worker environment, we can't read files
+  // Use a hardcoded version or environment variable
+  return process.env.npm_package_version || "7.0.0";
+}
+
+/**
+ * Get the current git commit hash
+ */
+async function getCommitHash(): Promise<string> {
+  // In Cloudflare Worker environment, we can't run git commands
+  // Use an environment variable set at build time
+  return process.env.GIT_COMMIT_HASH || "159ea6e";
 }
 
 /**

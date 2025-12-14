@@ -5,13 +5,15 @@ import { readFileSync, unlinkSync, writeFileSync } from "fs";
 import ora from "ora";
 import path from "path";
 import toml from "toml";
+import { fileURLToPath } from "url";
 
 interface WranglerConfiguration {
   env?: Record<string, unknown>;
 }
 
-const WRANGLER_PATH = path.resolve(__dirname, "..", "node_modules/.bin/wrangler");
-const WRANGLER_TOML_PATH = path.resolve(__dirname, "..", "wrangler.toml");
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const WRANGLER_PATH = path.resolve(SCRIPT_DIR, "..", "node_modules/.bin/wrangler");
+const WRANGLER_TOML_PATH = path.resolve(SCRIPT_DIR, "..", "wrangler.toml");
 
 function checkIfWranglerInstalled() {
   return new Promise((resolve) => {
@@ -138,10 +140,10 @@ void (async () => {
     });
     const spinner = ora("Setting secrets").render();
     try {
-      const env = readFileSync(path.resolve(__dirname, "..", envFile), { encoding: "utf-8" });
+      const env = readFileSync(path.resolve(SCRIPT_DIR, "..", envFile), { encoding: "utf-8" });
       const parsedEnv = parse(env);
       if (parsedEnv) {
-        const tmpPath = path.resolve(__dirname, "..", `${envFile}.json.tmp`);
+        const tmpPath = path.resolve(SCRIPT_DIR, "..", `${envFile}.json.tmp`);
         writeFileSync(tmpPath, JSON.stringify(parsedEnv));
         await wranglerBulkSecrets(selectedEnv, tmpPath);
         unlinkSync(tmpPath); // deletes the temporary file

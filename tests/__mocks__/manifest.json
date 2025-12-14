@@ -5,7 +5,7 @@
 	"commands": {
 		"hello": {
 			"ubiquity:example": "/hello",
-			"description": "Greet Ubiquibot!"
+			"description": "A test plugin."
 		}
 	}
 }

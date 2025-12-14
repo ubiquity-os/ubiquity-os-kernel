@@ -37,9 +37,10 @@ The kernel is designed to:
 ### Quick Start
 
 ```bash
-git clone https://github.com/ubiquity-os/ubiquity-os-kernel
+git clone --recurse-submodules https://github.com/ubiquity-os/ubiquity-os-kernel
 cd ubiquity-os-kernel
 bun install
+bun run setup:plugins
 bun dev
 ```
 

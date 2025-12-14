@@ -23,7 +23,34 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   }
 
   const { yaml, errors } = parseYaml(context, rawData);
-  const targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
+  let targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
+
+  // Handle new array format: convert to old object format
+  if (targetRepoConfiguration && Array.isArray(targetRepoConfiguration.plugins)) {
+    context.logger.debug({ owner, repository }, "Converting array-format plugins to object format");
+    const convertedPlugins: Record<string, PluginSettings> = {};
+    for (let i = 0; i < targetRepoConfiguration.plugins.length; i++) {
+      const pluginItem = targetRepoConfiguration.plugins[i];
+      if (pluginItem && typeof pluginItem === "object" && "uses" in pluginItem && Array.isArray(pluginItem.uses)) {
+        for (const use of pluginItem.uses) {
+          if (use && typeof use === "object" && "plugin" in use) {
+            const pluginKey = use.plugin;
+            const pluginConfig = {
+              ...use,
+              plugin: undefined, // remove the plugin key from with
+            };
+            delete pluginConfig.plugin;
+            convertedPlugins[pluginKey] = pluginConfig;
+          }
+        }
+      }
+    }
+    targetRepoConfiguration = {
+      ...targetRepoConfiguration,
+      plugins: convertedPlugins,
+    };
+  }
+
   context.logger.debug({ owner, repository }, "Decoding configuration");
   if (targetRepoConfiguration) {
     try {
@@ -145,11 +172,14 @@ async function download({ context, repository, owner }: { context: GitHubContext
   const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
   try {
     context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000); // 5s timeout
     const { data, headers } = await context.octokit.rest.repos.getContent({
       owner,
       repo: repository,
       path: filePath,
       mediaType: { format: "raw" },
+      request: { signal: controller.signal },
     });
     context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
     return data as unknown as string; // this will be a string if media format is raw

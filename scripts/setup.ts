@@ -6,9 +6,11 @@ import NodeRSA from "node-rsa";
 import open from "open";
 import ora, { Ora } from "ora";
 import path from "path";
+import { fileURLToPath } from "url";
 
 const PORT = 3000;
 const DEV_ENV_FILE = ".dev.vars";
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const manifestTemplate = {
   url: "https://github.com/ubiquity-os/ubiquity-os-kernel",
@@ -86,7 +88,7 @@ class GithubAppSetup {
   }
 
   sendHtml(res: http.ServerResponse, content: string) {
-    res.writeHead(500, { "Content-Type": "text/html" });
+    res.writeHead(200, { "Content-Type": "text/html" });
     res.end(content);
   }
 
@@ -113,14 +115,14 @@ class GithubAppSetup {
       .map(([key, value]) => `${key}=${value}`)
       .join("\n");
 
-    fs.writeFileSync(path.join(__dirname, "..", file), envContent, { flag: "a" });
+    fs.writeFileSync(path.join(SCRIPT_DIR, "..", file), envContent, { flag: "a" });
   }
 
   async handleIndexRequest(url: URL, req: http.IncomingMessage, res: http.ServerResponse) {
     const manifest = { ...manifestTemplate };
     manifest.hook_attributes.url = this._env.WEBHOOK_PROXY_URL;
 
-    const htmlContent = fs.readFileSync(path.join(__dirname, "index.html")).toString().replace("{{ MANIFEST }}", JSON.stringify(manifest));
+    const htmlContent = fs.readFileSync(path.join(SCRIPT_DIR, "index.html")).toString().replace("{{ MANIFEST }}", JSON.stringify(manifest));
     this.sendHtml(res, htmlContent);
   }
 
@@ -134,7 +136,7 @@ class GithubAppSetup {
       code,
     });
 
-    const htmlContent = fs.readFileSync(path.join(__dirname, "redirect.html")).toString().replace("{{ APP_URL }}", data.html_url);
+    const htmlContent = fs.readFileSync(path.join(SCRIPT_DIR, "redirect.html")).toString().replace("{{ APP_URL }}", data.html_url);
     this.sendHtml(res, htmlContent);
 
     this._server.close();

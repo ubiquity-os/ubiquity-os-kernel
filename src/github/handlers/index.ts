@@ -22,11 +22,25 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("issue_comment.created", issueCommentCreated);
   eventHandler.on("push", handlePushEvent);
+  eventHandler.on("installation.created", () => {}); // No-op to handle event
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
   const context = eventHandler.transformEvent(event);
+
+  // Skip plugin processing for workflow-related events to prevent infinite loops
+  if (
+    context.key.startsWith("workflow_") ||
+    context.key.startsWith("check_") ||
+    context.key === "deployment_status.created" ||
+    context.key === "repository_dispatch.return-data-to-ubiquity-os-kernel" ||
+    context.key.startsWith("check_run.") ||
+    context.key.startsWith("check_suite.")
+  ) {
+    context.logger.debug({ event: context.key }, "Skipping plugin processing for workflow-related event to prevent loops");
+    return;
+  }
 
   const config = await getConfig(context);
 

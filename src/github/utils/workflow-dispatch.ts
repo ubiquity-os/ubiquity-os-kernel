@@ -33,13 +33,26 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
 }
 
 export async function dispatchWorker(targetUrl: string, payload?: Record<string, unknown>) {
+  const { signature, ...body } = payload || {};
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (signature) {
+    headers["X-Hub-Signature-256"] = `sha256=${signature}`;
+  }
+
   const result = await fetch(targetUrl, {
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
   });
+
+  if (!result.ok) {
+    const errText = await result.text();
+    throw new Error(`HTTP ${result.status}: ${errText}`);
+  }
+
   return result.json();
 }
 

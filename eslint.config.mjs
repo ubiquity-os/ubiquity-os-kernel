@@ -15,6 +15,8 @@ export default tsEslint.config({
     "jest.config.ts",
     ".husky/**",
     "dist/**",
+    "**/dist/**",
+    "**/*.js",
     "lib/**",
     "!lib/hello-world-plugin/**",
   ],
