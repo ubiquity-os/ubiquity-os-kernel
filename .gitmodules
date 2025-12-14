@@ -58,3 +58,9 @@
 	path = lib/daemon-spec-rewriter
 	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
 	branch = fix/action-entry
+[submodule "lib/ai.ubq.fi"]
+	path = lib/ai.ubq.fi
+	url = https://github.com/ubiquity/ai.ubq.fi.git
+[submodule "lib/plugin-sdk"]
+	path = lib/plugin-sdk
+	url = https://github.com/ubiquity-os/plugin-sdk.git
