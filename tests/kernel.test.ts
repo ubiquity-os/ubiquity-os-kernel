@@ -45,10 +45,10 @@ const TEST_ENVIRONMENT = "development";
 const TEST_ORG = "0x4007";
 const TEST_REPO = "ubiquity-os-sandbox";
 const TEST_HELLO_WORLD_URL = "http://127.0.0.1:9090";
-
+const MOCK_TOKEN = "mock-token";
 const mockEventHandler = {
   environment: TEST_ENVIRONMENT,
-  getToken: jest.fn().mockResolvedValue("mock-token"),
+  getToken: jest.fn().mockResolvedValue(MOCK_TOKEN),
   signPayload: jest.fn().mockResolvedValue("mock-signature"),
   logger: logger,
 } as unknown as GitHubEventHandler;
@@ -66,7 +66,8 @@ const mockOctokit = {
 const TEST_APP_ID = "12345";
 const TEST_PRIVATE_KEY = "test-private-key";
 const TEST_WEBHOOK_SECRET = "test-secret";
-const TEST_MODEL = "test-model";
+const TEST_MODEL_NAME = "test-model";
+const TEST_MODEL = TEST_MODEL_NAME;
 
 // Helper to create fake event
 function createFakeEvent(org: string, repo: string, commentBody: string): EmitterWebhookEvent {
@@ -167,7 +168,7 @@ describe("Kernel Event Processing Tests", () => {
       llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
-    jest.spyOn(eventHandler, "getToken").mockResolvedValue("mock-token");
+    jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
 
     // Bind handlers
     const { bindHandlers } = await import("../src/github/handlers/index");
@@ -213,7 +214,7 @@ describe("Kernel Event Processing Tests", () => {
       llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
-    jest.spyOn(eventHandler, "getToken").mockResolvedValue("mock-token");
+    jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
 
     // Mock transformEvent
     jest.spyOn(eventHandler, "transformEvent").mockReturnValue({
