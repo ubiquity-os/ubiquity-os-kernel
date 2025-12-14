@@ -12,8 +12,10 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/types/plugin", () => {
-  const originalModule: typeof import("../src/github/types/plugin") = jest.requireActual("../src/github/types/plugin");
+PLUGIN_TYPE = "../src/github/types/plugin";
+
+jest.mock(PLUGIN_TYPE, () => {
+  const originalModule: typeof import(PLUGIN_TYPE) = jest.requireActual(PLUGIN_TYPE);
 
   return {
     ...originalModule,
