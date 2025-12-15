@@ -1,47 +1,47 @@
-[submodule "lib/command-codex"]
-	path = lib/command-codex
+[submodule "lib/plugins/command-codex"]
+	path = lib/plugins/command-codex
 	url = https://github.com/ubiquity-os-marketplace/command-codex.git
-[submodule "lib/command-start-stop"]
-	path = lib/command-start-stop
+[submodule "lib/plugins/command-start-stop"]
+	path = lib/plugins/command-start-stop
 	url = https://github.com/ubiquity-os-marketplace/command-start-stop.git
-[submodule "lib/daemon-planner"]
-	path = lib/daemon-planner
+[submodule "lib/plugins/daemon-planner"]
+	path = lib/plugins/daemon-planner
 	url = https://github.com/ubiquity-os-marketplace/daemon-planner.git
-[submodule "lib/text-conversation-rewards"]
-	path = lib/text-conversation-rewards
+[submodule "lib/plugins/text-conversation-rewards"]
+	path = lib/plugins/text-conversation-rewards
 	url = https://github.com/ubiquity-os-marketplace/text-conversation-rewards.git
-[submodule "lib/text-vector-embeddings"]
-	path = lib/text-vector-embeddings
+[submodule "lib/plugins/text-vector-embeddings"]
+	path = lib/plugins/text-vector-embeddings
 	url = https://github.com/ubiquity-os-marketplace/text-vector-embeddings.git
-[submodule "lib/command-query"]
-	path = lib/command-query
+[submodule "lib/plugins/command-query"]
+	path = lib/plugins/command-query
 	url = https://github.com/ubiquity-os-marketplace/command-query.git
-[submodule "lib/command-ask"]
-	path = lib/command-ask
+[submodule "lib/plugins/command-ask"]
+	path = lib/plugins/command-ask
 	url = https://github.com/ubiquity-os-marketplace/command-ask.git
-[submodule "lib/daemon-pull-review"]
-	path = lib/daemon-pull-review
+[submodule "lib/plugins/daemon-pull-review"]
+	path = lib/plugins/daemon-pull-review
 	url = https://github.com/ubiquity-os-marketplace/daemon-pull-review.git
-[submodule "lib/daemon-xp"]
-	path = lib/daemon-xp
+[submodule "lib/plugins/daemon-xp"]
+	path = lib/plugins/daemon-xp
 	url = https://github.com/ubiquity-os-marketplace/daemon-xp.git
-[submodule "lib/daemon-pricing"]
-	path = lib/daemon-pricing
+[submodule "lib/plugins/daemon-pricing"]
+	path = lib/plugins/daemon-pricing
 	url = https://github.com/ubiquity-os-marketplace/daemon-pricing.git
-[submodule "lib/command-config"]
-	path = lib/command-config
+[submodule "lib/plugins/command-config"]
+	path = lib/plugins/command-config
 	url = https://github.com/ubiquity-os-marketplace/command-config.git
-[submodule "lib/daemon-disqualifier"]
-	path = lib/daemon-disqualifier
+[submodule "lib/plugins/daemon-disqualifier"]
+	path = lib/plugins/daemon-disqualifier
 	url = https://github.com/ubiquity-os-marketplace/daemon-disqualifier.git
-[submodule "lib/command-wallet"]
-	path = lib/command-wallet
+[submodule "lib/plugins/command-wallet"]
+	path = lib/plugins/command-wallet
 	url = https://github.com/ubiquity-os-marketplace/command-wallet.git
-[submodule "lib/daemon-merging"]
-	path = lib/daemon-merging
+[submodule "lib/plugins/daemon-merging"]
+	path = lib/plugins/daemon-merging
 	url = https://github.com/ubiquity-os-marketplace/daemon-merging.git
-[submodule "lib/daemon-spec-rewriter"]
-	path = lib/daemon-spec-rewriter
+[submodule "lib/plugins/daemon-spec-rewriter"]
+	path = lib/plugins/daemon-spec-rewriter
 	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
 [submodule "lib/ai.ubq.fi"]
 	path = lib/ai.ubq.fi

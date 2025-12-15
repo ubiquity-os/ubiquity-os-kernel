@@ -1,7 +1,8 @@
 import { createPlugin } from "@ubiquity-os/plugin-sdk";
-import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import { LOG_LEVEL, LogLevel } from "@ubiquity-os/ubiquity-os-logger";
-import { ExecutionContext } from "hono";
+import type { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
+import { LOG_LEVEL } from "@ubiquity-os/ubiquity-os-logger";
+import type { LogLevel } from "@ubiquity-os/ubiquity-os-logger";
+import type { ExecutionContext } from "hono";
 import manifest from "../manifest.json";
 import { runPlugin } from "./index";
 import { Command } from "./index";

@@ -6,6 +6,19 @@
     "hello": {
       "ubiquity:example": "/hello",
       "description": "A test plugin."
+    },
+    "llm": {
+      "ubiquity:example": "/llm tell me a short joke",
+      "description": "Run an LLM prompt and reply with the result.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Prompt to send to the language model."
+          }
+        }
+      }
     }
   }
 }

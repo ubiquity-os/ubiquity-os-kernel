@@ -48,8 +48,8 @@ The kernel already has working examples of both plugin _interfaces_:
 
 These show the “standard” `workflow_dispatch` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection):
 
-- `lib/command-ask/.github/workflows/compute.yml`
-- `lib/daemon-pull-review/.github/workflows/compute.yml`
+- `lib/plugins/command-ask/.github/workflows/compute.yml`
+- `lib/plugins/daemon-pull-review/.github/workflows/compute.yml`
 
 ### Optional: Codex GitHub Action (`openai/codex-action`) (API key auth)
 
@@ -72,8 +72,8 @@ Note: you generally **do not** need to vendor this action (submodule/copy). Pref
 
 This shows the simplest manifest/command declaration pattern (no args, command name routing in code):
 
-- `lib/hello-world-plugin/manifest.json`
-- `lib/hello-world-plugin/src/index.ts`
+- `lib/plugins/hello-world-plugin/manifest.json`
+- `lib/plugins/hello-world-plugin/src/index.ts`
 
 ### Kernel input shape (minimal plugin)
 

@@ -43,7 +43,7 @@ Usage:
   bun run setup:plugins [--all] [--force] [--skip-submodules]
 
 Options:
-  --all              Install for every plugin under lib/ (default: only missing node_modules/)
+  --all              Install for every plugin under lib/plugins/ (default: only missing node_modules/)
   --force            Pass --force to bun install
   --skip-submodules  Skip "git submodule update --init --recursive"
 `.trim()
@@ -61,7 +61,7 @@ void (async () => {
 
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(scriptDir, "..");
-  const libDir = path.join(repoRoot, "lib");
+  const libDir = path.join(repoRoot, "lib", "plugins");
 
   if (!shouldSkipSubmodules && fs.existsSync(path.join(repoRoot, ".gitmodules"))) {
     console.log("Updating git submodules...");
@@ -70,7 +70,7 @@ void (async () => {
 
   const plugins = listPlugins(libDir);
   if (!plugins.length) {
-    console.log('No plugin packages found under "lib/".');
+    console.log('No plugin packages found under "lib/plugins/".');
     process.exit(0);
   }
 

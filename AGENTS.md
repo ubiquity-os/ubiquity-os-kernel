@@ -7,8 +7,36 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 ```bash
 bun install
 
-# Only needed if you're working on plugin submodules under lib/
+# Only needed if you're working on plugin submodules under lib/plugins/
 bun run setup:plugins
+```
+
+## 🔗 Local plugin-sdk development (linking)
+
+If you're editing `lib/plugin-sdk` locally and want other packages/plugins to use it before publishing to npm:
+
+```bash
+# 1) Build the SDK (exports point at dist/)
+cd lib/plugin-sdk
+bun install
+bun run build
+
+# 2) Register it globally for bun link
+bun link
+
+# 3) Link it into a consumer package (example: lib/plugins/hello-world-plugin)
+cd ../plugins/hello-world-plugin
+bun install
+bun link @ubiquity-os/plugin-sdk
+```
+
+To undo:
+
+```bash
+cd lib/plugins/hello-world-plugin
+bun unlink @ubiquity-os/plugin-sdk
+cd ../plugin-sdk
+bun unlink
 ```
 
 ## ✅ Unit Tests (Mocked, No Real API Calls)
@@ -281,7 +309,7 @@ sequenceDiagram
     participant Plugin
     participant ai.ubq.fi
 
-    User->>GitHub: Comments "/llm-hello"
+    User->>GitHub: Comments "/llm <prompt>"
     GitHub->>Kernel: Webhook event
     Kernel->>Kernel: Generate installation token
     Kernel->>Plugin: Dispatch with authToken + owner/repo

@@ -13,6 +13,16 @@ export type ResolvedPlugin = {
   settings: PluginSettings;
 };
 
+function isManifestCacheEnabled(context: GitHubContext) {
+  const environment = String(context.eventHandler.environment ?? "").toLowerCase();
+  if (environment === "development") {
+    return false;
+  }
+
+  const disableCache = typeof process !== "undefined" ? process.env.UBQ_DISABLE_MANIFEST_CACHE : undefined;
+  return !disableCache || !["1", "true", "yes"].includes(disableCache.toLowerCase());
+}
+
 function formatPluginTarget(target: string | GithubPlugin) {
   return typeof target === "string"
     ? target
@@ -59,7 +69,8 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
 
 async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
-  if (_manifestCache[manifestKey]) {
+  const useCache = isManifestCacheEnabled(context);
+  if (useCache && _manifestCache[manifestKey]) {
     return _manifestCache[manifestKey];
   }
   try {
@@ -77,7 +88,9 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
         const content = Buffer.from(data.content, "base64").toString();
         const contentParsed = JSON.parse(content);
         const manifest = decodeManifest(context, contentParsed);
-        _manifestCache[manifestKey] = manifest;
+        if (useCache) {
+          _manifestCache[manifestKey] = manifest;
+        }
         return manifest;
       }
     } finally {
@@ -90,7 +103,8 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
 }
 
 async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
-  if (_manifestCache[url]) {
+  const useCache = isManifestCacheEnabled(context);
+  if (useCache && _manifestCache[url]) {
     return _manifestCache[url];
   }
   const manifestUrl = `${url}/manifest.json`;
@@ -101,7 +115,9 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       const result = await fetch(manifestUrl, { signal: controller.signal });
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
-      _manifestCache[url] = manifest;
+      if (useCache) {
+        _manifestCache[url] = manifest;
+      }
       return manifest;
     } finally {
       clearTimeout(timeout);

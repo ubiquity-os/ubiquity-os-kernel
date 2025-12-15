@@ -1,0 +1,52 @@
+name: "hello-world-plugin"
+
+on:
+  workflow_dispatch:
+    inputs:
+      stateId:
+        description: "State Id"
+      eventName:
+        description: "Event Name"
+      eventPayload:
+        description: "Event Payload"
+      settings:
+        description: "Settings"
+      authToken:
+        description: "Auth Token"
+      ref:
+        description: "Ref"
+      signature:
+        description: "Signature sent from the Kernel"
+      command:
+        description: "Command"
+
+jobs:
+  compute:
+    name: "hello-world-plugin"
+    runs-on: ubuntu-latest
+    permissions: write-all
+    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.10.0"
+
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: install dependencies
+        run: bun install --no-save
+
+      - name: build
+        run: bun run build
+
+      - name: execute directive
+        run: node dist/main.js
+        env:
+          PLUGIN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}

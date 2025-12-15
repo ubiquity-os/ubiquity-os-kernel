@@ -9,7 +9,7 @@ export default tsEslint.config({
     "@typescript-eslint": tsEslint.plugin,
     "check-file": checkFile,
   },
-  ignores: [".github/knip.ts", "**/.wrangler/**", "jest.config.ts", ".husky/**", "dist/**", "**/dist/**", "**/*.js", "lib/**", "!lib/hello-world-plugin/**"],
+  ignores: [".github/knip.ts", "**/.wrangler/**", "jest.config.ts", ".husky/**", "dist/**", "**/dist/**", "**/*.js", "lib/**", "!lib/plugins/hello-world-plugin/**"],
   extends: [eslint.configs.recommended, ...tsEslint.configs.recommended, sonarjs.configs.recommended],
   languageOptions: {
     parser: tsEslint.parser,
@@ -92,7 +92,7 @@ export default tsEslint.config({
       },
       {
         selector: "variable",
-        format: ["strictCamelCase", "UPPER_CASE"],
+        format: ["strictCamelCase", "UPPER_CASE", "snake_case"],
         leadingUnderscore: "allow",
         trailingUnderscore: "allow",
       },
@@ -111,7 +111,7 @@ export default tsEslint.config({
         selector: "variable",
         types: ["boolean"],
         format: ["StrictPascalCase"],
-        prefix: ["is", "should", "has", "can", "did", "will", "does"],
+        prefix: ["is", "should", "has", "can", "did", "will", "does", "use", "allow", "enable", "disable", "show", "hide", "include", "exclude", "require", "skip", "force", "auto", "need"],
       },
       {
         selector: "variableLike",

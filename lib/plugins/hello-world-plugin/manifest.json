@@ -1,5 +1,6 @@
 {
   "name": "hello-world-plugin",
+  "short_name": "hello-world",
   "description": "A simple hello world plugin for testing",
   "ubiquity:listeners": ["issue_comment.created"],
   "skipBotEvents": false,
@@ -9,10 +10,18 @@
       "description": "Greet Ubiquibot!",
       "parameters": {}
     },
-    "llm-hello": {
-      "ubiquity:example": "/llm-hello",
-      "description": "Get an AI-generated greeting!",
-      "parameters": {}
+    "llm": {
+      "ubiquity:example": "/llm tell me a short joke",
+      "description": "Run an LLM prompt and reply with the result.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Prompt to send to the language model."
+          }
+        }
+      }
     }
   },
   "configuration": {
