@@ -4,7 +4,7 @@ import { dispatchWorkflow } from "../src/github/utils/workflow-dispatch";
 const MARKETPLACE = "ubiquity-os-marketplace";
 
 describe("dispatchWorkflow", () => {
-  it("should force dispatch.yml workflow for fix/action-entry refs", async () => {
+  it("should dispatch the provided workflow id", async () => {
     const createWorkflowDispatch = jest.fn().mockResolvedValue({ ok: true });
     const listInstallations = jest.fn().mockResolvedValue({
       data: [{ id: 123, account: { login: MARKETPLACE } }],
@@ -44,7 +44,7 @@ describe("dispatchWorkflow", () => {
       expect.objectContaining({
         owner: MARKETPLACE,
         repo: "command-hello",
-        workflow_id: "dispatch.yml",
+        workflow_id: "legacy.yml",
         ref: "fix/action-entry",
         inputs: { foo: "bar" },
       })

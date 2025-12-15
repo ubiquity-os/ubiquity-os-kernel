@@ -243,8 +243,8 @@ describe("Event related tests", () => {
     expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
       owner: "ubiquity-os",
       repository: "plugin-b",
-      ref: "fix/action-entry",
-      workflowId: "dispatch.yml",
+      ref: "main",
+      workflowId: "compute.yml",
       inputs: {
         command: JSON.stringify({ name: "hello", parameters: { username: "pavlovcik" } }),
       },

@@ -11,8 +11,6 @@ Authentication goal: use **ChatGPT/Codex subscription auth** (not per-request AP
 
 This is intentionally implemented as a plugin (not in-kernel), so the kernel can stay lightweight and deployment-target agnostic (Deno Deploy, Workers, etc.), while agentic code execution happens in a sandboxed CI runner.
 
-Migration note (important): while the kernel is migrating to the `dispatch.yml` workflow entrypoint default, all marketplace plugin references should pin to `@fix/action-entry` (e.g., `ubiquity-os-marketplace/command-codex@fix/action-entry`) until the migration merges back to each plugin’s default branch.
-
 ## Background / Existing Kernel Behavior
 
 The kernel routes issue comments using two distinct paths (see `src/github/handlers/issue-comment-created.ts`):
@@ -48,10 +46,10 @@ The kernel already has working examples of both plugin _interfaces_:
 
 ### GitHub Actions plugins (workflow_dispatch)
 
-These show the “standard” `workflow_dispatch` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection). During the workflow-entry migration, plugins should expose a `dispatch.yml` workflow entrypoint on `@fix/action-entry`.
+These show the “standard” `workflow_dispatch` shape expected by the kernel (inputs, decompress, checkout target repo with `inputs.authToken`, env selection):
 
-- `lib/command-ask/.github/workflows/dispatch.yml`
-- `lib/daemon-pull-review/.github/workflows/dispatch.yml`
+- `lib/command-ask/.github/workflows/compute.yml`
+- `lib/daemon-pull-review/.github/workflows/compute.yml`
 
 ### Optional: Codex GitHub Action (`openai/codex-action`) (API key auth)
 
@@ -323,11 +321,11 @@ Stability note: ChatGPT subscription auth is interactive and can expire/revoke; 
 - Avoid exposing `inputs.authToken`/`GITHUB_TOKEN`/`GH_TOKEN` to the Codex step unless you explicitly want a fully autonomous agent (treat prompt-injection as a first-class threat).
 - IMPORTANT: GitHub App installation tokens expire after ~1 hour. If you expect long-running jobs (up to 6 hours), plan for token refresh (see “Full Access Mode” below).
 
-## GitHub Actions Workflow Spec (`dispatch.yml` entry)
+## GitHub Actions Workflow Spec (`compute.yml` entry)
 
-The kernel dispatches GitHub Actions plugins via `workflow_dispatch`. During the `fix/action-entry` migration, the kernel treats `dispatch.yml` as the only supported workflow entrypoint for `@fix/action-entry` (even if the plugin key includes an explicit workflow id).
+The kernel dispatches GitHub Actions plugins via `workflow_dispatch`. The default entrypoint workflow is `compute.yml` (unless a workflow id is explicitly specified in config via `owner/repo:workflow.yml`).
 
-Config examples should use `owner/repo@fix/action-entry` (defaults to `dispatch.yml`).
+Config examples should use `owner/repo` (defaults to `compute.yml`).
 
 ### Inputs
 
@@ -404,14 +402,13 @@ Token lifetime caveat (critical):
 
 ### Proposed plugin repository layout
 
-During the workflow-entry migration, prefer a root `action.yml` (Marketplace action) with a thin workflow wrapper at `.github/workflows/dispatch.yml`:
+Prefer a single workflow entrypoint at `.github/workflows/compute.yml`:
 
 ```
 command-codex/
-  action.yml
   manifest.json
   README.md
-  .github/workflows/dispatch.yml
+  .github/workflows/compute.yml
   # optional (if bash becomes too complex)
   package.json
   tsconfig.json
@@ -429,10 +426,9 @@ Two viable implementation styles:
 
 ### Workflow architecture (aligned with existing plugins)
 
-Pattern to copy (from marketplace plugins on `@fix/action-entry`):
+Pattern to copy (from existing marketplace plugins):
 
-- `.github/workflows/dispatch.yml` declares `workflow_dispatch` inputs and calls the action (`uses: ./`), passing through `inputs.*`.
-- Root `action.yml` (composite) contains the real steps: decompress payload, checkout target repo with `inputs.authToken` + `persist-credentials: false`, run Codex, then PR/comment.
+- `.github/workflows/compute.yml` declares the `workflow_dispatch` inputs and runs the steps directly: decompress payload, checkout target repo with `inputs.authToken` + `persist-credentials: false`, run Codex, then PR/comment.
 - Use GitHub Actions **environments** (`development` vs `main`) for secrets.
 
 Key additional considerations for Codex:
@@ -521,7 +517,7 @@ Rejection behavior:
 
 1. Scaffold `ubiquity-os-marketplace/command-codex`
    - Add `manifest.json` with `commands.codex`
-   - Add `.github/workflows/dispatch.yml` + root `action.yml` matching kernel inputs (on branch `fix/action-entry`)
+   - Add `.github/workflows/compute.yml` matching kernel inputs
    - Add `README.md` documenting usage and restrictions
 2. Add secrets to plugin repo environments
    - `CODEX_AUTH_JSON_B64` in `development` and `main`
@@ -539,7 +535,7 @@ Rejection behavior:
 ## Test Plan (end-to-end)
 
 1. In a test repo where the kernel App is installed, enable the plugin in `.github/.ubiquity-os.config.dev.yml`:
-   - `ubiquity-os-marketplace/command-codex@fix/action-entry:`
+   - `ubiquity-os-marketplace/command-codex:`
 2. Ensure the plugin repo has `CODEX_AUTH_JSON_B64` set in the `development` environment (optional fallback: `OPENAI_API_KEY`).
 3. Post a comment on an issue: `/codex add a small file named TEST.txt with the word hello`
 4. Verify:
@@ -564,7 +560,7 @@ Files to create in `ubiquity-os-marketplace/command-codex`:
 - `manifest.json`
   - Defines `commands.codex`
   - Defines `configuration` schema for `with:` settings
-- `.github/workflows/dispatch.yml` + root `action.yml`
+- `.github/workflows/compute.yml`
   - `workflow_dispatch` inputs compatible with kernel
   - Implements the flow above
 - `README.md`
@@ -580,7 +576,7 @@ Kernel/org config change (in `.ubiquity-os` repo):
 
 - `.github/.ubiquity-os.config.yml` and/or `.github/.ubiquity-os.config.dev.yml`
   - Add plugin entry:
-    - `ubiquity-os-marketplace/command-codex@fix/action-entry:`
+    - `ubiquity-os-marketplace/command-codex:`
       - `with:` defaults + policy overrides
 
 ## Open Questions

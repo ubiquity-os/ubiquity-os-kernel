@@ -22,35 +22,13 @@ async function getInstallationOctokitForOrg(context: GitHubContext, owner: strin
 
 export async function dispatchWorkflow(context: GitHubContext, options: WorkflowDispatchOptions) {
   const authenticatedOctokit = await getInstallationOctokitForOrg(context, options.owner);
-
-  const candidates = [options.ref === "fix/action-entry" ? "dispatch.yml" : options.workflowId];
-
-  let lastError: unknown;
-  for (let i = 0; i < candidates.length; i++) {
-    const workflowId = candidates[i];
-    try {
-      return await authenticatedOctokit.rest.actions.createWorkflowDispatch({
-        owner: options.owner,
-        repo: options.repository,
-        workflow_id: workflowId,
-        ref: options.ref ?? (await getDefaultBranch(context, options.owner, options.repository)),
-        inputs: options.inputs,
-      });
-    } catch (error) {
-      lastError = error;
-      const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : null;
-      const isRetryable = status === 404 || status === 422;
-      const isLastAttempt = i === candidates.length - 1;
-
-      if (isRetryable && !isLastAttempt) {
-        context.logger.debug({ owner: options.owner, repo: options.repository, workflowId, status }, "Workflow dispatch failed; will try fallback workflow");
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw lastError;
+  return await authenticatedOctokit.rest.actions.createWorkflowDispatch({
+    owner: options.owner,
+    repo: options.repository,
+    workflow_id: options.workflowId,
+    ref: options.ref ?? (await getDefaultBranch(context, options.owner, options.repository)),
+    inputs: options.inputs,
+  });
 }
 
 export async function dispatchWorker(targetUrl: string, payload?: Record<string, unknown>) {

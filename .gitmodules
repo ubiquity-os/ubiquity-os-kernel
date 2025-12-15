@@ -1,63 +1,48 @@
 [submodule "lib/command-codex"]
 	path = lib/command-codex
 	url = https://github.com/ubiquity-os-marketplace/command-codex.git
-	branch = fix/action-entry
 [submodule "lib/command-start-stop"]
 	path = lib/command-start-stop
 	url = https://github.com/ubiquity-os-marketplace/command-start-stop.git
-	branch = fix/action-entry
 [submodule "lib/daemon-planner"]
 	path = lib/daemon-planner
 	url = https://github.com/ubiquity-os-marketplace/daemon-planner.git
-	branch = fix/action-entry
 [submodule "lib/text-conversation-rewards"]
 	path = lib/text-conversation-rewards
 	url = https://github.com/ubiquity-os-marketplace/text-conversation-rewards.git
-	branch = fix/action-entry
 [submodule "lib/text-vector-embeddings"]
 	path = lib/text-vector-embeddings
 	url = https://github.com/ubiquity-os-marketplace/text-vector-embeddings.git
-	branch = fix/action-entry
 [submodule "lib/command-query"]
 	path = lib/command-query
 	url = https://github.com/ubiquity-os-marketplace/command-query.git
-	branch = fix/action-entry
 [submodule "lib/command-ask"]
 	path = lib/command-ask
 	url = https://github.com/ubiquity-os-marketplace/command-ask.git
-	branch = fix/action-entry
 [submodule "lib/daemon-pull-review"]
 	path = lib/daemon-pull-review
 	url = https://github.com/ubiquity-os-marketplace/daemon-pull-review.git
-	branch = fix/action-entry
 [submodule "lib/daemon-xp"]
 	path = lib/daemon-xp
 	url = https://github.com/ubiquity-os-marketplace/daemon-xp.git
-	branch = fix/action-entry
 [submodule "lib/daemon-pricing"]
 	path = lib/daemon-pricing
 	url = https://github.com/ubiquity-os-marketplace/daemon-pricing.git
-	branch = fix/action-entry
 [submodule "lib/command-config"]
 	path = lib/command-config
 	url = https://github.com/ubiquity-os-marketplace/command-config.git
-	branch = fix/action-entry
 [submodule "lib/daemon-disqualifier"]
 	path = lib/daemon-disqualifier
 	url = https://github.com/ubiquity-os-marketplace/daemon-disqualifier.git
-	branch = fix/action-entry
 [submodule "lib/command-wallet"]
 	path = lib/command-wallet
 	url = https://github.com/ubiquity-os-marketplace/command-wallet.git
-	branch = fix/action-entry
 [submodule "lib/daemon-merging"]
 	path = lib/daemon-merging
 	url = https://github.com/ubiquity-os-marketplace/daemon-merging.git
-	branch = fix/action-entry
 [submodule "lib/daemon-spec-rewriter"]
 	path = lib/daemon-spec-rewriter
 	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
-	branch = fix/action-entry
 [submodule "lib/ai.ubq.fi"]
 	path = lib/ai.ubq.fi
 	url = https://github.com/ubiquity/ai.ubq.fi.git

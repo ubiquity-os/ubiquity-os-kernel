@@ -31,7 +31,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
     await dispatchWorkflow(context, {
       owner: personalAgentOwner,
       repository: personalAgentRepo,
-      workflowId: "action.yml",
+      workflowId: "compute.yml",
       ref: defaultBranch,
       inputs: await pluginInput.getInputs(),
     });
