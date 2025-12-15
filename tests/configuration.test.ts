@@ -35,11 +35,11 @@ afterAll(() => {
 });
 
 describe("Configuration tests", () => {
-  it("should default to action.yml workflow for fix/action-entry refs", () => {
+  it("should default to dispatch.yml workflow for fix/action-entry refs", () => {
     expect(parsePluginIdentifier("ubiquity/test-plugin@fix/action-entry")).toMatchObject({
       owner: "ubiquity",
       repo: "test-plugin",
-      workflowId: "action.yml",
+      workflowId: "dispatch.yml",
       ref: "fix/action-entry",
     });
   });

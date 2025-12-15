@@ -1,0 +1,40 @@
+name: 'LLM Call'
+description: 'Call ai.ubq.fi with inherited auth'
+inputs:
+  auth-token:
+    description: 'GitHub token from dispatch'
+    required: true
+  owner:
+    description: 'Repo owner'
+    required: true
+  repo:
+    description: 'Repo name'
+    required: true
+  model:
+    description: 'Model to use'
+    default: 'gpt-5.2-chat-latest'
+  messages:
+    description: 'JSON string of messages'
+    required: true
+  stream:
+    description: 'Whether to stream'
+    default: 'false'
+outputs:
+  result:
+    description: 'LLM response'
+    value: ${{ steps.call-llm.outputs.result }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Call LLM
+      id: call-llm
+      run: |
+        node ${{ github.action_path }}/dist/call-llm.js \
+          --model ${{ inputs.model }} \
+          --messages '${{ inputs.messages }}' \
+          --stream ${{ inputs.stream }}
+      env:
+        AUTH_TOKEN: ${{ inputs.auth-token }}
+        OWNER: ${{ inputs.owner }}
+        REPO: ${{ inputs.repo }}
+      shell: bash

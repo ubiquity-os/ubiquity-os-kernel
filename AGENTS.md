@@ -206,7 +206,7 @@ export default createPlugin({
 
 **GitHub Actions Plugin**:
 ```yaml
-- uses: ./.github/actions/llm-call
+- uses: ubiquity-os/ubiquity-os-kernel/.github/actions/llm-call@main
   with:
     auth-token: ${{ inputs.authToken }}
     owner: ${{ github.repository_owner }}
@@ -266,7 +266,7 @@ bun run test-command llm-query https://github.com/0x4007/ubiquity-os-sandbox/iss
 ### Relevant Files
 
 - `lib/plugin-sdk/src/llm/index.ts` - Core callLlm function
-- `lib/plugin-sdk/.github/actions/llm-call/action.yml` - Composite action
+- `.github/actions/llm-call/action.yml` - Composite action
 - `lib/ai.ubq.fi/serve.ts` - API with GitHub verification
 - `src/github/handlers/index.ts` - Dispatch with authToken
 - `lib/plugin-sdk/src/signature.ts` - PluginInput types

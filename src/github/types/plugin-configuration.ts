@@ -26,8 +26,8 @@ export function parsePluginIdentifier(value: string): string | GithubPlugin {
     throw new Error(`Invalid plugin name: ${value}`);
   }
   const ref = matches[4] || "fix/action-entry";
-  // During the `fix/action-entry` migration branch, the only supported workflow entrypoint is `action.yml`.
-  const workflowId = ref === "fix/action-entry" ? "action.yml" : matches[3] || "action.yml";
+  // During the `fix/action-entry` migration branch, the only supported workflow entrypoint is `dispatch.yml`.
+  const workflowId = ref === "fix/action-entry" ? "dispatch.yml" : matches[3] || "action.yml";
   return {
     owner: matches[1],
     repo: matches[2],
