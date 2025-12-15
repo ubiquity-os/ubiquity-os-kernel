@@ -271,6 +271,26 @@ bun run test-command llm-query https://github.com/0x4007/ubiquity-os-sandbox/iss
 - `src/github/handlers/index.ts` - Dispatch with authToken
 - `lib/plugin-sdk/src/signature.ts` - PluginInput types
 
+### Auth Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant GitHub
+    participant Kernel
+    participant Plugin
+    participant ai.ubq.fi
+
+    User->>GitHub: Comments "/llm-hello"
+    GitHub->>Kernel: Webhook event
+    Kernel->>Kernel: Generate installation token
+    Kernel->>Plugin: Dispatch with authToken + owner/repo
+    Plugin->>ai.ubq.fi: callLlm() with inherited auth
+    ai.ubq.fi->>ai.ubq.fi: Verify token has repo access
+    ai.ubq.fi->>Plugin: LLM response
+    Plugin->>GitHub: Post comment with AI greeting
+```
+
 ## 🔗 Relevant Files
 
 - `scripts/test-command.ts`
