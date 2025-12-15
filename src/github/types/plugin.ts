@@ -2,6 +2,36 @@ import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks"
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
 import { CommandCall } from "../../types/command";
 import { GitHubEventHandler } from "../github-event-handler";
+import { createKernelAttestationToken } from "../utils/kernel-attestation";
+
+type RepositoryPayload = {
+  repository?: {
+    owner?: {
+      login?: unknown;
+    };
+    name?: unknown;
+  };
+  installation?: {
+    id?: unknown;
+  };
+};
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function extractRepoContext(payload: unknown): { owner: string; repo: string; installationId: number | null } {
+  const maybePayload = payload as RepositoryPayload;
+  return {
+    owner: readString(maybePayload.repository?.owner?.login),
+    repo: readString(maybePayload.repository?.name),
+    installationId: readFiniteNumber(maybePayload.installation?.id),
+  };
+}
 
 export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
   public eventHandler: GitHubEventHandler;
@@ -10,6 +40,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   public eventPayload: EmitterWebhookEvent<T>["payload"];
   public settings: unknown;
   public authToken: string;
+  public ubiquityKernelToken?: string;
   public ref: string;
   public command: CommandCall;
 
@@ -34,12 +65,24 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   }
 
   public async getInputs() {
+    const { owner, repo, installationId } = extractRepoContext(this.eventPayload);
+
+    const ubiquityKernelToken = await createKernelAttestationToken({
+      sign: (payload) => this.eventHandler.signPayload(payload),
+      owner,
+      repo,
+      installationId,
+      authToken: this.authToken,
+      stateId: this.stateId,
+    });
+
     const inputs = {
       stateId: this.stateId,
       eventName: this.eventName,
       eventPayload: compressString(JSON.stringify(this.eventPayload)),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
+      ubiquityKernelToken,
       ref: this.ref,
       command: JSON.stringify(this.command),
     };

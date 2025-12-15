@@ -61,7 +61,7 @@ Note: `bun test` is not used for this suite (tests rely on Jest-only APIs like `
 `scripts/test-command.ts` is a local harness that:
 
 - Downloads a repo config from GitHub (`.github/.ubiquity-os.config.dev.yml` then `.github/.ubiquity-os.config.yml`)
-- Caches it to `.test-cache/config.yml` (first run downloads + exits; rerun to execute)
+- Caches it to `.test-cache/config.<org>.<repo>.yml` (first run downloads + exits; rerun to execute)
 - Fetches each HTTP plugin's `manifest.json`
 - For slash commands (`/hello`), POSTs a kernel-shaped payload to the matching plugin URL
 

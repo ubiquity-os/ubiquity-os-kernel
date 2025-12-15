@@ -27,9 +27,107 @@ interface PluginConfiguration {
   plugins: Record<string, unknown>;
 }
 
+type OctokitGetContentParams = {
+  owner: string;
+  repo: string;
+  path: string;
+  mediaType?: { format?: string };
+};
+
+type OctokitGetContentResponse = {
+  data: unknown;
+};
+
+type MinimalOctokit = {
+  rest: {
+    repos: {
+      getContent: (params: OctokitGetContentParams) => Promise<OctokitGetContentResponse>;
+    };
+  };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!isRecord(error)) return null;
+  const status = error.status;
+  return typeof status === "number" && Number.isFinite(status) ? status : null;
+}
+
+async function downloadGitHubFileRaw(octokit: MinimalOctokit, { owner, repo, path }: { owner: string; repo: string; path: string }): Promise<string | null> {
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner,
+      repo,
+      path,
+      mediaType: { format: "raw" },
+    });
+    return typeof data === "string" ? data : String(data);
+  } catch (error: unknown) {
+    if (getErrorStatus(error) === 404) return null;
+    throw error;
+  }
+}
+
+function normalizePluginConfiguration(raw: unknown): PluginConfiguration | null {
+  if (!isRecord(raw)) return null;
+  const config = raw;
+
+  const pluginsRaw = config.plugins;
+  if (!pluginsRaw) return { plugins: {} };
+
+  if (Array.isArray(pluginsRaw)) {
+    const convertedPlugins: Record<string, unknown> = {};
+    for (const pluginItem of pluginsRaw) {
+      if (!isRecord(pluginItem)) continue;
+      const uses = pluginItem.uses;
+      if (!Array.isArray(uses)) continue;
+      for (const use of uses) {
+        if (!isRecord(use)) continue;
+        const pluginKey = use.plugin;
+        if (typeof pluginKey !== "string" || !pluginKey.trim()) continue;
+        const { plugin: _plugin, ...pluginConfig } = use;
+        convertedPlugins[pluginKey] = pluginConfig;
+      }
+    }
+    return { ...config, plugins: convertedPlugins };
+  }
+
+  if (!isRecord(pluginsRaw)) return { plugins: {} };
+  return { ...config, plugins: pluginsRaw };
+}
+
+async function fetchFirstExistingRepoConfig(octokit: MinimalOctokit, { owner, repo }: { owner: string; repo: string }): Promise<PluginConfiguration | null> {
+  const candidates = [".github/.ubiquity-os.config.dev.yml", ".github/.ubiquity-os.config.yml"];
+  for (const path of candidates) {
+    const raw = await downloadGitHubFileRaw(octokit, { owner, repo, path });
+    if (!raw) continue;
+    const parsed = YAML.load(raw);
+    const normalized = normalizePluginConfiguration(parsed);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
+  return {
+    ...configuration1,
+    ...configuration2,
+    plugins: {
+      ...configuration1.plugins,
+      ...configuration2.plugins,
+    },
+  };
+}
+
 // Cache configuration
 const CACHE_DIR = ".test-cache";
-const CONFIG_CACHE_PATH = join(CACHE_DIR, "config.yml");
+
+function getConfigCachePath(org: string, repo: string): string {
+  return join(CACHE_DIR, `config.${org}.${repo}.yml`);
+}
 
 // Ensure cache directory exists
 if (!existsSync(CACHE_DIR)) {
@@ -37,10 +135,10 @@ if (!existsSync(CACHE_DIR)) {
 }
 
 // Load cached config
-function loadCachedConfig(): PluginConfiguration | null {
+function loadCachedConfig(configPath: string): PluginConfiguration | null {
   try {
-    if (existsSync(CONFIG_CACHE_PATH)) {
-      const data = readFileSync(CONFIG_CACHE_PATH, "utf8");
+    if (existsSync(configPath)) {
+      const data = readFileSync(configPath, "utf8");
       return YAML.load(data) as PluginConfiguration;
     }
   } catch (error) {
@@ -50,11 +148,11 @@ function loadCachedConfig(): PluginConfiguration | null {
 }
 
 // Save config to cache
-function saveConfigToCache(config: PluginConfiguration): void {
+function saveConfigToCache(configPath: string, config: PluginConfiguration): void {
   try {
     const yamlData = YAML.dump(config);
-    writeFileSync(CONFIG_CACHE_PATH, yamlData, "utf8");
-    console.log(`💾 Config cached to ${CONFIG_CACHE_PATH}`);
+    writeFileSync(configPath, yamlData, "utf8");
+    console.log(`💾 Config cached to ${configPath}`);
   } catch (error) {
     console.log(`❌ Failed to save config to cache: ${error}`);
   }
@@ -74,8 +172,24 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
     const privateKey = process.env.APP_PRIVATE_KEY;
 
     if (!appId || !privateKey) {
-      console.log("❌ GitHub App credentials not found. Set APP_ID and APP_PRIVATE_KEY environment variables.");
-      return null;
+      const githubToken = (process.env.GITHUB_TOKEN ?? "").trim();
+      if (!githubToken) {
+        console.log("❌ No GitHub auth available. Set APP_ID+APP_PRIVATE_KEY or GITHUB_TOKEN.");
+        return null;
+      }
+
+      console.log("🔑 Using GITHUB_TOKEN to download config...");
+      const { Octokit } = await import("@octokit/rest");
+      const octokit = new Octokit({ auth: githubToken });
+
+      const orgConfig = await fetchFirstExistingRepoConfig(octokit, { owner: org, repo: ".ubiquity-os" });
+      const repoConfig = await fetchFirstExistingRepoConfig(octokit, { owner: org, repo });
+
+      const defaultConfig: PluginConfiguration = { plugins: {} };
+      const merged = mergeConfigurations(orgConfig ?? defaultConfig, repoConfig ?? defaultConfig);
+
+      console.log("✅ Config loaded successfully");
+      return merged;
     }
 
     // Create a minimal OpenAI client for the event handler
@@ -141,11 +255,14 @@ function extractPluginsFromConfig(config: PluginConfiguration): Record<string, s
 
   if (config.plugins) {
     for (const [pluginKey, pluginConfig] of Object.entries(config.plugins)) {
-      // Extract the plugin URL/name mapping
-      if (typeof pluginConfig === "object" && pluginConfig !== null) {
-        // For now, just map the key to itself - we can enhance this later
-        plugins[pluginKey] = pluginKey;
-      }
+      if (typeof pluginKey !== "string") continue;
+      if (typeof pluginConfig !== "object" || pluginConfig === null) continue;
+
+      const isUrl = pluginKey.startsWith("http://") || pluginKey.startsWith("https://");
+      const isDomain = !pluginKey.includes("://") && !pluginKey.includes("/") && pluginKey.includes(".");
+      if (!isUrl && !isDomain) continue;
+
+      plugins[pluginKey] = pluginKey;
     }
   }
 
@@ -192,10 +309,13 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
   console.log(`📍 Repository: ${org}/${repo}`);
   console.log();
 
+  const configCachePath = getConfigCachePath(org, repo);
+
   // Check for GitHub App credentials for real token generation
   const appId = process.env.APP_ID;
   const privateKey = process.env.APP_PRIVATE_KEY;
   let installationToken: string | null = null;
+  let installationId: number | null = null;
 
   if (appId && privateKey) {
     try {
@@ -222,6 +342,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       const installation = installations.data.find((inst) => inst.account?.login === org);
 
       if (installation) {
+        installationId = installation.id;
         installationToken = await eventHandler.getToken(installation.id);
         console.log(`🔑 Generated real installation token for ${org}`);
       } else {
@@ -231,11 +352,32 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       console.log(`⚠️  Failed to generate installation token: ${error}, using mock token`);
     }
   } else {
-    console.log(`⚠️  GitHub App credentials not found, using mock token`);
+    console.log(`⚠️  GitHub App credentials not found; will use GITHUB_TOKEN if set`);
+  }
+
+  const githubToken = (process.env.GITHUB_TOKEN ?? "").trim();
+  const authToken = installationToken || githubToken || "mock-token";
+  if (!installationToken && githubToken) {
+    console.log("🔑 Using GITHUB_TOKEN for auth");
+  }
+
+  const stateId = "test-state-id";
+  let ubiquityKernelToken: string | undefined;
+  if (authToken !== "mock-token" && privateKey) {
+    const { signPayload } = await import("@ubiquity-os/plugin-sdk/signature");
+    const { createKernelAttestationToken } = await import("../src/github/utils/kernel-attestation");
+    ubiquityKernelToken = await createKernelAttestationToken({
+      sign: (payload: string) => signPayload(payload, privateKey),
+      owner: org,
+      repo,
+      installationId,
+      authToken,
+      stateId,
+    });
   }
 
   // Load cached config
-  const cachedConfig = loadCachedConfig();
+  const cachedConfig = loadCachedConfig(configCachePath);
 
   if (!cachedConfig) {
     console.log("📄 No cached config found. Fetching latest config from GitHub...");
@@ -247,7 +389,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       return;
     }
 
-    saveConfigToCache(latestConfig);
+    saveConfigToCache(configCachePath, latestConfig);
     console.log("✅ Config downloaded and cached. Please rerun the command to use the cached config.");
     return;
   }
@@ -262,7 +404,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
   fetchLatestConfig(org, repo)
     .then((latestConfig) => {
       if (latestConfig) {
-        saveConfigToCache(latestConfig);
+        saveConfigToCache(configCachePath, latestConfig);
       }
     })
     .catch((error) => {
@@ -291,7 +433,9 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
 
   // Process the comment
   if (commentBody.startsWith("/")) {
-    const command = commentBody.slice(1).split(" ")[0];
+    const rawArgs = commentBody.slice(1).split(" ");
+    const command = rawArgs[0];
+    const commandArgs = rawArgs.slice(1).join(" ").trim();
     console.log(`🎯 Detected command: ${command}`);
 
     // Find plugin that handles this command
@@ -300,18 +444,26 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       if (manifest.commands && manifest.commands[command]) {
         console.log(`🔌 Routing to ${manifest.name} (${url})`);
 
+        const parameters: Record<string, unknown> = {};
+        if (command === "llm") {
+          parameters.prompt = commandArgs;
+        }
+
         // Format the payload as expected by plugins (matching kernel dispatch format)
         const eventPayloadJson = JSON.stringify({
           repository: { owner: { login: org }, name: repo },
           issue: { number: issueNumber },
+          comment: { body: commentBody },
+          ...(installationId !== null ? { installation: { id: installationId } } : {}),
         });
 
         const kernelPayload = {
-          command: JSON.stringify({ name: command, parameters: {} }),
+          command: JSON.stringify({ name: command, parameters }),
           eventPayload: compressString(eventPayloadJson),
           settings: JSON.stringify({}),
-          authToken: installationToken || "mock-token",
-          stateId: "test-state-id",
+          authToken,
+          ubiquityKernelToken,
+          stateId,
           eventName: "issue_comment.created",
           ref: "main",
         };
@@ -360,15 +512,15 @@ function parseGitHubUrl(url: string): { org: string; repo: string; issueNumber: 
 async function main() {
   const args = process.argv.slice(2);
 
-  if (args.length !== 2) {
-    console.log("Usage: bun run scripts/test-command.ts <command> <github-url>");
+  if (args.length < 2) {
+    console.log("Usage: bun run scripts/test-command.ts <command> <github-url> [command-args...]");
     console.log("Examples:");
     console.log("  bun run scripts/test-command.ts hello https://github.com/0x4007/ubiquity-os-sandbox/issues/2");
-    console.log("  bun run scripts/test-command.ts help https://github.com/0x4007/ubiquity-os-sandbox/issues/5");
+    console.log("  bun run scripts/test-command.ts llm https://github.com/0x4007/ubiquity-os-sandbox/issues/8 tell me a short joke");
     process.exit(1);
   }
 
-  const [command, githubUrl] = args;
+  const [command, githubUrl, ...commandArgs] = args;
 
   // Parse GitHub URL
   const parsedUrl = parseGitHubUrl(githubUrl);
@@ -381,7 +533,8 @@ async function main() {
   const { org, repo, issueNumber } = parsedUrl;
   console.log(`🎯 Targeting issue #${issueNumber} in ${org}/${repo}`);
 
-  await processCommentWithRealPlugins(org, repo, `/${command}`, issueNumber);
+  const commentBody = commandArgs.length > 0 ? `/${command} ${commandArgs.join(" ")}` : `/${command}`;
+  await processCommentWithRealPlugins(org, repo, commentBody, issueNumber);
 }
 
 // Run if called directly

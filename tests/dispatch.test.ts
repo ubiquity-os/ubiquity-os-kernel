@@ -12,8 +12,10 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/types/plugin", () => {
-  const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>("../src/github/types/plugin");
+const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
+
+jest.mock(PLUGIN_INPUT_MODULE, () => {
+  const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>(PLUGIN_INPUT_MODULE);
 
   return {
     ...originalModule,
@@ -40,6 +42,7 @@ function calculateSignature(payload: string, secret: string) {
 
 const issueCommentCreatedEvent = "issue_comment.created";
 const FOO_COMMAND = "foo";
+const PLUGIN_NAME = "plugin";
 
 beforeAll(() => {
   server.listen();
@@ -56,7 +59,8 @@ describe("handleEvent", () => {
     server.use(
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
+          name: PLUGIN_NAME,
+          short_name: "plugin-a",
           "ubiquity:listeners": [issueCommentCreatedEvent],
           commands: {
             [FOO_COMMAND]: {
@@ -72,7 +76,8 @@ describe("handleEvent", () => {
       ),
       http.get("https://plugin-b.internal/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
+          name: PLUGIN_NAME,
+          short_name: "plugin-b",
           "ubiquity:listeners": [issueCommentCreatedEvent],
           commands: {
             [FOO_COMMAND]: {

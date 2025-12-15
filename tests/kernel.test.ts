@@ -116,6 +116,9 @@ plugins:
 
 describe("Kernel Event Processing Tests", () => {
   beforeEach(() => {
+    (mockEventHandler.getToken as jest.Mock).mockResolvedValue(MOCK_TOKEN);
+    (mockEventHandler.signPayload as jest.Mock).mockResolvedValue("mock-signature");
+
     (mockOctokit.rest.repos.getContent as jest.Mock).mockImplementation(async ({ path, mediaType }: { path: string; mediaType?: { format?: string } }) => {
       if (path === DEV_CONFIG_FULL_PATH && mediaType?.format === "raw") {
         return { data: mockConfigResponse().data, headers: {} };

@@ -2,6 +2,8 @@ import { createServer } from "@mswjs/http-middleware";
 import { Octokit } from "@octokit/core";
 import { http, HttpResponse } from "msw";
 import { decompressString } from "@ubiquity-os/plugin-sdk/compression";
+import { callLlm } from "@ubiquity-os/plugin-sdk";
+import type { Context } from "@ubiquity-os/plugin-sdk";
 import manifest from "./manifest.json";
 
 type KernelInput = {
@@ -9,6 +11,7 @@ type KernelInput = {
   eventPayload: string; // Compressed JSON string
   settings: string; // JSON string
   command: string; // JSON string of CommandCall (can be "null")
+  ubiquityKernelToken?: string;
   stateId: string;
   eventName: string;
   ref: string;
@@ -16,29 +19,30 @@ type KernelInput = {
 
 const PORT = 9090;
 
-async function callAi({ authToken, owner, repo, prompt }: { authToken: string; owner: string; repo: string; prompt: string }): Promise<string> {
-  const response = await fetch("https://ai.ubq.fi/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      "X-GitHub-Owner": owner,
-      "X-GitHub-Repo": repo,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+type LlmCompletion = { choices?: Array<{ message?: { content?: unknown } }> };
+
+async function callAi({
+  authToken,
+  ubiquityKernelToken,
+  payload,
+  prompt,
+}: {
+  authToken: string;
+  ubiquityKernelToken?: string;
+  payload: unknown;
+  prompt: string;
+}): Promise<string> {
+  const llmContext = { authToken, ubiquityKernelToken, payload } satisfies Pick<Context, "authToken" | "ubiquityKernelToken" | "payload">;
+  const completion = (await callLlm(
+    {
       model: "gpt-5.2-chat-latest",
       messages: [{ role: "user", content: prompt }],
       stream: false,
-    }),
-  });
+    },
+    llmContext as unknown as Context
+  )) as unknown as LlmCompletion;
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => "");
-    throw new Error(`LLM API error: ${response.status} - ${errText}`);
-  }
-
-  const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return json.choices?.[0]?.message?.content ?? "";
+  return String(completion.choices?.[0]?.message?.content ?? "");
 }
 
 const handlers = [
@@ -80,15 +84,17 @@ const handlers = [
         responseBody = "Missing a real GitHub auth token for `/llm` (authToken).";
       } else {
         try {
-          responseBody = await callAi({
-            authToken: body.authToken,
-            owner: eventPayload.repository.owner.login,
-            repo: eventPayload.repository.name,
-            prompt,
-          });
+          responseBody =
+            (await callAi({
+              authToken: body.authToken,
+              ubiquityKernelToken: body.ubiquityKernelToken,
+              payload: eventPayload,
+              prompt,
+            })) || "(empty response)";
         } catch (error) {
           console.error("[HELLO-WORLD-PLUGIN] LLM call failed", error);
-          responseBody = "Failed to call the LLM service.";
+          const message = error instanceof Error ? error.message : String(error);
+          responseBody = `Failed to call the LLM service.\n\n${message}`;
         }
       }
     }
