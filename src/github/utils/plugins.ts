@@ -14,8 +14,9 @@ export type ResolvedPlugin = {
 };
 
 function isManifestCacheEnabled(context: GitHubContext) {
-  const environment = String(context.eventHandler.environment ?? "").toLowerCase();
-  if (environment === "development") {
+  const environment = String(context.eventHandler?.environment ?? "").toLowerCase();
+  // Keep non-production environments hot-reload friendly.
+  if (environment !== "production" && environment !== "prod") {
     return false;
   }
 

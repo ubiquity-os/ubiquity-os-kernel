@@ -7,7 +7,7 @@ import { logger } from "../logger/logger";
 import { customOctokit } from "./github-client";
 import { GitHubContext, SimplifiedContext } from "./github-context";
 export type Options = {
-  environment: "production" | "development";
+  environment: string;
   webhookSecret: string;
   appId: string | number;
   privateKey: string;
@@ -22,7 +22,7 @@ export class GitHubEventHandler {
   public onAny: Webhooks<SimplifiedContext>["onAny"];
   public onError: Webhooks<SimplifiedContext>["onError"];
 
-  readonly environment: "production" | "development";
+  readonly environment: string;
   private readonly _webhookSecret: string;
   private readonly _privateKey: string;
   private readonly _appId: number;

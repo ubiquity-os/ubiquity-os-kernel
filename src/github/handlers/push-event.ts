@@ -5,7 +5,7 @@ import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
+import { getConfigFullPathForEnvironment, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 function encodePointerSegment(segment: string) {
@@ -171,7 +171,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-  const configPath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
+  const configPath = getConfigFullPathForEnvironment(context.eventHandler.environment);
   const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(configPath) || commit.added?.includes(configPath));
 
   if (!didConfigurationFileChange || !repository.owner) {

@@ -5,7 +5,7 @@ import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { parsePluginIdentifier } from "../src/github/types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig } from "../src/github/utils/config";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig, getConfigFullPathForEnvironment } from "../src/github/utils/config";
 import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
@@ -51,6 +51,7 @@ describe("Configuration tests", () => {
         data = `
           {
             "name": "plugin",
+            "short_name": "plugin",
             "commands": {
               "command": {
                 "description": "description",
@@ -116,6 +117,7 @@ describe("Configuration tests", () => {
     const content: Record<string, object> = {
       withRef: {
         name: "plugin",
+        short_name: "plugin",
         commands: {
           command: {
             description: "description",
@@ -129,6 +131,7 @@ describe("Configuration tests", () => {
       },
       withoutRef: {
         name: "plugin-no-ref",
+        short_name: "plugin-no-ref",
         commands: {
           command: {
             description: "description",
@@ -184,6 +187,7 @@ describe("Configuration tests", () => {
         data = `
           {
             "name": "plugin",
+            "short_name": "plugin",
             "commands": {
               "command": {
                 "description": "description",
@@ -256,13 +260,15 @@ describe("Configuration tests", () => {
       )
     ).resolves.toEqual(false);
   });
-  it("should return dev config if environment is not production", async () => {
+  it("should select config by environment suffix", async () => {
+    const testConfigPath = getConfigFullPathForEnvironment("test");
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
       let data: string;
       if (args.path === manifestPath) {
         data = `
           {
             "name": "plugin",
+            "short_name": "plugin",
             "commands": {
               "command": {
                 "description": "description",
@@ -281,6 +287,12 @@ describe("Configuration tests", () => {
         data = `
         plugins:
           ubiquity/test-plugin:
+            with:
+              settings1: 'enabled'`;
+      } else if (args.path === testConfigPath) {
+        data = `
+        plugins:
+          ubiquity/test-env-plugin:
             with:
               settings1: 'enabled'`;
       } else {
@@ -319,6 +331,12 @@ describe("Configuration tests", () => {
     const cfg = await getConfig(context);
     let [pluginKey] = Object.keys(cfg.plugins);
     expect(parsePluginIdentifier(pluginKey)).toMatchObject({ owner: "ubiquity", repo: "test-plugin" });
+
+    context.eventHandler = { environment: "test" } as GitHubEventHandler;
+
+    const cfgTest = await getConfig(context);
+    [pluginKey] = Object.keys(cfgTest.plugins);
+    expect(parsePluginIdentifier(pluginKey)).toMatchObject({ owner: "ubiquity", repo: "test-env-plugin" });
 
     context.eventHandler = { environment: "production" } as GitHubEventHandler;
 

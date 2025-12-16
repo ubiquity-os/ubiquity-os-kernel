@@ -14,6 +14,11 @@ jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
 jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
+jest.mock("../src/github/utils/workflow-dispatch", () => ({
+  getDefaultBranch: jest.fn().mockResolvedValue("main"),
+  dispatchWorkflow: jest.fn(),
+  dispatchWorker: jest.fn(),
+}));
 
 config({ path: ".dev.vars" });
 
@@ -55,6 +60,8 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
         content: btoa(
           JSON.stringify({
             name: "plugin-B",
+            short_name: "plugin-b",
+            "ubiquity:listeners": [eventName],
             commands: {
               hello: {
                 description: "This command says hello to the username provided in the parameters.",
@@ -92,10 +99,14 @@ const payload = {
 
 describe("Event related tests", () => {
   beforeEach(() => {
+    (eventHandler.getToken as unknown as jest.Mock).mockReturnValue("1234");
+    (eventHandler.signPayload as unknown as jest.Mock).mockReturnValue("sha256=1234");
     server.use(
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin-A",
+          short_name: "plugin-a",
+          "ubiquity:listeners": [eventName],
           commands: {
             foo: {
               description: "foo command",
@@ -179,11 +190,7 @@ describe("Event related tests", () => {
   });
 
   it("Should call appropriate plugin", async () => {
-    const dispatchWorkflow = jest.fn();
-    jest.mock("../src/github/utils/workflow-dispatch", () => ({
-      getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
-      dispatchWorkflow: dispatchWorkflow,
-    }));
+    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
 
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
@@ -239,8 +246,8 @@ describe("Event related tests", () => {
       logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(0);
-    expect(dispatchWorkflow.mock.calls.length).toEqual(1);
-    expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
+    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
       owner: "ubiquity-os",
       repository: "plugin-b",
       ref: "main",
@@ -321,6 +328,7 @@ describe("Event related tests", () => {
             content: btoa(
               JSON.stringify({
                 name: "plugin",
+                short_name: "plugin",
               })
             ),
           },

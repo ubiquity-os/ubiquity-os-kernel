@@ -9,6 +9,51 @@ export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
 export const CONFIG_ORG_REPO = ".ubiquity-os";
 
+const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
+  development: "dev", // backwards compatible with previous ENVIRONMENT value
+};
+
+const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
+
+function normalizeEnvironmentName(environment: string | null | undefined): string {
+  return String(environment ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Returns the config file path that corresponds to the running environment.
+ *
+ * - `production` -> `.github/.ubiquity-os.config.yml`
+ * - `<env>` -> `.github/.ubiquity-os.config.<env>.yml`
+ * - `development` (legacy) -> `.github/.ubiquity-os.config.dev.yml`
+ */
+export function getConfigFullPathForEnvironment(environment: string | null | undefined): string {
+  const normalized = normalizeEnvironmentName(environment);
+  if (!normalized) {
+    return DEV_CONFIG_FULL_PATH;
+  }
+  if (normalized === "production" || normalized === "prod") {
+    return CONFIG_FULL_PATH;
+  }
+
+  const suffix = ENVIRONMENT_TO_CONFIG_SUFFIX[normalized] ?? normalized;
+  if (suffix === "dev") {
+    return DEV_CONFIG_FULL_PATH;
+  }
+
+  if (!VALID_CONFIG_SUFFIX.test(suffix)) {
+    return DEV_CONFIG_FULL_PATH;
+  }
+
+  return `.github/.ubiquity-os.config.${suffix}.yml`;
+}
+
+export function getConfigPathCandidatesForEnvironment(environment: string | null | undefined): string[] {
+  const primary = getConfigFullPathForEnvironment(environment);
+  return primary === CONFIG_FULL_PATH ? [CONFIG_FULL_PATH] : [primary, CONFIG_FULL_PATH];
+}
+
 export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
   const rawData = await download({
     context,
@@ -169,7 +214,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
     context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
   }
-  const filePath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
+  const filePath = getConfigFullPathForEnvironment(context.eventHandler.environment);
   try {
     context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
     const controller = new AbortController();

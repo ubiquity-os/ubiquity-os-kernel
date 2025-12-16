@@ -45,6 +45,7 @@ describe("Worker tests", () => {
       http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
           name: "plugin",
+          short_name: "plugin",
           commands: {
             foo: {
               description: "foo command",
@@ -162,6 +163,7 @@ describe("Worker tests", () => {
           data = `
           {
             "name": "plugin",
+            "short_name": "plugin",
             "commands": {
               "command": {
                 "description": "description",

@@ -8,6 +8,7 @@ import { config as loadEnv } from "dotenv";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import YAML from "js-yaml";
+import { getConfigPathCandidatesForEnvironment } from "../src/github/utils/config";
 
 loadEnv({ path: ".dev.vars" });
 
@@ -100,7 +101,7 @@ function normalizePluginConfiguration(raw: unknown): PluginConfiguration | null 
 }
 
 async function fetchFirstExistingRepoConfig(octokit: MinimalOctokit, { owner, repo }: { owner: string; repo: string }): Promise<PluginConfiguration | null> {
-  const candidates = [".github/.ubiquity-os.config.dev.yml", ".github/.ubiquity-os.config.yml"];
+  const candidates = getConfigPathCandidatesForEnvironment(process.env.ENVIRONMENT ?? "development");
   for (const path of candidates) {
     const raw = await downloadGitHubFileRaw(octokit, { owner, repo, path });
     if (!raw) continue;
@@ -125,8 +126,25 @@ function mergeConfigurations(configuration1: PluginConfiguration, configuration2
 // Cache configuration
 const CACHE_DIR = ".test-cache";
 
+function getEnvironmentCacheKey(): string {
+  const raw = String(process.env.ENVIRONMENT ?? "development")
+    .trim()
+    .toLowerCase();
+  let normalized: string;
+  if (raw === "development") {
+    normalized = "dev";
+  } else if (raw === "prod") {
+    normalized = "production";
+  } else if (raw) {
+    normalized = raw;
+  } else {
+    normalized = "dev";
+  }
+  return normalized.replace(/[^a-z0-9_-]/gi, "_");
+}
+
 function getConfigCachePath(org: string, repo: string): string {
-  return join(CACHE_DIR, `config.${org}.${repo}.yml`);
+  return join(CACHE_DIR, `config.${org}.${repo}.${getEnvironmentCacheKey()}.yml`);
 }
 
 // Ensure cache directory exists
@@ -198,7 +216,7 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
 
     // Create a GitHubEventHandler for app authentication
     const eventHandler = new GitHubEventHandler({
-      environment: "development",
+      environment: process.env.ENVIRONMENT ?? "development",
       webhookSecret: "dummy", // Not needed for config fetching
       appId: appId,
       privateKey: privateKey,
@@ -326,7 +344,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       // Create a GitHubEventHandler for app authentication
       const { GitHubEventHandler } = await import("../src/github/github-event-handler.js");
       const eventHandler = new GitHubEventHandler({
-        environment: "development",
+        environment: process.env.ENVIRONMENT ?? "development",
         webhookSecret: "dummy",
         appId: appId,
         privateKey: privateKey,
@@ -385,7 +403,8 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
     const latestConfig = await fetchLatestConfig(org, repo);
     if (!latestConfig) {
       console.log("❌ Failed to fetch config from GitHub. Please check your GITHUB_TOKEN and repository access.");
-      console.log("💡 Make sure you have a .github/.ubiquity-os.config.yml or .github/.ubiquity-os.config.dev.yml file in the repository.");
+      const candidates = getConfigPathCandidatesForEnvironment(process.env.ENVIRONMENT ?? "development");
+      console.log(`💡 Make sure you have ${candidates.join(" or ")} in the repository.`);
       return;
     }
 
