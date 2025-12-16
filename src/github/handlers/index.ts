@@ -55,7 +55,10 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     const stateId = crypto.randomUUID();
     const manifest = await getManifest(context, plugin);
-    const workerUrl = getWorkerUrlFromManifest(manifest);
+    const workerUrl =
+      process.env.NODE_ENV === "local" && pluginEntry.settings?.homepageUrlOverride
+        ? pluginEntry.settings.homepageUrlOverride
+        : getWorkerUrlFromManifest(manifest);
     const ref = workerUrl ? workerUrl : (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)));
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);

@@ -43,6 +43,10 @@ const pluginSettingsSchema = T.Union(
         with: T.Record(T.String(), T.Unknown(), { default: {} }),
         runsOn: T.Optional(runsOnSchema),
         skipBotEvents: T.Optional(T.Boolean()),
+        /**
+         *  @deprecated Only use this in local development
+         */
+        homepageUrlOverride: T.Optional(T.String({ description: "Only used in local development" })),
       },
       { default: {} }
     ),
