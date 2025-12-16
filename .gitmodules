@@ -16,12 +16,6 @@
 [submodule "lib/plugins/command-query"]
 	path = lib/plugins/command-query
 	url = https://github.com/ubiquity-os-marketplace/command-query.git
-[submodule "lib/plugins/command-ask"]
-	path = lib/plugins/command-ask
-	url = https://github.com/ubiquity-os-marketplace/command-ask.git
-[submodule "lib/plugins/daemon-pull-review"]
-	path = lib/plugins/daemon-pull-review
-	url = https://github.com/ubiquity-os-marketplace/daemon-pull-review.git
 [submodule "lib/plugins/daemon-xp"]
 	path = lib/plugins/daemon-xp
 	url = https://github.com/ubiquity-os-marketplace/daemon-xp.git
