@@ -1,14 +1,13 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
-import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import handlePushEvent from "../src/github/handlers/push-event";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
-import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -20,16 +19,9 @@ config({ path: ".dev.vars" });
 
 const name = "ubiquity-os-kernel";
 
-beforeAll(() => {
-  server.listen();
-});
 afterEach(() => {
-  server.resetHandlers();
   jest.clearAllMocks();
   jest.resetAllMocks();
-});
-afterAll(() => {
-  server.close();
 });
 
 const eventHandler = {
@@ -37,25 +29,6 @@ const eventHandler = {
 } as GitHubEventHandler;
 
 describe("Push related tests", () => {
-  beforeEach(() => {
-    server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
-        HttpResponse.json({
-          name: "plugin",
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        })
-      )
-    );
-  });
   it("should handle push event correctly", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
@@ -63,6 +36,68 @@ describe("Push related tests", () => {
       },
     };
     const createCommitComment = jest.fn();
+    const manifestMap = {
+      "plugin-a": {
+        name: "plugin",
+        homepage_url: "https://plugin-a.internal",
+        commands: {
+          action: {
+            description: "action",
+            "ubiquity:example": "/action",
+          },
+        },
+        configuration: {
+          default: {},
+          type: "object",
+          properties: {
+            arg: {
+              type: "number",
+            },
+          },
+          required: ["arg"],
+        },
+      },
+      "plugin-b": {
+        name: "plugin",
+        commands: {
+          action: {
+            description: "action",
+            "ubiquity:example": "/action",
+          },
+        },
+        configuration: {
+          default: {},
+          type: "object",
+          properties: {
+            arg: {
+              type: "number",
+            },
+          },
+          required: ["arg"],
+        },
+      },
+    };
+
+    const configurationHandler = createConfigurationHandler({
+      getConfigurationFromRepo: async () => ({
+        config: {
+          plugins: {
+            "ubiquity-os/plugin-a": {
+              with: {
+                arg: "true",
+              },
+            },
+            "ubiquity-os/plugin-b": {
+              with: {},
+            },
+          },
+        },
+        errors: null,
+        rawData: `plugins:\n  ubiquity-os/plugin-a:\n    with:\n      arg: "true"\n  ubiquity-os/plugin-b:\n    with: {}`,
+      }),
+      getManifest: async (plugin) => manifestMap[plugin.repo as keyof typeof manifestMap] ?? null,
+    });
+
     const context = {
       id: "",
       key: "issue_comment.created",
@@ -77,7 +112,7 @@ describe("Push related tests", () => {
                 return {
                   data: `
                     plugins:
-                      https://plugin-a.internal:
+                      ubiquity-os/plugin-a:
                         with:
                           arg: "true"
                       ubiquity-os/plugin-b:
@@ -85,10 +120,29 @@ describe("Push related tests", () => {
                     `,
                 };
               } else if (params?.path === "manifest.json") {
-                return {
-                  data: {
-                    content: btoa(
-                      JSON.stringify({
+                const manifest =
+                  params?.repo === "plugin-a"
+                    ? {
+                        name: "plugin",
+                        homepage_url: "https://plugin-a.internal",
+                        commands: {
+                          action: {
+                            description: "action",
+                            "ubiquity:example": "/action",
+                          },
+                        },
+                        configuration: {
+                          default: {},
+                          type: "object",
+                          properties: {
+                            arg: {
+                              type: "number",
+                            },
+                          },
+                          required: ["arg"],
+                        },
+                      }
+                    : {
                         name: "plugin",
                         commands: {
                           action: {
@@ -106,8 +160,10 @@ describe("Push related tests", () => {
                           },
                           required: ["arg"],
                         },
-                      })
-                    ),
+                      };
+                return {
+                  data: {
+                    content: Buffer.from(JSON.stringify(manifest)).toString("base64"),
                   },
                 };
               } else {
@@ -118,6 +174,7 @@ describe("Push related tests", () => {
         },
       },
       eventHandler: eventHandler,
+      configurationHandler,
       payload: {
         repository: {
           owner: { login: "ubiquity" },

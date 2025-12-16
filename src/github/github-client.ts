@@ -1,11 +1,12 @@
+import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/core";
-import { requestLog } from "@octokit/plugin-request-log";
-import { RequestOptions } from "@octokit/types";
+import { paginateGraphQL } from "@octokit/plugin-paginate-graphql";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { requestLog } from "@octokit/plugin-request-log";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
-import { createAppAuth } from "@octokit/auth-app";
+import { RequestOptions } from "@octokit/types";
 
 const defaultOptions = {
   authStrategy: createAppAuth,
@@ -25,6 +26,8 @@ const defaultOptions = {
   },
 };
 
-export const customOctokit = Octokit.plugin(paginateRest, restEndpointMethods, requestLog, retry, throttling).defaults((instanceOptions: object) => {
-  return Object.assign({}, defaultOptions, instanceOptions);
-});
+export const customOctokit = Octokit.plugin(paginateRest, restEndpointMethods, requestLog, retry, throttling, paginateGraphQL).defaults(
+  (instanceOptions: object) => {
+    return Object.assign({}, defaultOptions, instanceOptions);
+  }
+);

@@ -1,11 +1,10 @@
 import { Validator } from "@cfworker/json-schema";
-import { ValueErrorType } from "@sinclair/typebox/value";
+import { ValueError, ValueErrorType } from "@sinclair/typebox/value";
 import { YAMLException } from "js-yaml";
-import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfigurationFromRepo } from "../utils/config";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 function encodePointerSegment(segment: string) {
@@ -48,7 +47,7 @@ function parseInstanceSegments(instanceLocation: string) {
 }
 
 function constructErrorBody(
-  errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
+  errors: Iterable<ValueError> | (YAMLException | ValueError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
   after: string,
@@ -126,7 +125,7 @@ async function createCommitComment(
 }
 
 async function checkPluginConfigurations(context: GitHubContext<"push">, config: PluginConfiguration, rawData: string | null) {
-  const errors: (ValueError | YAML.YAMLError)[] = [];
+  const errors: (ValueError | YAMLException)[] = [];
   const doc = rawData ? YAML.parseDocument(rawData) : null;
 
   for (const [pluginKey, settings] of Object.entries(config.plugins)) {
@@ -179,9 +178,8 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   }
 
   context.logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
-
-  const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
-  const errors: (ValueError | YAML.YAMLError)[] = [];
+  const { config, errors: configurationErrors, rawData } = await context.configurationHandler.getConfigurationFromRepo(repository.owner.login, repository.name);
+  const errors: (ValueError | YAMLException)[] = [];
   if (!configurationErrors && config) {
     errors.push(...(await checkPluginConfigurations(context, config, rawData)));
   } else if (configurationErrors) {

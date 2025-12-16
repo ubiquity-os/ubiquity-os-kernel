@@ -3,7 +3,7 @@ import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configurati
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
-async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
+async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: GithubPlugin) {
   const commands: string[] = [];
   const manifest = await getManifest(context, plugin);
   if (manifest?.commands) {
@@ -24,7 +24,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   const commands: string[] = [];
   const configuration = await getConfig(context);
   for (const [pluginKey] of Object.entries(configuration.plugins)) {
-    let plugin: string | GithubPlugin;
+    let plugin: GithubPlugin;
     try {
       plugin = parsePluginIdentifier(pluginKey);
     } catch (error) {

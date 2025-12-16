@@ -2,9 +2,8 @@ import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger";
 import { GitHubEventHandler } from "../github-event-handler";
 import { PluginInput } from "../types/plugin";
-import { isGithubPlugin } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
-import { getPluginsForEvent } from "../utils/plugins";
+import { getManifest, getPluginsForEvent, getWorkerUrlFromManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
 import handlePushEvent from "./push-event";
@@ -52,19 +51,23 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   for (const pluginEntry of resolvedPlugins) {
     const plugin = pluginEntry.target;
     const settings = pluginEntry.settings;
-    const isGithubPluginObject = isGithubPlugin(plugin);
     context.logger.debug({ plugin: pluginEntry.key }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
-    const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+    const manifest = await getManifest(context, plugin);
+    const workerUrl = getWorkerUrlFromManifest(manifest);
+    const ref = workerUrl ? workerUrl : (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)));
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      context.logger.debug({ plugin: pluginEntry.key }, "Dispatching event");
-      if (!isGithubPluginObject) {
-        await dispatchWorker(plugin, await inputs.getInputs());
+      context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, "Dispatching event");
+      if (workerUrl) {
+        const res = await dispatchWorker(workerUrl, await inputs.getInputs());
+        if (res.status >= 300) {
+          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl }, "Error response on dispatch event");
+        }
       } else {
         await dispatchWorkflow(context, {
           owner: plugin.owner,
@@ -79,4 +82,12 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       context.logger.error({ plugin: pluginEntry.key, err: e }, "Error processing plugin; skipping");
     }
   }
+}
+
+async function safeJson(response: Response) {
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return response.json();
+  }
+  return await response.text();
 }
