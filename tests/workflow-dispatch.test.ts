@@ -1,20 +1,18 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import { dispatchWorkflow } from "../src/github/utils/workflow-dispatch";
-
+const COMMAND_HELLO = "command-hello";
 const MARKETPLACE = "ubiquity-os-marketplace";
 
 describe("dispatchWorkflow", () => {
   it("should dispatch the provided workflow id", async () => {
     const createWorkflowDispatch = jest.fn().mockResolvedValue({ ok: true });
-    const listInstallations = jest.fn().mockResolvedValue({
-      data: [{ id: 123, account: { login: MARKETPLACE } }],
-    });
+    const getRepoInstallation = jest.fn().mockResolvedValue({ data: { id: 123 } });
 
     const context = {
       octokit: {
         rest: {
           apps: {
-            listInstallations,
+            getRepoInstallation,
           },
         },
       },
@@ -34,16 +32,22 @@ describe("dispatchWorkflow", () => {
 
     await dispatchWorkflow(context, {
       owner: MARKETPLACE,
-      repository: "command-hello",
+      repository: COMMAND_HELLO,
       workflowId: "legacy.yml",
       ref: "fix/action-entry",
       inputs: { foo: "bar" },
     });
 
+    expect(getRepoInstallation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: MARKETPLACE,
+        repo: COMMAND_HELLO,
+      })
+    );
     expect(createWorkflowDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: MARKETPLACE,
-        repo: "command-hello",
+        repo: COMMAND_HELLO,
         workflow_id: "legacy.yml",
         ref: "fix/action-entry",
         inputs: { foo: "bar" },

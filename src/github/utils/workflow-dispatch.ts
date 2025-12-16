@@ -9,19 +9,21 @@ interface WorkflowDispatchOptions {
   inputs?: { [key: string]: string };
 }
 
-async function getInstallationOctokitForOrg(context: GitHubContext, owner: string): Promise<InstanceType<typeof customOctokit>> {
-  const installations = await context.octokit.rest.apps.listInstallations();
-  const installation = installations.data.find((inst) => inst.account?.login === owner);
+async function getInstallationOctokitForRepo(context: GitHubContext, owner: string, repository: string): Promise<InstanceType<typeof customOctokit>> {
+  const installation = await context.octokit.rest.apps.getRepoInstallation({
+    owner,
+    repo: repository,
+  });
 
-  if (!installation) {
-    throw new Error(`No installation found for owner: ${owner}`);
+  if (!installation.data.id) {
+    throw new Error(`No installation found for repo: ${owner}/${repository}`);
   }
 
-  return context.eventHandler.getAuthenticatedOctokit(installation.id);
+  return context.eventHandler.getAuthenticatedOctokit(installation.data.id);
 }
 
 export async function dispatchWorkflow(context: GitHubContext, options: WorkflowDispatchOptions) {
-  const authenticatedOctokit = await getInstallationOctokitForOrg(context, options.owner);
+  const authenticatedOctokit = await getInstallationOctokitForRepo(context, options.owner, options.repository);
   return await authenticatedOctokit.rest.actions.createWorkflowDispatch({
     owner: options.owner,
     repo: options.repository,
@@ -56,7 +58,7 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
 }
 
 export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {
-  const octokit = await getInstallationOctokitForOrg(context, owner); // we cannot access other repos with the context's octokit
+  const octokit = await getInstallationOctokitForRepo(context, owner, repository); // we cannot access other repos with the context's octokit
   const repo = await octokit.rest.repos.get({
     owner: owner,
     repo: repository,
