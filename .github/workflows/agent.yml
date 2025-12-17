@@ -317,7 +317,8 @@ jobs:
           const { Readable } = require("node:stream");
 
           const port = Number.parseInt(process.env.PORT || "4010", 10);
-          const baseUrl = "https://ai.ubq.fi";
+          // Prefer the direct Deno Deploy domain to avoid Cloudflare bot/challenge pages from CI IP ranges.
+          const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
