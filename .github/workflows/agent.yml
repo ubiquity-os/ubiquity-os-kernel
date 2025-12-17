@@ -208,8 +208,9 @@ jobs:
           const comment = ghJson([`repos/${repo}/issues/comments/${commentId}`]);
           const currentBody = String(comment?.body ?? "");
 
-          const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->/m;
-          const nextBody = marker.test(currentBody) ? currentBody.replace(marker, block) : `${currentBody.replace(/\\s*$/u, "")}\n\n${block}\n`;
+          const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->\\s*/g;
+          const cleaned = currentBody.replace(marker, "").replace(/\\s*$/u, "");
+          const nextBody = cleaned ? `${cleaned}\n\n${block}\n` : `${block}\n`;
 
           const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
           const bodyPath = path.join(tmp, "comment-body.md");
