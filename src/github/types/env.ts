@@ -7,6 +7,9 @@ export const envSchema = T.Object({
   APP_ID: T.String({ minLength: 1 }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
+  UBQ_AGENT_OWNER: T.String({ minLength: 1, default: "ubiquity-os" }),
+  UBQ_AGENT_REPO: T.String({ minLength: 1, default: "ubiquity-os-kernel" }),
+  UBQ_AGENT_WORKFLOW: T.String({ minLength: 1, default: "agent.yml" }),
 });
 
 export type Env = Static<typeof envSchema>;
@@ -18,6 +21,9 @@ declare global {
       APP_ID: string;
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
+      UBQ_AGENT_OWNER?: string;
+      UBQ_AGENT_REPO?: string;
+      UBQ_AGENT_WORKFLOW?: string;
     }
   }
 }

@@ -51,6 +51,11 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       llmClient,
       llm: "gpt-5.2",
+      agent: {
+        owner: env.UBQ_AGENT_OWNER,
+        repo: env.UBQ_AGENT_REPO,
+        workflowId: env.UBQ_AGENT_WORKFLOW,
+      },
       logger: ctx.var.logger,
     });
     bindHandlers(eventHandler);

@@ -13,6 +13,11 @@ export type Options = {
   privateKey: string;
   llmClient: OpenAI;
   llm: string;
+  agent?: {
+    owner: string;
+    repo: string;
+    workflowId: string;
+  };
   logger?: typeof logger;
 };
 
@@ -28,6 +33,11 @@ export class GitHubEventHandler {
   private readonly _appId: number;
   private readonly _llmClient: OpenAI;
   public readonly llm: string;
+  public readonly agent: {
+    owner: string;
+    repo: string;
+    workflowId: string;
+  };
   public readonly logger = logger;
 
   constructor(options: Options) {
@@ -37,6 +47,11 @@ export class GitHubEventHandler {
     this._webhookSecret = options.webhookSecret;
     this._llmClient = options.llmClient;
     this.llm = options.llm;
+    this.agent = {
+      owner: options.agent?.owner ?? "ubiquity-os",
+      repo: options.agent?.repo ?? "ubiquity-os-kernel",
+      workflowId: options.agent?.workflowId ?? "agent.yml",
+    };
 
     if (options.logger) {
       this.logger = options.logger;

@@ -396,10 +396,9 @@ async function callUbqAiRouter(context: GitHubContext<"issue_comment.created">, 
 }
 
 async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string) {
-  const env = typeof process !== "undefined" ? process.env : undefined;
-  const agentOwner = env?.UBQ_AGENT_OWNER ?? "ubiquity-os";
-  const agentRepo = env?.UBQ_AGENT_REPO ?? "ubiquity-os-kernel";
-  const agentWorkflowId = env?.UBQ_AGENT_WORKFLOW ?? "agent.yml";
+  const agentOwner = context.eventHandler.agent.owner;
+  const agentRepo = context.eventHandler.agent.repo;
+  const agentWorkflowId = context.eventHandler.agent.workflowId;
   const agentWorkflowUrl = `https://github.com/${agentOwner}/${agentRepo}/actions/workflows/${agentWorkflowId}`;
 
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
