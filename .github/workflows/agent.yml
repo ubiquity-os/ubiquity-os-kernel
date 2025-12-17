@@ -291,6 +291,12 @@ jobs:
               "editIssueBody": "Optional full new issue body markdown"
             }
 
+          Important (Markdown formatting):
+          - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
+            - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
+            - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
+          - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+
           Task:
           ${{ steps.parse.outputs.task }}
 
@@ -556,15 +562,24 @@ jobs:
             removeLabel(label.trim());
           }
 
-          const editIssueBody = typeof actions.editIssueBody === "string" ? actions.editIssueBody : "";
+          const normalizeMarkdown = (value) => {
+            if (typeof value !== "string") return "";
+            // If the string has no real newlines but contains literal "\n" sequences, unescape them.
+            if (!value.includes("\n") && value.includes("\\n")) {
+              return value.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+            }
+            return value;
+          };
+
+          const editIssueBody = normalizeMarkdown(actions.editIssueBody);
           if (editIssueBody) {
             const bodyPath = path.join(outDir, "issue-body.md");
             fs.writeFileSync(bodyPath, editIssueBody);
             gh(["issue", "edit", issueNumber, "--repo", repo, "--body-file", bodyPath]);
           }
 
-          const extraComment = typeof actions.comment === "string" ? actions.comment.trim() : "";
-          if (extraComment) {
+          const extraComment = normalizeMarkdown(actions.comment);
+          if (extraComment.trim()) {
             gh(["issue", "comment", issueNumber, "--repo", repo, "--body", extraComment]);
           }
           NODE
