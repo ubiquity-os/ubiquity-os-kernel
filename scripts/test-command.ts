@@ -682,7 +682,8 @@ async function main() {
     console.log(`🤖 Reply from ${author}: ${reply.html_url}`);
     if (run) {
       console.log(`🏃 Actions run: ${run.url}`);
-      console.log(`   Watch: gh run watch -R ${run.repo} ${run.runId} --log`);
+      console.log(`   Watch: gh run watch -R ${run.repo} ${run.runId} --interval 3`);
+      console.log(`   Logs (after completion): gh run view -R ${run.repo} ${run.runId} --log`);
     }
     return;
   }
