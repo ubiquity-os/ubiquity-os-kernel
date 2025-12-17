@@ -396,27 +396,47 @@ async function callUbqAiRouter(context: GitHubContext<"issue_comment.created">, 
 }
 
 async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string) {
-  const agentOwner = "ubiquity-os";
-  const agentRepo = "ubiquity-os-kernel";
-  const agentWorkflowId = "agent.yml";
+  const env = typeof process !== "undefined" ? process.env : undefined;
+  const agentOwner = env?.UBQ_AGENT_OWNER ?? "ubiquity-os";
+  const agentRepo = env?.UBQ_AGENT_REPO ?? "ubiquity-os-kernel";
+  const agentWorkflowId = env?.UBQ_AGENT_WORKFLOW ?? "agent.yml";
+  const agentWorkflowUrl = `https://github.com/${agentOwner}/${agentRepo}/actions/workflows/${agentWorkflowId}`;
 
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     context.logger.warn("No installation found, cannot dispatch agent");
     return;
   }
 
-  const stateId = crypto.randomUUID();
-  const ref = await getDefaultBranch(context, agentOwner, agentRepo);
-  const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, {}, token, ref, { name: "agent", parameters: { task } });
+  try {
+    const stateId = crypto.randomUUID();
+    const ref = await getDefaultBranch(context, agentOwner, agentRepo);
+    const token = await context.eventHandler.getToken(context.payload.installation.id);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, {}, token, ref, { name: "agent", parameters: { task } });
 
-  await dispatchWorkflow(context, {
-    owner: agentOwner,
-    repository: agentRepo,
-    workflowId: agentWorkflowId,
-    ref,
-    inputs: await inputs.getInputs(),
-  });
+    await dispatchWorkflow(context, {
+      owner: agentOwner,
+      repository: agentRepo,
+      workflowId: agentWorkflowId,
+      ref,
+      inputs: await inputs.getInputs(),
+    });
+  } catch (error) {
+    context.logger.error({ err: error }, "Failed to dispatch internal agent workflow");
+    const message = error instanceof Error ? error.message : String(error);
+    await postReply(
+      context,
+      [
+        "I couldn't start the agent run.",
+        message ? `Error: ${message}` : null,
+        "",
+        `Actions workflow: ${agentWorkflowUrl}`,
+        "",
+        "If you're testing a feature branch, note that GitHub's workflow_dispatch API only triggers workflows that exist on the repo's default branch.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
 }
 
 function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
