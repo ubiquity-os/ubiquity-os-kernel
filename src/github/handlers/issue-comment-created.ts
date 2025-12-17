@@ -141,7 +141,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 }
 
-function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
+export function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
   const match = /^\s*\/([A-Za-z-_]+)\b(.*)$/s.exec(text);
   if (!match) return null;
   return {
@@ -150,7 +150,7 @@ function extractSlashCommandInvocation(text: string): SlashCommandInvocation | n
   };
 }
 
-function extractAfterUbiquityosMention(text: string): string | null {
+export function extractAfterUbiquityosMention(text: string): string | null {
   const match = /@ubiquityos\b/i.exec(text);
   if (!match || match.index === undefined) return null;
   return text.slice(match.index + match[0].length).trim();
@@ -285,14 +285,14 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 }
 
-type RouterDecision =
+export type RouterDecision =
   | { action: "help" }
   | { action: "ignore" }
   | { action: "reply"; reply: string }
   | { action: "command"; command: { name: string; parameters?: unknown } }
   | { action: "agent"; task?: string };
 
-type CommandDescriptor = Readonly<{
+export type CommandDescriptor = Readonly<{
   name: string;
   description: string;
   example: string;
@@ -308,7 +308,7 @@ function stripCodeFences(raw: string): string {
     .trim();
 }
 
-function tryParseRouterDecision(raw: string): RouterDecision | null {
+export function tryParseRouterDecision(raw: string): RouterDecision | null {
   const cleaned = stripCodeFences(raw);
   try {
     return JSON.parse(cleaned) as RouterDecision;
@@ -344,7 +344,17 @@ async function postReply(context: GitHubContext<"issue_comment.created">, body: 
   });
 }
 
-async function callUbqAiRouter(context: GitHubContext<"issue_comment.created">, prompt: string): Promise<string> {
+function isCloudflareAntibotHtml(status: number, html: string): boolean {
+  if (status !== 403 && status !== 503) return false;
+  const body = html.toLowerCase();
+  return body.includes("<title>just a moment...</title>") || body.includes("cloudflare") || body.includes("cf-chl");
+}
+
+export async function callUbqAiRouter(
+  context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">,
+  prompt: string,
+  routerInput: unknown
+): Promise<string> {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     throw new Error("Missing installation id");
   }
@@ -367,46 +377,62 @@ async function callUbqAiRouter(context: GitHubContext<"issue_comment.created">, 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch("https://ai.ubq.fi/v1/chat/completions", {
+    const payload = {
+      model: "gpt-5.2-chat-latest",
+      reasoning_effort: "none",
+      stream: false,
+      messages: [
+        { role: "system", content: prompt },
+        {
+          role: "user",
+          content: JSON.stringify(routerInput),
+        },
+      ],
+    };
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-GitHub-Owner": owner,
+      "X-GitHub-Repo": repo,
+      "X-GitHub-Installation-Id": String(installationId),
+      "X-Ubiquity-Kernel-Token": kernelToken,
+    };
+
+    const primaryUrl = new URL("/v1/chat/completions", context.eventHandler.aiBaseUrl).toString();
+    const fallbackUrl = new URL("/v1/chat/completions", context.eventHandler.aiFallbackBaseUrl).toString();
+
+    const primaryResponse = await fetch(primaryUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "X-GitHub-Owner": owner,
-        "X-GitHub-Repo": repo,
-        "X-GitHub-Installation-Id": String(installationId),
-        "X-Ubiquity-Kernel-Token": kernelToken,
-      },
-      body: JSON.stringify({
-        model: "gpt-5.2-chat-latest",
-        reasoning_effort: "none",
-        stream: false,
-        messages: [
-          { role: "system", content: prompt },
-          {
-            role: "user",
-            content: JSON.stringify({
-              repositoryOwner: owner,
-              repositoryName: repo,
-              issueNumber: context.payload.issue.number,
-              author: context.payload.comment.user?.login,
-              comment: context.payload.comment.body,
-            }),
-          },
-        ],
-      }),
+      headers,
+      body: JSON.stringify(payload),
     });
 
+    let response = primaryResponse;
+    let responseText = "";
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`ai.ubq.fi error: ${response.status} ${text}`);
+      responseText = await response.text().catch(() => "");
+      if (fallbackUrl !== primaryUrl && isCloudflareAntibotHtml(response.status, responseText)) {
+        context.logger.warn({ status: response.status }, "Router endpoint blocked by Cloudflare antibot; retrying fallback");
+        response = await fetch(fallbackUrl, {
+          method: "POST",
+          signal: controller.signal,
+          headers,
+          body: JSON.stringify(payload),
+        });
+        responseText = response.ok ? "" : await response.text().catch(() => "");
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Router error: ${response.status} ${responseText}`);
     }
 
     const data = (await response.json()) as ChatCompletion;
     const content = data.choices?.[0]?.message?.content;
     if (typeof content !== "string") {
-      throw new Error("ai.ubq.fi: missing assistant content");
+      throw new Error("Router: missing assistant content");
     }
     return content;
   } finally {
@@ -457,7 +483,7 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
   }
 }
 
-function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
+export function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
   const out = new Map<string, CommandDescriptor>();
 
   function setCommand(command: CommandDescriptor) {
@@ -488,6 +514,49 @@ function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
   return [...out.values()];
 }
 
+export function getIssueLabelNames(labels: unknown): string[] {
+  if (!Array.isArray(labels)) return [];
+  const names = labels
+    .map((label) => {
+      if (typeof label === "string") return label;
+      if (typeof label === "object" && label !== null && "name" in label) {
+        const name = (label as { name?: unknown }).name;
+        return typeof name === "string" ? name : null;
+      }
+      return null;
+    })
+    .filter((name): name is string => Boolean(name));
+  return [...new Set(names)];
+}
+
+async function getRecentCommentsForRouter(context: GitHubContext<"issue_comment.created">, limit: number): Promise<{ author: string; body: string }[]> {
+  try {
+    const owner = context.payload.repository.owner.login;
+    const repo = context.payload.repository.name;
+    const issue_number = context.payload.issue.number;
+    const { data } = await context.octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number,
+      per_page: Math.min(30, Math.max(1, limit * 3)),
+      sort: "created",
+      direction: "desc",
+    });
+
+    return data
+      .filter((comment) => comment.user?.type === "User")
+      .slice(0, limit)
+      .reverse()
+      .map((comment) => ({
+        author: comment.user?.login ?? "unknown",
+        body: comment.body ?? "",
+      }));
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to fetch recent comments for router (non-fatal)");
+    return [];
+  }
+}
+
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     context.logger.warn(`No installation found, cannot route command`);
@@ -513,6 +582,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   const commands = describeCommands(manifests);
+  const recentComments = await getRecentCommentsForRouter(context, 10);
+  const labels = getIssueLabelNames(context.payload.issue.labels);
 
   const prompt = `
 You are **UbiquityOS**, a GitHub App assistant.
@@ -521,6 +592,10 @@ You will receive a single JSON object with:
 - repositoryOwner
 - repositoryName
 - issueNumber
+- issueTitle
+- isPullRequest
+- labels (current label names)
+- recentComments (array of the last ~10 human comments: { author, body })
 - author
 - comment (a GitHub comment that mentions "@ubiquityos")
 
@@ -549,7 +624,7 @@ Rules:
 - Use "reply" for questions, discussion, or research that doesn't need execution.
 - Use "agent" for anything that requires repo changes, reading long threads, rewriting specs, setting labels/time estimates, or GitHub operations not covered by commands.
 - Never invent a command name; choose from the provided list.
-- If parameters are unclear, use "reply" to ask a single clarifying question.
+- If parameters are unclear, use "reply" to ask a single clarifying question AND include a copy/paste follow-up that starts with "@ubiquityos" and is fully self-contained.
 
 Available commands (JSON):
 ${JSON.stringify(commands)}
@@ -557,7 +632,17 @@ ${JSON.stringify(commands)}
 
   let raw: string;
   try {
-    raw = await callUbqAiRouter(context, prompt);
+    raw = await callUbqAiRouter(context, prompt, {
+      repositoryOwner: context.payload.repository.owner.login,
+      repositoryName: context.payload.repository.name,
+      issueNumber: context.payload.issue.number,
+      issueTitle: context.payload.issue.title,
+      isPullRequest: Boolean(context.payload.issue.pull_request),
+      labels,
+      recentComments,
+      author: context.payload.comment.user?.login,
+      comment: context.payload.comment.body,
+    });
   } catch (error) {
     context.logger.error({ err: error }, "Router call failed");
     await postReply(context, "I couldn't reach the router model right now. Please try again in a moment.");

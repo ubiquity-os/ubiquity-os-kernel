@@ -51,6 +51,8 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       llmClient,
       llm: "gpt-5.2",
+      aiBaseUrl: env.UBQ_AI_BASE_URL,
+      aiFallbackBaseUrl: env.UBQ_AI_FALLBACK_BASE_URL,
       agent: {
         owner: env.UBQ_AGENT_OWNER,
         repo: env.UBQ_AGENT_REPO,

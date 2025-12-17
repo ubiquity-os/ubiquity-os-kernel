@@ -82,18 +82,20 @@ jobs:
           const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
           const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
           const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
-          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
+	          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
 
-          const repo = payload.repository?.full_name ?? "";
-          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
-          const issueNumber = payload.issue?.number ?? "";
-          const isPullRequest = Boolean(payload.issue?.pull_request);
-          const commentBody = payload.comment?.body ?? "";
-          const commentId = payload.comment?.id ?? "";
-          const commentAuthor = payload.comment?.user?.login ?? "";
-          const commentAuthorType = payload.comment?.user?.type ?? "";
-          const authorAssociation = payload.comment?.author_association ?? "";
-          const installationId = payload.installation?.id ?? "";
+	          const repo = payload.repository?.full_name ?? "";
+	          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
+	          const issueNumber = payload.issue?.number ?? payload.pull_request?.number ?? "";
+	          const isPullRequest = Boolean(payload.issue?.pull_request) || Boolean(payload.pull_request);
+	          const commentKind = payload.issue ? "issue_comment" : payload.pull_request ? "pull_request_review_comment" : "";
+	          const commentBody = payload.comment?.body ?? "";
+	          const commentId = payload.comment?.id ?? "";
+	          const reviewRootCommentId = commentKind === "pull_request_review_comment" ? payload.comment?.in_reply_to_id ?? payload.comment?.id ?? "" : "";
+	          const commentAuthor = payload.comment?.user?.login ?? "";
+	          const commentAuthorType = payload.comment?.user?.type ?? "";
+	          const authorAssociation = payload.comment?.author_association ?? "";
+	          const installationId = payload.installation?.id ?? "";
 
           const command = safeJsonParse(process.env.COMMAND_JSON, null);
           const explicitTaskFromCommand = command?.parameters?.task ?? "";
@@ -129,17 +131,19 @@ jobs:
           const outputLines = [];
           const setOutput = (k, v) => outputLines.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
 
-          setOutput("repo", repo);
-          setOutput("repo_owner", repoOwner);
-          setOutput("repo_name", repoName);
-          setOutput("installation_id", installationId);
-          setOutput("issue_number", issueNumber);
-          setOutput("comment_id", commentId);
-          setOutput("task", task);
-          setOutput("comment_author", commentAuthor);
-          setOutput("allowed", String(allowed));
-          setOutput("deny_reason", denyReason);
-          setOutput("branch", branch);
+	          setOutput("repo", repo);
+	          setOutput("repo_owner", repoOwner);
+	          setOutput("repo_name", repoName);
+	          setOutput("installation_id", installationId);
+	          setOutput("issue_number", issueNumber);
+	          setOutput("comment_id", commentId);
+	          setOutput("comment_kind", commentKind);
+	          setOutput("review_root_comment_id", reviewRootCommentId);
+	          setOutput("task", task);
+	          setOutput("comment_author", commentAuthor);
+	          setOutput("allowed", String(allowed));
+	          setOutput("deny_reason", denyReason);
+	          setOutput("branch", branch);
           setOutput("commit_message", commitMessage);
           setOutput("draft_pr", String(draftPr));
           setOutput("model", model);
@@ -159,15 +163,16 @@ jobs:
           cat > "$RUNNER_TEMP/ubq_agent_update_request_comment.js" <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
-          const { execFileSync } = require("node:child_process");
+	          const { execFileSync } = require("node:child_process");
 
-          const repo = String(process.env.REPO || "").trim();
-          const commentId = String(process.env.COMMENT_ID || "").trim();
-          const runUrl = String(process.env.RUN_URL || "").trim();
-          const status = String(process.env.STATUS || "").trim();
-          const stateId = String(process.env.STATE_ID || "").trim();
-          const prUrl = String(process.env.PR_URL || "").trim();
-          const summaryPath = String(process.env.SUMMARY_PATH || "").trim();
+	          const repo = String(process.env.REPO || "").trim();
+	          const commentId = String(process.env.COMMENT_ID || "").trim();
+	          const commentKind = String(process.env.COMMENT_KIND || "").trim();
+	          const runUrl = String(process.env.RUN_URL || "").trim();
+	          const status = String(process.env.STATUS || "").trim();
+	          const stateId = String(process.env.STATE_ID || "").trim();
+	          const prUrl = String(process.env.PR_URL || "").trim();
+	          const summaryPath = String(process.env.SUMMARY_PATH || "").trim();
           const detail = String(process.env.DETAIL || "").trim();
           const changed = String(process.env.CHANGED || "").trim();
 
@@ -202,21 +207,23 @@ jobs:
             blockLines.push("Agent summary:");
             blockLines.push(summary);
           }
-          blockLines.push("-->");
-          const block = blockLines.join("\n");
+	          blockLines.push("-->");
+	          const block = blockLines.join("\n");
 
-          const comment = ghJson([`repos/${repo}/issues/comments/${commentId}`]);
-          const currentBody = String(comment?.body ?? "");
+	          const commentRoute =
+	            commentKind === "pull_request_review_comment" ? `repos/${repo}/pulls/comments/${commentId}` : `repos/${repo}/issues/comments/${commentId}`;
+	          const comment = ghJson([commentRoute]);
+	          const currentBody = String(comment?.body ?? "");
 
           const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->\\s*/g;
           const cleaned = currentBody.replace(marker, "").replace(/\\s*$/u, "");
           const nextBody = cleaned ? `${cleaned}\n\n${block}\n` : `${block}\n`;
 
-          const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
-          const bodyPath = path.join(tmp, "comment-body.md");
-          fs.writeFileSync(bodyPath, nextBody, "utf8");
-          gh(["api", "-X", "PATCH", `repos/${repo}/issues/comments/${commentId}`, "-F", `body=@${bodyPath}`]);
-          NODE
+	          const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
+	          const bodyPath = path.join(tmp, "comment-body.md");
+	          fs.writeFileSync(bodyPath, nextBody, "utf8");
+	          gh(["api", "-X", "PATCH", commentRoute, "-F", `body=@${bodyPath}`]);
+	          NODE
 
       - name: Comment (rejected)
         if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
@@ -233,13 +240,14 @@ jobs:
 
       - name: Update request comment (started)
         if: steps.parse.outputs.allowed == 'true'
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-          REPO: ${{ steps.parse.outputs.repo }}
-          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS: started
-          STATE_ID: ${{ inputs.stateId }}
+	        env:
+	          GH_TOKEN: ${{ inputs.authToken }}
+	          REPO: ${{ steps.parse.outputs.repo }}
+	          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+	          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
+	          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+	          STATUS: started
+	          STATE_ID: ${{ inputs.stateId }}
         run: |
           set -euo pipefail
           if node "$RUNNER_TEMP/ubq_agent_update_request_comment.js"; then
@@ -257,13 +265,14 @@ jobs:
       - name: Start token watchdog
         if: steps.parse.outputs.allowed == 'true'
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-          REPO: ${{ steps.parse.outputs.repo }}
-          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS: started
-          STATE_ID: ${{ inputs.stateId }}
+	        env:
+	          GH_TOKEN: ${{ inputs.authToken }}
+	          REPO: ${{ steps.parse.outputs.repo }}
+	          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+	          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
+	          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+	          STATUS: started
+	          STATE_ID: ${{ inputs.stateId }}
         run: |
           set -euo pipefail
           (
@@ -295,13 +304,23 @@ jobs:
         env:
           GH_TOKEN: ${{ inputs.authToken }}
         run: |
-          set -euo pipefail
-          repo="${{ steps.parse.outputs.repo }}"
-          issue_number="${{ steps.parse.outputs.issue_number }}"
+	          set -euo pipefail
+	          repo="${{ steps.parse.outputs.repo }}"
+	          issue_number="${{ steps.parse.outputs.issue_number }}"
+	          comment_kind="${{ steps.parse.outputs.comment_kind }}"
+	          review_root_comment_id="${{ steps.parse.outputs.review_root_comment_id }}"
 
-          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
-          gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
-          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
+	          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
+	          if [ "$comment_kind" = "pull_request_review_comment" ]; then
+	            if [ -z "$review_root_comment_id" ]; then
+	              echo "Missing review_root_comment_id for pull_request_review_comment event" >&2
+	              exit 1
+	            fi
+	            gh api --paginate "repos/$repo/pulls/$issue_number/comments?per_page=100" | jq -s --arg root "$review_root_comment_id" 'add | map(select((.id|tostring) == $root or ((.in_reply_to_id // "")|tostring) == $root)) | sort_by(.created_at)' > .ubiquityos.comments.json
+	          else
+	            gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
+	          fi
+	          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
 
           jq -r '[.[] | select(.name | startswith("Time:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.time-labels.txt || true
           jq -r '[.[] | select(.name | startswith("Priority:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.priority-labels.txt || true
@@ -739,12 +758,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          export REPO="${{ steps.parse.outputs.repo }}"
-          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
-          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          export STATE_ID="${{ inputs.stateId }}"
-          export PR_URL="${{ steps.pr.outputs.url }}"
-          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+	          export REPO="${{ steps.parse.outputs.repo }}"
+	          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+	          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
+	          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+	          export STATE_ID="${{ inputs.stateId }}"
+	          export PR_URL="${{ steps.pr.outputs.url }}"
+	          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
           export CHANGED="${{ steps.diff.outputs.changed }}"
 
           export STATUS="completed"
@@ -796,12 +816,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          export REPO="${{ steps.parse.outputs.repo }}"
-          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
-          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          export STATE_ID="${{ inputs.stateId }}"
-          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
-          export CHANGED="${{ steps.diff.outputs.changed }}"
+	          export REPO="${{ steps.parse.outputs.repo }}"
+	          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+	          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
+	          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+	          export STATE_ID="${{ inputs.stateId }}"
+	          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+	          export CHANGED="${{ steps.diff.outputs.changed }}"
           export STATUS="failed"
 
           node "$RUNNER_TEMP/ubq_agent_update_request_comment.js" || true

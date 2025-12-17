@@ -7,6 +7,7 @@ import { getConfig } from "../utils/config";
 import { getPluginsForEvent } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
+import pullRequestReviewCommentCreated from "./pull-request-review-comment-created";
 import handlePushEvent from "./push-event";
 
 function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: typeof pinoLogger) {
@@ -21,6 +22,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("issue_comment.created", issueCommentCreated);
+  eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
   eventHandler.on("push", handlePushEvent);
   eventHandler.on("installation.created", () => {}); // No-op to handle event
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
