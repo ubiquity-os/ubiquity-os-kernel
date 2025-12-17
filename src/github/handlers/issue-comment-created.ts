@@ -1,8 +1,10 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
+import { createKernelAttestationToken } from "../utils/kernel-attestation";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
@@ -94,8 +96,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 
   if (bodyLower.startsWith(`/help`)) {
     await postHelpCommand(context);
-  } else if (bodyLower.startsWith(`@ubiquityos`)) {
-    const afterMention = body.replace(/^@ubiquityos\b/i, "").trim();
+    return;
+  }
+
+  const afterMention = extractAfterUbiquityosMention(body);
+  if (afterMention !== null) {
     const slashInvocation = extractSlashCommandInvocation(afterMention);
     if (slashInvocation) {
       await dispatchSlashCommand(context, slashInvocation);
@@ -124,6 +129,12 @@ function extractSlashCommandInvocation(text: string): SlashCommandInvocation | n
     name: match[1],
     rawArgs: (match[2] ?? "").trim(),
   };
+}
+
+function extractAfterUbiquityosMention(text: string): string | null {
+  const match = /@ubiquityos\b/i.exec(text);
+  if (!match || match.index === undefined) return null;
+  return text.slice(match.index + match[0].length).trim();
 }
 
 function listUserMentions(text: string): string[] {
@@ -198,8 +209,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     if (!manifest?.commands) continue;
 
     const resolvedCommandName =
-      Object.keys(manifest.commands).find((name) => name.toLowerCase() === requested) ??
-      (manifest.commands[invocation.name] ? invocation.name : null);
+      Object.keys(manifest.commands).find((name) => name.toLowerCase() === requested) ?? (manifest.commands[invocation.name] ? invocation.name : null);
     if (!resolvedCommandName) continue;
 
     matches.push({
@@ -256,41 +266,187 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 }
 
-interface OpenAiFunction {
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters?: Record<string, unknown>;
-    strict?: boolean | null;
-  };
+type RouterDecision =
+  | { action: "help" }
+  | { action: "ignore" }
+  | { action: "reply"; reply: string }
+  | { action: "command"; command: { name: string; parameters?: unknown } }
+  | { action: "agent"; task?: string };
+
+type CommandDescriptor = Readonly<{
+  name: string;
+  description: string;
+  example: string;
+  parameters?: unknown;
+}>;
+
+function stripCodeFences(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("```")) return trimmed;
+  return trimmed
+    .replace(/^```[a-zA-Z0-9_-]*\s*/, "")
+    .replace(/```$/, "")
+    .trim();
 }
 
-const embeddedCommands: Array<OpenAiFunction> = [
-  {
-    type: "function",
-    function: {
-      name: "help",
-      description: "Shows all available commands and their examples",
-      strict: false,
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-    },
-  },
-];
+function tryParseRouterDecision(raw: string): RouterDecision | null {
+  const cleaned = stripCodeFences(raw);
+  try {
+    return JSON.parse(cleaned) as RouterDecision;
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) return null;
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1)) as RouterDecision;
+    } catch {
+      return null;
+    }
+  }
+}
 
-async function commandRouter(context: GitHubContext<"issue_comment.created">) {
+function getAgentTaskFromParameters(parameters: unknown): string | null {
+  if (typeof parameters !== "object" || parameters === null) return null;
+  if (!("task" in parameters)) return null;
+  const task = (parameters as { task?: unknown }).task;
+  if (typeof task !== "string") return null;
+  const trimmed = task.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function postReply(context: GitHubContext<"issue_comment.created">, body: string) {
+  const message = body.trim();
+  if (!message) return;
+  await context.octokit.rest.issues.createComment({
+    body: message,
+    issue_number: context.payload.issue.number,
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+  });
+}
+
+async function callUbqAiRouter(context: GitHubContext<"issue_comment.created">, prompt: string): Promise<string> {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    context.logger.warn(`No installation found, cannot invoke command`);
+    throw new Error("Missing installation id");
+  }
+
+  const owner = context.payload.repository.owner.login;
+  const repo = context.payload.repository.name;
+  const installationId = context.payload.installation.id;
+
+  const token = await context.eventHandler.getToken(installationId);
+  const kernelToken = await createKernelAttestationToken({
+    sign: (payload) => context.eventHandler.signPayload(payload),
+    owner,
+    repo,
+    installationId,
+    authToken: token,
+    stateId: crypto.randomUUID(),
+    ttlSeconds: 120,
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch("https://ai.ubq.fi/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-GitHub-Owner": owner,
+        "X-GitHub-Repo": repo,
+        "X-GitHub-Installation-Id": String(installationId),
+        "X-Ubiquity-Kernel-Token": kernelToken,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2-chat-latest",
+        reasoning_effort: "none",
+        stream: false,
+        messages: [
+          { role: "system", content: prompt },
+          {
+            role: "user",
+            content: JSON.stringify({
+              repositoryOwner: owner,
+              repositoryName: repo,
+              issueNumber: context.payload.issue.number,
+              author: context.payload.comment.user?.login,
+              comment: context.payload.comment.body,
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`ai.ubq.fi error: ${response.status} ${text}`);
+    }
+
+    const data = (await response.json()) as ChatCompletion;
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== "string") {
+      throw new Error("ai.ubq.fi: missing assistant content");
+    }
+    return content;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string) {
+  const agentOwner = "ubiquity-os";
+  const agentRepo = "ubiquity-os-kernel";
+  const agentWorkflowId = "agent.yml";
+
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    context.logger.warn("No installation found, cannot dispatch agent");
     return;
   }
 
-  const commands = [...embeddedCommands];
+  const stateId = crypto.randomUUID();
+  const ref = await getDefaultBranch(context, agentOwner, agentRepo);
+  const token = await context.eventHandler.getToken(context.payload.installation.id);
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, {}, token, ref, { name: "agent", parameters: { task } });
+
+  await dispatchWorkflow(context, {
+    owner: agentOwner,
+    repository: agentRepo,
+    workflowId: agentWorkflowId,
+    ref,
+    inputs: await inputs.getInputs(),
+  });
+}
+
+function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
+  const out: CommandDescriptor[] = [
+    { name: "help", description: "Show all available commands and examples.", example: "/help", parameters: {} },
+    { name: "agent", description: "Run the full-power agent to handle complex requests.", example: "@ubiquityos <request>", parameters: {} },
+  ];
+  for (const manifest of manifests) {
+    for (const [name, command] of Object.entries(manifest.commands ?? {})) {
+      out.push({
+        name,
+        description: command.description,
+        example: command["ubiquity:example"],
+        parameters: command.parameters,
+      });
+    }
+  }
+  return out;
+}
+
+async function commandRouter(context: GitHubContext<"issue_comment.created">) {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    context.logger.warn(`No installation found, cannot route command`);
+    return;
+  }
+
   const config = await getConfig(context);
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const manifests: Manifest[] = [];
+
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
     try {
@@ -300,160 +456,126 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       continue;
     }
     const manifest = await getManifest(context, target);
-    if (!manifest?.commands) {
-      continue;
-    }
-    pluginsWithManifest.push({
-      target,
-      settings: pluginSettings,
-      manifest,
-    });
-    for (const [name, command] of Object.entries(manifest.commands)) {
-      commands.push({
-        type: "function",
-        function: {
-          name: name,
-          description: command.description,
-          parameters: command.parameters
-            ? {
-                ...command.parameters,
-                required: Object.keys(command.parameters?.properties ?? {}),
-                additionalProperties: false,
-              }
-            : undefined,
-          strict: true,
-        },
-      });
-    }
+    if (!manifest?.commands) continue;
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+    manifests.push(manifest);
   }
 
-  context.logger.debug(commands, "Available commands");
+  const commands = describeCommands(manifests);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  const prompt = `
+You are **UbiquityOS**, a GitHub App assistant.
 
-  const response = await (async () => {
-    try {
-      return await context.openAi.chat.completions.create({
-        model: context.llm,
-        signal: controller.signal,
-        messages: [
-          {
-            role: "system",
-            content: [
-              {
-                text: `
-You are a GitHub bot named **UbiquityOS**. You receive a single JSON object and OPTIONAL tool definitions (functions). Your job is to either (a) choose exactly one appropriate tool to call with strictly valid JSON arguments, or (b) produce a plain natural language message WITHOUT calling any tool.
-
-### Input JSON fields
+You will receive a single JSON object with:
 - repositoryOwner
 - repositoryName
 - issueNumber
 - author
-- comment  (natural language text mentioning "@UbiquityOS")
+- comment (a GitHub comment that mentions "@ubiquityos")
 
-### Tool Calling Rules (CRITICAL)
-1. Only call a tool if the user's comment clearly maps to a known command/function provided in the current tool list (the "tools" array).
-2. If the request is vague, conversational, a greeting, gratitude, or cannot be unambiguously mapped: DO NOT call a tool. Return a short helpful textual reply instead.
-3. If the user asks for a list of commands or how to use you: call the "help" function.
-4. Never invent tools or parameters. Use only the exact names & JSON schema provided.
-5. If required parameters are missing or ambiguous in the comment, DO NOT guess. Return a clarification message (no tool call).
-6. Return at most one tool call. parallel_tool_calls is false.
-7. If multiple intents are present, pick the highest‑priority actionable one only if unambiguous; otherwise ask for clarification (no tool call).
-8. If no suitable tool: respond with plain text and ensure tool_calls is EMPTY (omit it entirely by not calling any tool).
+You also have access to a list of available commands (including their examples and JSON parameter schemas).
 
-### Output Behavior
-- To invoke a tool: respond via the tool call mechanism (the API will structure tool_calls). Provide only arguments allowed by that tool's schema.
-- To NOT invoke a tool: just produce a concise message (e.g., "I can’t perform that action. Try @UbiquityOS help for available commands.").
+Return **ONLY** a JSON object matching ONE of these shapes (no markdown, no code fences):
 
-### Safety / Validation
-- Do not hallucinate permissions or repository changes.
-- Do not fabricate parameters or users.
-- Prefer *not* calling a tool over an uncertain or speculative mapping.
+1) Help:
+{ "action": "help" }
 
-Follow these rules exactly. If uncertain, DO NOT call a tool.
-If you have nothing useful to add to the conversation, don't respond with a comment at all. This is because you are stepping in as a first responder on behalf of the issue author.
-`,
-                type: "text",
-              },
-            ],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                text: JSON.stringify({
-                  repositoryOwner: context.payload.repository.owner.login,
-                  repositoryName: context.payload.repository.name,
-                  issueNumber: context.payload.issue.number,
-                  author: context.payload.comment.user?.login,
-                  comment: context.payload.comment.body,
-                }),
-                type: "text",
-              },
-            ],
-          },
-        ],
-        temperature: 0.3,
-        max_completion_tokens: 1024,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        tools: commands,
-        parallel_tool_calls: false,
-        response_format: {
-          type: "text",
-        },
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  })();
+2) Ignore:
+{ "action": "ignore" }
 
-  context.logger.debug({ response }, "LLM response");
+3) Plain reply (post a comment):
+{ "action": "reply", "reply": "..." }
 
-  if (!response?.choices?.length) {
+4) Invoke a command plugin:
+{ "action": "command", "command": { "name": "<commandName>", "parameters": { ... } } }
+
+5) Escalate to the full agent runner (for complex, multi-step, repo edits, or label/spec work):
+{ "action": "agent", "task": "..." }
+
+Rules:
+- Prefer an existing command when it clearly fits.
+- Use "help" when asked for available commands / how to use.
+- Use "reply" for questions, discussion, or research that doesn't need execution.
+- Use "agent" for anything that requires repo changes, reading long threads, rewriting specs, setting labels/time estimates, or GitHub operations not covered by commands.
+- Never invent a command name; choose from the provided list.
+- If parameters are unclear, use "reply" to ask a single clarifying question.
+
+Available commands (JSON):
+${JSON.stringify(commands)}
+`.trim();
+
+  let raw: string;
+  try {
+    raw = await callUbqAiRouter(context, prompt);
+  } catch (error) {
+    context.logger.error({ err: error }, "Router call failed");
+    await postReply(context, "I couldn't reach the router model right now. Please try again in a moment.");
     return;
   }
 
-  const toolCalls = response.choices[0].message.tool_calls;
-  if (!toolCalls?.length) {
-    context.logger.warn("No tool call was made.");
+  context.logger.debug({ raw }, "Router output");
+
+  const decision = tryParseRouterDecision(raw);
+  if (!decision) {
+    await postReply(context, raw);
     return;
   }
 
-  const toolCall = toolCalls[0];
-  if (!toolCall) {
-    context.logger.debug("No tool can be called.");
+  if (decision.action === "ignore") return;
+  if (decision.action === "help") {
+    await postHelpCommand(context);
+    return;
+  }
+  if (decision.action === "reply") {
+    await postReply(context, decision.reply);
+    return;
+  }
+  if (decision.action === "agent") {
+    const task = String(decision.task ?? "").trim() || extractAfterUbiquityosMention(context.payload.comment.body) || context.payload.comment.body.trim();
+    await dispatchInternalAgent(context, task);
+    return;
+  }
+
+  const commandName = decision.command?.name;
+  if (!commandName || typeof commandName !== "string") {
+    await postReply(context, "I couldn't determine which command to run. Try `@ubiquityos help`.");
+    return;
+  }
+
+  if (commandName === "help") {
+    await postHelpCommand(context);
+    return;
+  }
+  if (commandName === "agent") {
+    const task =
+      getAgentTaskFromParameters(decision.command?.parameters) ??
+      extractAfterUbiquityosMention(context.payload.comment.body) ??
+      context.payload.comment.body.trim();
+    await dispatchInternalAgent(context, task);
+    return;
+  }
+
+  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[commandName] !== undefined);
+  if (!pluginWithManifest) {
+    await postReply(context, `I couldn't find a plugin for \`/${commandName}\`. Try \`@ubiquityos help\`.`);
     return;
   }
 
   const command = {
-    name: toolCall.function.name,
-    parameters: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : null,
+    name: commandName,
+    parameters: decision.command?.parameters ?? null,
   };
-
-  if (command.name === "help") {
-    await postHelpCommand(context);
-    return;
-  }
-
-  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
-  if (!pluginWithManifest) {
-    context.logger.warn({ command: command.name }, `No plugin found for command`);
-    return;
-  }
 
   const plugin = pluginWithManifest.target;
   const settings = pluginWithManifest.settings?.with;
 
-  // call plugin
   const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
   const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject, command }, "Will attempt to call a plugin to answer the help request.");
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin.");
   try {
     if (!isGithubPluginObject) {
       await dispatchWorker(plugin, await inputs.getInputs());
@@ -462,7 +584,7 @@ If you have nothing useful to add to the conversation, don't respond with a comm
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
-        ref: ref,
+        ref,
         inputs: await inputs.getInputs(),
       });
     }

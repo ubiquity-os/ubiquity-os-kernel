@@ -43,17 +43,14 @@ app.post("/", async (ctx: Context) => {
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const llmClient = new OpenAI({
-      apiKey: env.OPENROUTER_API_KEY,
-      baseURL: env.OPENROUTER_BASE_URL,
-    });
+    const llmClient = new OpenAI({ apiKey: "dummy" });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
       llmClient,
-      llm: env.OPENROUTER_MODEL,
+      llm: "gpt-5.2",
       logger: ctx.var.logger,
     });
     bindHandlers(eventHandler);

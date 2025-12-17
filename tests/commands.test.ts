@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest 
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
+import type OpenAI from "openai";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
@@ -24,6 +25,12 @@ config({ path: ".dev.vars" });
 
 const name = "ubiquity-os-kernel";
 const eventName = "issue_comment.created";
+const UBIQUITY_OS_OWNER = "ubiquity-os";
+const openAi = {} as unknown as OpenAI;
+
+type LlmRequestPayload = {
+  messages?: Array<{ role?: string; content?: unknown }>;
+};
 
 beforeAll(() => {
   server.listen();
@@ -120,6 +127,44 @@ describe("Event related tests", () => {
         })
       )
     );
+
+    server.use(
+      http.post("https://ai.ubq.fi/v1/chat/completions", async ({ request }) => {
+        const body = (await request.json()) as LlmRequestPayload;
+        const userContent = body.messages?.find((m) => m?.role === "user")?.content;
+        let comment = "";
+        try {
+          const parsed = typeof userContent === "string" ? JSON.parse(userContent) : null;
+          comment = typeof parsed?.comment === "string" ? parsed.comment : "";
+        } catch {
+          comment = "";
+        }
+
+        const normalized = comment.toLowerCase();
+        let content: string;
+        if (normalized.includes("available commands")) {
+          content = JSON.stringify({ action: "help" });
+        } else if (normalized.includes("say hello")) {
+          content = JSON.stringify({ action: "command", command: { name: "hello", parameters: { username: "pavlovcik" } } });
+        } else if (normalized.includes("rewrite spec")) {
+          content = JSON.stringify({ action: "agent" });
+        } else if (normalized.includes("creator of the universe")) {
+          content = JSON.stringify({ action: "reply", reply: "Sorry, but I can't help with that." });
+        } else {
+          content = JSON.stringify({ action: "ignore" });
+        }
+
+        return HttpResponse.json({
+          choices: [
+            {
+              message: {
+                content,
+              },
+            },
+          ],
+        });
+      })
+    );
   });
 
   it("Should post the help menu", async () => {
@@ -142,31 +187,7 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      tool_calls: [
-                        {
-                          type: "function",
-                          function: {
-                            name: "help",
-                            arguments: "",
-                          },
-                        },
-                      ],
-                    },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
+      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -211,31 +232,7 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      tool_calls: [
-                        {
-                          type: "function",
-                          function: {
-                            name: "hello",
-                            arguments: JSON.stringify({ username: "pavlovcik" }),
-                          },
-                        },
-                      ],
-                    },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
+      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -248,7 +245,7 @@ describe("Event related tests", () => {
     expect(spy).toBeCalledTimes(0);
     expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
     expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
-      owner: "ubiquity-os",
+      owner: UBIQUITY_OS_OWNER,
       repository: "plugin-b",
       ref: "main",
       workflowId: "compute.yml",
@@ -256,6 +253,86 @@ describe("Event related tests", () => {
         command: JSON.stringify({ name: "hello", parameters: { username: "pavlovcik" } }),
       },
     });
+  });
+
+  it("Should route when @ubiquityos is mentioned mid-comment", async () => {
+    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
+
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    await issueCommentCreated({
+      id: "",
+      key: eventName,
+      octokit: {
+        rest: {
+          issues: {
+            createComment() {
+              return;
+            },
+          },
+          repos: {
+            getContent: jest.fn(getContent),
+          },
+        },
+      },
+      openAi,
+      eventHandler: eventHandler,
+      payload: {
+        ...payload,
+        comment: {
+          body: "Hey @UbiquityOS can you say hello to @pavlovcik",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
+    } as unknown as GitHubContext);
+
+    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
+      owner: UBIQUITY_OS_OWNER,
+      repository: "plugin-b",
+      workflowId: "compute.yml",
+    });
+  });
+
+  it("Should dispatch the agent workflow for complex requests", async () => {
+    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
+
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    await issueCommentCreated({
+      id: "",
+      key: eventName,
+      octokit: {
+        rest: {
+          issues: {
+            createComment() {
+              return;
+            },
+          },
+          repos: {
+            getContent: jest.fn(getContent),
+          },
+        },
+      },
+      openAi,
+      eventHandler: eventHandler,
+      payload: {
+        ...payload,
+        comment: {
+          body: "Hey @UbiquityOS rewrite spec based on the thread and set the best time label",
+        },
+      } as unknown as GitHubContext<"issue_comment.created">["payload"],
+      logger,
+    } as unknown as GitHubContext);
+
+    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
+      owner: UBIQUITY_OS_OWNER,
+      repository: "ubiquity-os-kernel",
+      workflowId: "agent.yml",
+    });
+
+    const inputs = (dispatchWorkflow as jest.Mock).mock.calls[0][1].inputs as Record<string, string>;
+    const command = JSON.parse(inputs.command);
+    expect(command).toMatchObject({ name: "agent", parameters: { task: "rewrite spec based on the thread and set the best time label" } });
   });
 
   it("Should not answer with arbitrary requests", async () => {
@@ -278,23 +355,7 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      content: "Sorry, but I can't help with that.",
-                    },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
+      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -304,7 +365,13 @@ describe("Event related tests", () => {
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(0);
+    expect(spy).toBeCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      body: "Sorry, but I can't help with that.",
+      issue_number: 1,
+      owner: "ubiquity",
+      repo: name,
+    });
   });
 
   it("Should not post the help menu when /help command if there is no available command", async () => {

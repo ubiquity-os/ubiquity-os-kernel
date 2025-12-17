@@ -55,7 +55,6 @@ export async function runPlugin(context: Context<PluginSettings, Env, Command, S
         const result = await callLlm(
           {
             messages: [{ role: "user", content: prompt }],
-            model: "gpt-5.2-chat-latest",
           },
           context
         );

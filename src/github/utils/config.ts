@@ -61,11 +61,11 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
     owner,
   });
 
-  context.logger.debug({ owner, repository }, "Downloaded configuration file");
   if (!rawData) {
-    context.logger.debug({ owner, repository }, "No raw configuration data");
+    context.logger.debug({ owner, repository }, "No configuration data");
     return { config: null, errors: null, rawData: null };
   }
+  context.logger.debug({ owner, repository }, "Downloaded configuration file");
 
   const { yaml, errors } = parseYaml(context, rawData);
   let targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
@@ -214,33 +214,35 @@ async function download({ context, repository, owner }: { context: GitHubContext
     context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
   }
-  const filePath = getConfigFullPathForEnvironment(context.eventHandler.environment);
-  try {
-    context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  const candidates = getConfigPathCandidatesForEnvironment(context.eventHandler.environment);
+  for (const filePath of candidates) {
     try {
-      const { data, headers } = await context.octokit.rest.repos.getContent({
-        owner,
-        repo: repository,
-        path: filePath,
-        mediaType: { format: "raw" },
-        request: { signal: controller.signal },
-      });
-      context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
-      return data as unknown as string; // this will be a string if media format is raw
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch (err) {
-    // In case of a missing config, do not log it as an error
-    if (err && typeof err === "object" && "status" in err && err.status === 404) {
-      context.logger.debug({ owner, repository, filePath }, "No configuration file found");
-    } else {
+      context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      try {
+        const { data, headers } = await context.octokit.rest.repos.getContent({
+          owner,
+          repo: repository,
+          path: filePath,
+          mediaType: { format: "raw" },
+          request: { signal: controller.signal },
+        });
+        context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
+        return data as unknown as string; // this will be a string if media format is raw
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      if (err && typeof err === "object" && "status" in err && err.status === 404) {
+        context.logger.debug({ owner, repository, filePath }, "No configuration file found");
+        continue;
+      }
       context.logger.error({ err, owner, repository, filePath }, "Failed to download the requested file");
+      return null;
     }
-    return null;
   }
+  return null;
 }
 
 export function parseYaml(context: GitHubContext, data: null | string) {

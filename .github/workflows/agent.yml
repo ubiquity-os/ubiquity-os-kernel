@@ -1,0 +1,715 @@
+name: "UbiquityOS Agent"
+
+on:
+  workflow_dispatch:
+    inputs:
+      stateId:
+        description: "State Id"
+      eventName:
+        description: "Event Name"
+      eventPayload:
+        description: "Event Payload"
+      settings:
+        description: "Settings"
+      authToken:
+        description: "Auth Token"
+      ref:
+        description: "Ref"
+      signature:
+        description: "Signature sent from the Kernel"
+      command:
+        description: "Command"
+      ubiquityKernelToken:
+        description: "Kernel attestation token (optional)"
+
+jobs:
+  agent:
+    name: "Agent"
+    runs-on: ubuntu-latest
+    permissions: write-all
+    timeout-minutes: 75
+    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
+
+    steps:
+      - name: Decompress event payload
+        uses: ubiquity-os/compress-action@main
+        id: eventPayload
+        with:
+          data: ${{ inputs.eventPayload }}
+          mode: decompress
+
+      - name: Mask tokens
+        run: |
+          echo "::add-mask::${{ inputs.authToken }}"
+          echo "::add-mask::${{ inputs.ubiquityKernelToken }}"
+
+      - name: Parse settings + validate invocation
+        id: parse
+        env:
+          EVENT_PAYLOAD: ${{ steps.eventPayload.outputs.result }}
+          SETTINGS_JSON: ${{ inputs.settings }}
+          COMMAND_JSON: ${{ inputs.command }}
+          STATE_ID: ${{ inputs.stateId }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          function safeJsonParse(value, fallback) {
+            try {
+              if (!value) return fallback;
+              return JSON.parse(value);
+            } catch {
+              return fallback;
+            }
+          }
+
+          const payload = safeJsonParse(process.env.EVENT_PAYLOAD, null);
+          if (!payload) {
+            console.error("Missing/invalid EVENT_PAYLOAD");
+            process.exit(1);
+          }
+
+          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
+          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
+            ? settings.allowedAuthorAssociations
+            : ["OWNER", "MEMBER", "COLLABORATOR"];
+
+          const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
+          const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
+          const draftPr = settings.draftPr !== undefined ? Boolean(settings.draftPr) : true;
+          const model = typeof settings.model === "string" ? settings.model : "gpt-5.2";
+          const effort = typeof settings.effort === "string" ? settings.effort : "xhigh";
+          const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
+          const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
+          const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
+          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
+
+          const repo = payload.repository?.full_name ?? "";
+          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
+          const issueNumber = payload.issue?.number ?? "";
+          const isPullRequest = Boolean(payload.issue?.pull_request);
+          const commentBody = payload.comment?.body ?? "";
+          const commentAuthor = payload.comment?.user?.login ?? "";
+          const commentAuthorType = payload.comment?.user?.type ?? "";
+          const authorAssociation = payload.comment?.author_association ?? "";
+          const installationId = payload.installation?.id ?? "";
+
+          const command = safeJsonParse(process.env.COMMAND_JSON, null);
+          const explicitTaskFromCommand = command?.parameters?.task ?? "";
+
+          function extractTaskFromMention(body) {
+            const m = /@ubiquityos\b/i.exec(String(body || ""));
+            if (!m || m.index === undefined) return "";
+            return String(body).slice(m.index + m[0].length).trim();
+          }
+
+          const taskFromMention = extractTaskFromMention(commentBody);
+          const task = String(explicitTaskFromCommand || taskFromMention || "").trim();
+
+          let allowed = true;
+          let denyReason = "";
+
+          if (commentAuthorType !== "User") {
+            allowed = false;
+            denyReason = `Only human users can invoke the agent (got user.type=${commentAuthorType}).`;
+          } else if (!allowedAuthorAssociations.includes(authorAssociation)) {
+            allowed = false;
+            denyReason = `Not authorized (author_association=${authorAssociation}).`;
+          } else if (!repo || !issueNumber) {
+            allowed = false;
+            denyReason = "Missing repo or issue number in event payload.";
+          } else if (!task) {
+            allowed = false;
+            denyReason = "Missing task text after @ubiquityos.";
+          }
+
+          const branch = `${branchPrefix}/${process.env.STATE_ID || "run"}`.replace(/[^0-9A-Za-z._/-]+/g, "-");
+
+          const outputLines = [];
+          const setOutput = (k, v) => outputLines.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
+
+          setOutput("repo", repo);
+          setOutput("repo_owner", repoOwner);
+          setOutput("repo_name", repoName);
+          setOutput("installation_id", installationId);
+          setOutput("issue_number", issueNumber);
+          setOutput("task", task);
+          setOutput("comment_author", commentAuthor);
+          setOutput("allowed", String(allowed));
+          setOutput("deny_reason", denyReason);
+          setOutput("branch", branch);
+          setOutput("commit_message", commitMessage);
+          setOutput("draft_pr", String(draftPr));
+          setOutput("model", model);
+          setOutput("effort", effort);
+          setOutput("sandbox", sandbox);
+          setOutput("codex_args", codexArgs);
+          setOutput("safety_strategy", safetyStrategy);
+          setOutput("test_command", testCommand);
+          setOutput("is_pull_request", String(isPullRequest));
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
+          NODE
+
+      - name: Comment (rejected)
+        if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$(cat <<EOF
+          @${{ steps.parse.outputs.comment_author }} agent rejected: ${{ steps.parse.outputs.deny_reason }}
+
+          Run logs: ${run_url}
+          EOF
+          )"
+
+      - name: Comment (started)
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$(cat <<EOF
+          @${{ steps.parse.outputs.comment_author }} started an agent run.
+
+          Task:
+          > ${{ steps.parse.outputs.task }}
+
+          If this run exceeds ~55 minutes, GitHub App auth may expire and prevent a final status comment. Run logs: ${run_url}
+          EOF
+          )"
+
+      - name: Start token watchdog
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          repo="${{ steps.parse.outputs.repo }}"
+          issue_number="${{ steps.parse.outputs.issue_number }}"
+
+          (
+            sleep 3300
+            gh issue comment "$issue_number" --repo "$repo" --body "$(cat <<EOF
+            Agent run is still executing after ~55 minutes. If no completion comment appears, the GitHub App token may have expired (~60 minutes).
+
+            Run logs: ${run_url}
+            EOF
+            )"
+          ) &
+
+          echo "$!" > "$RUNNER_TEMP/ubq_watchdog.pid"
+
+      - name: Checkout target repo
+        if: steps.parse.outputs.allowed == 'true'
+        uses: actions/checkout@v5
+        with:
+          token: ${{ inputs.authToken }}
+          repository: ${{ steps.parse.outputs.repo }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create working branch
+        if: steps.parse.outputs.allowed == 'true'
+        run: |
+          git config user.name "UbiquityOS Agent"
+          git config user.email "bot@ubiquity.os"
+          git switch -c "${{ steps.parse.outputs.branch }}"
+
+      - name: Fetch issue context + labels
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+          repo="${{ steps.parse.outputs.repo }}"
+          issue_number="${{ steps.parse.outputs.issue_number }}"
+
+          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
+          gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
+          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
+
+          jq -r '[.[] | select(.name | startswith("Time:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.time-labels.txt || true
+          jq -r '[.[] | select(.name | startswith("Priority:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.priority-labels.txt || true
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const issue = JSON.parse(fs.readFileSync(".ubiquityos.issue.json", "utf8"));
+          const comments = JSON.parse(fs.readFileSync(".ubiquityos.comments.json", "utf8"));
+
+          const lines = [];
+          lines.push(`# ${issue.title || "Issue"}`);
+          lines.push("");
+          lines.push(`URL: ${issue.html_url || ""}`);
+          lines.push(`Author: @${issue.user?.login || "unknown"}`);
+          lines.push("");
+          if (issue.body) {
+            lines.push("## Body");
+            lines.push(issue.body);
+            lines.push("");
+          }
+          lines.push("## Labels");
+          lines.push((issue.labels || []).map((l) => (typeof l?.name === "string" ? `- ${l.name}` : "")).filter(Boolean).join("\n") || "- (none)");
+          lines.push("");
+          lines.push("## Comments");
+          for (const c of comments) {
+            lines.push(`### @${c.user?.login || "unknown"} — ${c.created_at || ""}`);
+            lines.push(c.body || "");
+            lines.push("");
+          }
+          fs.writeFileSync(".ubiquityos.issue.md", lines.join("\n"));
+          NODE
+
+      - name: Write agent prompt
+        if: steps.parse.outputs.allowed == 'true'
+        run: |
+          set -euo pipefail
+
+          cat > .codex.prompt.txt <<'PROMPT'
+          You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+
+          Context:
+          - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
+          - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+
+          GitHub operations:
+          - Do NOT push branches or open PRs; the workflow will handle that.
+          - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
+
+            {
+              "comment": "Optional extra comment to post on the issue/PR",
+              "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
+              "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
+              "addLabels": ["Optional array of existing label names"],
+              "removeLabels": ["Optional array of existing label names"],
+              "editIssueBody": "Optional full new issue body markdown"
+            }
+
+          Task:
+          ${{ steps.parse.outputs.task }}
+
+          Constraints:
+          - Keep changes minimal and focused on the task.
+          - Do not reveal secrets or tokens.
+          - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
+          PROMPT
+
+      - name: Start ai.ubq.fi Responses forwarder
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          GH_OWNER: ${{ steps.parse.outputs.repo_owner }}
+          GH_REPO: ${{ steps.parse.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ steps.parse.outputs.installation_id }}
+          PORT: "4010"
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
+          const http = require("node:http");
+          const { Readable } = require("node:stream");
+
+          const port = Number.parseInt(process.env.PORT || "4010", 10);
+          const baseUrl = "https://ai.ubq.fi";
+
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!authToken) {
+            console.error("Missing AUTH_TOKEN");
+            process.exit(1);
+          }
+          if (authToken.startsWith("gh") && !kernelToken) {
+            console.error("Missing KERNEL_TOKEN (required for GitHub auth to ai.ubq.fi)");
+            process.exit(1);
+          }
+          if (!owner || !repo) {
+            console.error("Missing GH_OWNER/GH_REPO");
+            process.exit(1);
+          }
+
+          const server = http.createServer(async (req, res) => {
+            try {
+              const url = new URL(req.url || "/", "http://127.0.0.1");
+              if (req.method === "GET" && url.pathname === "/health") {
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end("ok");
+                return;
+              }
+
+              const chunks = [];
+              for await (const chunk of req) chunks.push(chunk);
+              const body = Buffer.concat(chunks);
+
+              const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
+
+              const headers = {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": req.headers["content-type"] || "application/json",
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+              };
+              if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
+              if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
+
+              const upstream = await fetch(upstreamUrl, {
+                method: req.method || "POST",
+                headers,
+                body: body.length ? body : undefined,
+              });
+
+              res.statusCode = upstream.status;
+
+              const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
+              for (const key of passthroughHeaders) {
+                const value = upstream.headers.get(key);
+                if (value) res.setHeader(key, value);
+              }
+
+              if (!upstream.body) {
+                const text = await upstream.text().catch(() => "");
+                res.end(text);
+                return;
+              }
+
+              Readable.fromWeb(upstream.body).pipe(res);
+            } catch (error) {
+              res.statusCode = 502;
+              res.setHeader("Content-Type", "text/plain");
+              res.end(String(error?.message || error || "upstream error"));
+            }
+          });
+
+          server.listen(port, "127.0.0.1", () => {
+            process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
+          });
+          NODE
+
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
+
+          for _ in {1..30}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              echo "Forwarder ready."
+              exit 0
+            fi
+            sleep 0.2
+          done
+
+          echo "Forwarder failed to start" >&2
+          exit 1
+
+      - name: Run Codex
+        if: steps.parse.outputs.allowed == 'true'
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ steps.parse.outputs.sandbox }}
+          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+          model: ${{ steps.parse.outputs.model }}
+          effort: ${{ steps.parse.outputs.effort }}
+          codex-args: ${{ steps.parse.outputs.codex_args }}
+
+      - name: Run tests (optional)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.test_command != ''
+        run: ${{ steps.parse.outputs.test_command }}
+
+      - name: Collect agent outputs
+        if: always() && steps.parse.outputs.allowed == 'true'
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/ubiquityos-agent"
+          mkdir -p "$out_dir"
+          if [ -f .codex.last-message.md ]; then cp .codex.last-message.md "$out_dir/last-message.md"; fi
+          if [ -f .ubiquityos.actions.json ]; then cp .ubiquityos.actions.json "$out_dir/actions.json"; fi
+
+      - name: Apply requested GitHub actions
+        if: success() && steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
+          OUT_DIR: ${{ runner.temp }}/ubiquityos-agent
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { execFileSync } = require("node:child_process");
+
+          const repo = String(process.env.REPO || "").trim();
+          const issueNumber = String(process.env.ISSUE_NUMBER || "").trim();
+          const outDir = String(process.env.OUT_DIR || "").trim();
+
+          if (!repo || !issueNumber || !outDir) {
+            console.log("Missing REPO/ISSUE_NUMBER/OUT_DIR; skipping GitHub actions.");
+            process.exit(0);
+          }
+
+          const actionsPath = path.join(outDir, "actions.json");
+          if (!fs.existsSync(actionsPath)) {
+            console.log("No .ubiquityos.actions.json produced; skipping GitHub actions.");
+            process.exit(0);
+          }
+
+          let actions;
+          try {
+            actions = JSON.parse(fs.readFileSync(actionsPath, "utf8"));
+          } catch (error) {
+            console.error("Invalid actions.json:", error);
+            process.exit(1);
+          }
+
+          const issue = JSON.parse(fs.readFileSync(".ubiquityos.issue.json", "utf8"));
+          const repoLabels = JSON.parse(fs.readFileSync(".ubiquityos.repo-labels.json", "utf8"));
+          const availableLabels = new Set(
+            Array.isArray(repoLabels) ? repoLabels.map((l) => (l && typeof l.name === "string" ? l.name : "")).filter(Boolean) : []
+          );
+
+          const currentLabels = new Set(
+            Array.isArray(issue.labels) ? issue.labels.map((l) => (l && typeof l.name === "string" ? l.name : "")).filter(Boolean) : []
+          );
+
+          const timeLabels = new Set();
+          const priorityLabels = new Set();
+          try {
+            const timeRaw = fs.readFileSync(".ubiquityos.time-labels.txt", "utf8");
+            for (const line of timeRaw.split(/\r?\n/)) if (line.trim()) timeLabels.add(line.trim());
+          } catch {}
+          try {
+            const prioRaw = fs.readFileSync(".ubiquityos.priority-labels.txt", "utf8");
+            for (const line of prioRaw.split(/\r?\n/)) if (line.trim()) priorityLabels.add(line.trim());
+          } catch {}
+
+          const gh = (args) => execFileSync("gh", args, { stdio: "inherit", env: process.env });
+
+          const removeLabel = (label) => {
+            if (!label || !currentLabels.has(label)) return;
+            gh(["issue", "edit", issueNumber, "--repo", repo, "--remove-label", label]);
+            currentLabels.delete(label);
+          };
+
+          const addLabel = (label) => {
+            if (!label || currentLabels.has(label)) return;
+            if (!availableLabels.has(label)) {
+              console.warn(`Skipping unknown label: ${label}`);
+              return;
+            }
+            gh(["issue", "edit", issueNumber, "--repo", repo, "--add-label", label]);
+            currentLabels.add(label);
+          };
+
+          const desiredTimeLabel = typeof actions.timeLabel === "string" ? actions.timeLabel.trim() : "";
+          if (desiredTimeLabel) {
+            if (timeLabels.size > 0 && !timeLabels.has(desiredTimeLabel)) {
+              console.warn(`Skipping invalid timeLabel (not in .ubiquityos.time-labels.txt): ${desiredTimeLabel}`);
+            } else if (!availableLabels.has(desiredTimeLabel)) {
+              console.warn(`Skipping unknown timeLabel (not in repo labels): ${desiredTimeLabel}`);
+            } else {
+              for (const label of [...currentLabels]) {
+                if (label.startsWith("Time:") && label !== desiredTimeLabel) removeLabel(label);
+              }
+              addLabel(desiredTimeLabel);
+            }
+          }
+
+          const desiredPriorityLabel = typeof actions.priorityLabel === "string" ? actions.priorityLabel.trim() : "";
+          if (desiredPriorityLabel) {
+            if (priorityLabels.size > 0 && !priorityLabels.has(desiredPriorityLabel)) {
+              console.warn(`Skipping invalid priorityLabel (not in .ubiquityos.priority-labels.txt): ${desiredPriorityLabel}`);
+            } else if (!availableLabels.has(desiredPriorityLabel)) {
+              console.warn(`Skipping unknown priorityLabel (not in repo labels): ${desiredPriorityLabel}`);
+            } else {
+              for (const label of [...currentLabels]) {
+                if (label.startsWith("Priority:") && label !== desiredPriorityLabel) removeLabel(label);
+              }
+              addLabel(desiredPriorityLabel);
+            }
+          }
+
+          const addLabels = Array.isArray(actions.addLabels) ? actions.addLabels : [];
+          for (const label of addLabels) {
+            if (typeof label !== "string") continue;
+            addLabel(label.trim());
+          }
+
+          const removeLabels = Array.isArray(actions.removeLabels) ? actions.removeLabels : [];
+          for (const label of removeLabels) {
+            if (typeof label !== "string") continue;
+            removeLabel(label.trim());
+          }
+
+          const editIssueBody = typeof actions.editIssueBody === "string" ? actions.editIssueBody : "";
+          if (editIssueBody) {
+            const bodyPath = path.join(outDir, "issue-body.md");
+            fs.writeFileSync(bodyPath, editIssueBody);
+            gh(["issue", "edit", issueNumber, "--repo", repo, "--body-file", bodyPath]);
+          }
+
+          const extraComment = typeof actions.comment === "string" ? actions.comment.trim() : "";
+          if (extraComment) {
+            gh(["issue", "comment", issueNumber, "--repo", repo, "--body", extraComment]);
+          }
+          NODE
+
+      - name: Cleanup agent temp files
+        if: always() && steps.parse.outputs.allowed == 'true'
+        run: |
+          rm -f .codex.prompt.txt .codex.last-message.md .ubiquityos.issue.json .ubiquityos.comments.json .ubiquityos.repo-labels.json .ubiquityos.issue.md .ubiquityos.time-labels.txt .ubiquityos.priority-labels.txt .ubiquityos.actions.json || true
+
+      - name: Detect diff
+        if: success() && steps.parse.outputs.allowed == 'true'
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/ubiquityos-agent"
+          git diff --name-only > "$RUNNER_TEMP/ubiquityos-agent/changed-files.txt"
+
+      - name: Commit + push
+        if: success() && steps.parse.outputs.allowed == 'true' && steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          git add -A
+          git commit -m "${{ steps.parse.outputs.commit_message }}" || true
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ steps.parse.outputs.repo }}.git"
+          git push -u origin "${{ steps.parse.outputs.branch }}"
+
+      - name: Create or find PR
+        if: success() && steps.parse.outputs.allowed == 'true' && steps.diff.outputs.changed == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          repo="${{ steps.parse.outputs.repo }}"
+          head="${{ steps.parse.outputs.branch }}"
+          base="$(gh api "repos/$repo" -q .default_branch || echo "main")"
+          title="Agent: #${{ steps.parse.outputs.issue_number }}"
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          existing="$(gh pr list --repo "$repo" --head "$head" --json url -q '.[0].url' || true)"
+          if [ -n "$existing" ]; then
+            echo "url=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          body_file="$RUNNER_TEMP/ubiquityos-agent/pr-body.md"
+          mkdir -p "$(dirname "$body_file")"
+          cat > "$body_file" <<EOF
+          Trigger: #${{ steps.parse.outputs.issue_number }}
+
+          Task:
+          > ${{ steps.parse.outputs.task }}
+
+          Run logs: ${run_url}
+          EOF
+
+          if [ -f "$RUNNER_TEMP/ubiquityos-agent/last-message.md" ]; then
+            printf "\nAgent summary:\n\n" >> "$body_file"
+            cat "$RUNNER_TEMP/ubiquityos-agent/last-message.md" >> "$body_file"
+          fi
+
+          args=(--repo "$repo" --head "$head" --base "$base" --title "$title" --body-file "$body_file")
+          if [ "${{ steps.parse.outputs.draft_pr }}" = "true" ]; then
+            args+=(--draft)
+          fi
+          url="$(gh pr create "${args[@]}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment (completed)
+        if: success() && steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          pr_url="${{ steps.pr.outputs.url }}"
+
+          summary=""
+          if [ -f "$RUNNER_TEMP/ubiquityos-agent/last-message.md" ]; then
+            summary="$(printf "\n\nAgent summary:\n\n%s\n" "$(cat "$RUNNER_TEMP/ubiquityos-agent/last-message.md")")"
+          fi
+
+          if [ "${{ steps.diff.outputs.changed }}" != "true" ]; then
+            msg="$(cat <<EOF
+          Agent completed with no file changes.
+
+          Task:
+          > ${{ steps.parse.outputs.task }}
+
+          Run logs: ${run_url}${summary}
+          EOF
+          )"
+          else
+            msg="$(cat <<EOF
+          Agent completed.
+
+          Task:
+          > ${{ steps.parse.outputs.task }}
+
+          ${pr_url:+PR: ${pr_url}}
+          Run logs: ${run_url}${summary}
+          EOF
+          )"
+          fi
+
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$msg"
+
+      - name: Comment (failed)
+        if: failure() && steps.parse.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          summary=""
+          if [ -f "$RUNNER_TEMP/ubiquityos-agent/last-message.md" ]; then
+            summary="$(printf "\n\nAgent summary:\n\n%s\n" "$(cat "$RUNNER_TEMP/ubiquityos-agent/last-message.md")")"
+          fi
+
+          msg="$(cat <<EOF
+          Agent run failed.
+
+          Task:
+          > ${{ steps.parse.outputs.task }}
+
+          Run logs: ${run_url}${summary}
+          EOF
+          )"
+
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$msg"
+
+      - name: Stop token watchdog
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_watchdog.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_watchdog.pid")" 2>/dev/null || true
+          fi
+
+      - name: Stop ai.ubq.fi Responses forwarder
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
