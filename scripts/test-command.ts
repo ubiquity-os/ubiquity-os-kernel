@@ -5,7 +5,8 @@
 
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
 import { config as loadEnv } from "dotenv";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import YAML from "js-yaml";
 import { getConfigPathCandidatesForEnvironment } from "../src/github/utils/config";
@@ -47,8 +48,106 @@ type MinimalOctokit = {
   };
 };
 
+type IssueComment = {
+  id: number;
+  html_url: string;
+  created_at: string;
+  body: string;
+  user?: {
+    login?: string;
+    type?: string;
+  };
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function runCommand(command: string, args: string[]): Promise<string> {
+  const proc = Bun.spawn([command, ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const msg = stderr.trim() || stdout.trim() || `Command failed with exit code ${exitCode}`;
+    throw new Error(`${command} ${args.join(" ")}\n${msg}`);
+  }
+  return stdout;
+}
+
+async function ghApiJson<T = unknown>(endpoint: string, args: string[] = []): Promise<T> {
+  const raw = await runCommand("gh", ["api", endpoint, ...args]);
+  return JSON.parse(raw) as T;
+}
+
+async function createIssueCommentWithGh(owner: string, repo: string, issueNumber: number, body: string): Promise<IssueComment> {
+  const tmp = mkdtempSync(join(tmpdir(), "ubq-issue-comment-"));
+  const bodyPath = join(tmp, "body.md");
+  writeFileSync(bodyPath, body, "utf8");
+  try {
+    return await ghApiJson<IssueComment>(`repos/${owner}/${repo}/issues/${issueNumber}/comments`, ["-X", "POST", "-F", `body=@${bodyPath}`]);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+async function listIssueCommentsWithGh(owner: string, repo: string, issueNumber: number): Promise<IssueComment[]> {
+  const pages = await ghApiJson<unknown>(`repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`, ["--paginate", "--slurp"]);
+  if (!Array.isArray(pages)) return [];
+
+  const comments: IssueComment[] = [];
+  for (const page of pages) {
+    if (!Array.isArray(page)) continue;
+    for (const item of page) {
+      if (!isRecord(item)) continue;
+      const id = typeof item.id === "number" ? item.id : null;
+      const html_url = typeof item.html_url === "string" ? item.html_url : null;
+      const created_at = typeof item.created_at === "string" ? item.created_at : null;
+      const body = typeof item.body === "string" ? item.body : null;
+      if (id === null || !html_url || !created_at || body === null) continue;
+      const user = isRecord(item.user)
+        ? {
+            login: typeof item.user.login === "string" ? item.user.login : undefined,
+            type: typeof item.user.type === "string" ? item.user.type : undefined,
+          }
+        : undefined;
+      comments.push({ id, html_url, created_at, body, user });
+    }
+  }
+  return comments;
+}
+
+function extractActionsRunUrl(text: string): { repo: string; runId: string; url: string } | null {
+  const match = /https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)/.exec(text);
+  if (!match) return null;
+  return { repo: match[1], runId: match[2], url: match[0] };
+}
+
+async function waitForAgentFeedbackComment(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  afterCreatedAtMs: number,
+  { timeoutMs, pollIntervalMs }: { timeoutMs: number; pollIntervalMs: number }
+): Promise<IssueComment | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const comments = await listIssueCommentsWithGh(owner, repo, issueNumber);
+    const newComments = comments.filter((c) => {
+      const ts = Date.parse(c.created_at);
+      return Number.isFinite(ts) && ts > afterCreatedAtMs;
+    });
+
+    for (const c of newComments) {
+      const body = c.body;
+      if (body.includes("started an agent run.")) return c;
+      if (body.includes("I couldn't start the agent run.")) return c;
+      if (body.includes("Agent run failed.")) return c;
+      if (body.includes("Agent completed")) return c;
+    }
+
+    await Bun.sleep(pollIntervalMs);
+  }
+  return null;
 }
 
 function getErrorStatus(error: unknown): number | null {
@@ -190,7 +289,7 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
     const privateKey = process.env.APP_PRIVATE_KEY;
 
     if (!appId || !privateKey) {
-      const githubToken = (process.env.GITHUB_TOKEN ?? "").trim();
+      const githubToken = (process.env.GITHUB_TOKEN ?? String()).trim();
       if (!githubToken) {
         console.log("❌ No GitHub auth available. Set APP_ID+APP_PRIVATE_KEY or GITHUB_TOKEN.");
         return null;
@@ -373,7 +472,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
     console.log(`⚠️  GitHub App credentials not found; will use GITHUB_TOKEN if set`);
   }
 
-  const githubToken = (process.env.GITHUB_TOKEN ?? "").trim();
+  const githubToken = (process.env.GITHUB_TOKEN ?? String()).trim();
   const authToken = installationToken || githubToken || "mock-token";
   if (!installationToken && githubToken) {
     console.log("🔑 Using GITHUB_TOKEN for auth");
@@ -497,8 +596,9 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       console.log(`❓ No plugin found for command: ${command}`);
     }
   } else if (commentBody.includes("@UbiquityOS")) {
-    console.log("🤖 Detected AI query - would route to command-ask plugin");
-    console.log("⚠️ AI processing not implemented in this test tool");
+    console.log("🤖 Detected @UbiquityOS mention.");
+    console.log("💡 This test tool can post a real GitHub comment to trigger the kernel via webhooks:");
+    console.log(`   bun run scripts/test-command.ts comment https://github.com/${org}/${repo}/issues/${issueNumber} "${commentBody.replaceAll('"', '\\"')}"`);
   } else {
     console.log("💭 Comment doesn't trigger any plugins");
   }
@@ -532,10 +632,13 @@ async function main() {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
-    console.log("Usage: bun run scripts/test-command.ts <command> <github-url> [command-args...]");
+    console.log("Usage:");
+    console.log("  bun run scripts/test-command.ts <command> <github-url> [command-args...]");
+    console.log("  bun run scripts/test-command.ts comment <github-url> <comment-body...>");
     console.log("Examples:");
     console.log("  bun run scripts/test-command.ts hello https://github.com/0x4007/ubiquity-os-sandbox/issues/2");
     console.log("  bun run scripts/test-command.ts llm https://github.com/0x4007/ubiquity-os-sandbox/issues/8 tell me a short joke");
+    console.log("  bun run scripts/test-command.ts comment https://github.com/0x4007/ubiquity-os-sandbox/issues/11 @UbiquityOS tell me a short joke");
     process.exit(1);
   }
 
@@ -551,6 +654,38 @@ async function main() {
 
   const { org, repo, issueNumber } = parsedUrl;
   console.log(`🎯 Targeting issue #${issueNumber} in ${org}/${repo}`);
+
+  if (command === "comment") {
+    const body = commandArgs.join(" ").trim();
+    if (!body) {
+      console.log("❌ Missing comment body.");
+      process.exit(1);
+    }
+
+    console.log("💬 Posting GitHub comment...");
+    const comment = await createIssueCommentWithGh(org, repo, issueNumber, body);
+    console.log(`✅ Comment posted: ${comment.html_url}`);
+
+    const createdAtMs = Date.parse(comment.created_at);
+    const afterMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+
+    console.log("⏳ Waiting for agent feedback comment (up to 120s)...");
+    const reply = await waitForAgentFeedbackComment(org, repo, issueNumber, afterMs, { timeoutMs: 120_000, pollIntervalMs: 3_000 });
+    if (!reply) {
+      console.log("⚠️ No agent feedback comment detected yet.");
+      console.log("   If you're testing locally, ensure the kernel is running and receiving webhooks (smee).");
+      return;
+    }
+
+    const author = reply.user?.login ?? "unknown";
+    const run = extractActionsRunUrl(reply.body);
+    console.log(`🤖 Reply from ${author}: ${reply.html_url}`);
+    if (run) {
+      console.log(`🏃 Actions run: ${run.url}`);
+      console.log(`   Watch: gh run watch -R ${run.repo} ${run.runId} --log`);
+    }
+    return;
+  }
 
   const commentBody = commandArgs.length > 0 ? `/${command} ${commandArgs.join(" ")}` : `/${command}`;
   await processCommentWithRealPlugins(org, repo, commentBody, issueNumber);
