@@ -52,6 +52,7 @@ type IssueComment = {
   id: number;
   html_url: string;
   created_at: string;
+  updated_at?: string;
   body: string;
   user?: {
     login?: string;
@@ -90,6 +91,10 @@ async function createIssueCommentWithGh(owner: string, repo: string, issueNumber
   }
 }
 
+async function getIssueCommentWithGh(owner: string, repo: string, commentId: number): Promise<IssueComment> {
+  return await ghApiJson<IssueComment>(`repos/${owner}/${repo}/issues/comments/${commentId}`);
+}
+
 async function listIssueCommentsWithGh(owner: string, repo: string, issueNumber: number): Promise<IssueComment[]> {
   const pages = await ghApiJson<unknown>(`repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`, ["--paginate", "--slurp"]);
   if (!Array.isArray(pages)) return [];
@@ -120,6 +125,23 @@ function extractActionsRunUrl(text: string): { repo: string; runId: string; url:
   const match = /https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)/.exec(text);
   if (!match) return null;
   return { repo: match[1], runId: match[2], url: match[0] };
+}
+
+async function waitForRunUrlInEditedRequestComment(
+  owner: string,
+  repo: string,
+  commentId: number,
+  { timeoutMs, pollIntervalMs }: { timeoutMs: number; pollIntervalMs: number }
+): Promise<{ run: { repo: string; runId: string; url: string }; comment: IssueComment } | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const comment = await getIssueCommentWithGh(owner, repo, commentId);
+    const body = comment.body || "";
+    const run = extractActionsRunUrl(body);
+    if (run) return { run, comment };
+    await Bun.sleep(pollIntervalMs);
+  }
+  return null;
 }
 
 async function waitForAgentFeedbackComment(
@@ -666,10 +688,21 @@ async function main() {
     const comment = await createIssueCommentWithGh(org, repo, issueNumber, body);
     console.log(`✅ Comment posted: ${comment.html_url}`);
 
+    console.log("⏳ Waiting for run URL to appear in the edited request comment (up to 120s)...");
+    const edited = await waitForRunUrlInEditedRequestComment(org, repo, comment.id, { timeoutMs: 120_000, pollIntervalMs: 3_000 });
+    if (edited) {
+      console.log(`✏️ Request comment updated: ${edited.comment.html_url}`);
+      console.log(`🏃 Actions run: ${edited.run.url}`);
+      console.log(`   Watch: gh run watch -R ${edited.run.repo} ${edited.run.runId} --interval 3`);
+      console.log(`   Logs (after completion): gh run view -R ${edited.run.repo} ${edited.run.runId} --log`);
+      return;
+    }
+
     const createdAtMs = Date.parse(comment.created_at);
     const afterMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
 
-    console.log("⏳ Waiting for agent feedback comment (up to 120s)...");
+    console.log("⚠️ No run URL detected in the edited request comment yet.");
+    console.log("⏳ Waiting for agent feedback comment (fallback, up to 120s)...");
     const reply = await waitForAgentFeedbackComment(org, repo, issueNumber, afterMs, { timeoutMs: 120_000, pollIntervalMs: 3_000 });
     if (!reply) {
       console.log("⚠️ No agent feedback comment detected yet.");

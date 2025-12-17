@@ -15,6 +15,22 @@ type SlashCommandInvocation = {
   rawArgs: string;
 };
 
+async function addReactionEyes(context: GitHubContext<"issue_comment.created">) {
+  const commentId = context.payload.comment.id;
+  const owner = context.payload.repository.owner.login;
+  const repo = context.payload.repository.name;
+  try {
+    await context.octokit.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content: "eyes",
+    });
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to add 👀 reaction (non-fatal)");
+  }
+}
+
 async function isUserContributor(context: GitHubContext<"issue_comment.created">) {
   const {
     octokit,
@@ -101,6 +117,9 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 
   const afterMention = extractAfterUbiquityosMention(body);
   if (afterMention !== null) {
+    if (context.payload.comment.user?.type === "User") {
+      await addReactionEyes(context);
+    }
     const slashInvocation = extractSlashCommandInvocation(afterMention);
     if (slashInvocation) {
       await dispatchSlashCommand(context, slashInvocation);

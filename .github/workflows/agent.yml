@@ -89,6 +89,7 @@ jobs:
           const issueNumber = payload.issue?.number ?? "";
           const isPullRequest = Boolean(payload.issue?.pull_request);
           const commentBody = payload.comment?.body ?? "";
+          const commentId = payload.comment?.id ?? "";
           const commentAuthor = payload.comment?.user?.login ?? "";
           const commentAuthorType = payload.comment?.user?.type ?? "";
           const authorAssociation = payload.comment?.author_association ?? "";
@@ -133,6 +134,7 @@ jobs:
           setOutput("repo_name", repoName);
           setOutput("installation_id", installationId);
           setOutput("issue_number", issueNumber);
+          setOutput("comment_id", commentId);
           setOutput("task", task);
           setOutput("comment_author", commentAuthor);
           setOutput("allowed", String(allowed));
@@ -151,6 +153,70 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
           NODE
 
+      - name: Write request comment updater
+        if: steps.parse.outputs.allowed == 'true'
+        run: |
+          cat > "$RUNNER_TEMP/ubq_agent_update_request_comment.js" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { execFileSync } = require("node:child_process");
+
+          const repo = String(process.env.REPO || "").trim();
+          const commentId = String(process.env.COMMENT_ID || "").trim();
+          const runUrl = String(process.env.RUN_URL || "").trim();
+          const status = String(process.env.STATUS || "").trim();
+          const stateId = String(process.env.STATE_ID || "").trim();
+          const prUrl = String(process.env.PR_URL || "").trim();
+          const summaryPath = String(process.env.SUMMARY_PATH || "").trim();
+          const detail = String(process.env.DETAIL || "").trim();
+          const changed = String(process.env.CHANGED || "").trim();
+
+          if (!repo || !commentId) {
+            console.error("Missing REPO or COMMENT_ID");
+            process.exit(1);
+          }
+
+          function ghJson(args) {
+            return JSON.parse(execFileSync("gh", ["api", ...args], { encoding: "utf8", env: process.env }));
+          }
+
+          function gh(args) {
+            execFileSync("gh", args, { stdio: "inherit", env: process.env });
+          }
+
+          const summary = summaryPath && fs.existsSync(summaryPath) ? fs.readFileSync(summaryPath, "utf8").trim() : "";
+
+          const updatedAt = new Date().toISOString();
+          const blockLines = [];
+          blockLines.push("<!-- ubiquityos-agent");
+          if (runUrl) blockLines.push(`Run logs: ${runUrl}`);
+          if (status) blockLines.push(`Status: ${status}`);
+          if (changed) blockLines.push(`Repo changes: ${changed}`);
+          if (prUrl) blockLines.push(`PR: ${prUrl}`);
+          if (stateId) blockLines.push(`StateId: ${stateId}`);
+          if (detail) blockLines.push(detail);
+          blockLines.push("If this run exceeds ~55 minutes, GitHub App auth may expire and prevent a final status comment.");
+          blockLines.push(`Updated: ${updatedAt}`);
+          if (summary) {
+            blockLines.push("");
+            blockLines.push("Agent summary:");
+            blockLines.push(summary);
+          }
+          blockLines.push("-->");
+          const block = blockLines.join("\n");
+
+          const comment = ghJson([`repos/${repo}/issues/comments/${commentId}`]);
+          const currentBody = String(comment?.body ?? "");
+
+          const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->/m;
+          const nextBody = marker.test(currentBody) ? currentBody.replace(marker, block) : `${currentBody.replace(/\\s*$/u, "")}\n\n${block}\n`;
+
+          const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
+          const bodyPath = path.join(tmp, "comment-body.md");
+          fs.writeFileSync(bodyPath, nextBody, "utf8");
+          gh(["api", "-X", "PATCH", `repos/${repo}/issues/comments/${commentId}`, "-F", `body=@${bodyPath}`]);
+          NODE
+
       - name: Comment (rejected)
         if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
         env:
@@ -164,19 +230,26 @@ jobs:
           EOF
           )"
 
-      - name: Comment (started)
+      - name: Update request comment (started)
         if: steps.parse.outputs.allowed == 'true'
         env:
           GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: started
+          STATE_ID: ${{ inputs.stateId }}
         run: |
+          set -euo pipefail
+          if node "$RUNNER_TEMP/ubq_agent_update_request_comment.js"; then
+            exit 0
+          fi
+
           run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$(cat <<EOF
           @${{ steps.parse.outputs.comment_author }} started an agent run.
 
-          Task:
-          > ${{ steps.parse.outputs.task }}
-
-          If this run exceeds ~55 minutes, GitHub App auth may expire and prevent a final status comment. Run logs: ${run_url}
+          Run logs: ${run_url}
           EOF
           )"
 
@@ -185,22 +258,17 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: started
+          STATE_ID: ${{ inputs.stateId }}
         run: |
           set -euo pipefail
-          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ steps.parse.outputs.repo }}"
-          issue_number="${{ steps.parse.outputs.issue_number }}"
-
-          watchdog_body="$(cat <<EOF
-          Agent run is still executing after ~55 minutes. If no completion comment appears, the GitHub App token may have expired (~60 minutes).
-
-          Run logs: ${run_url}
-          EOF
-          )"
-
           (
             sleep 3300
-            gh issue comment "$issue_number" --repo "$repo" --body "$watchdog_body"
+            export DETAIL="Agent run is still executing after ~55 minutes. If no completion comment appears, the GitHub App token may have expired (~60 minutes)."
+            node "$RUNNER_TEMP/ubq_agent_update_request_comment.js" || true
           ) &
 
           echo "$!" > "$RUNNER_TEMP/ubq_watchdog.pid"
@@ -290,6 +358,10 @@ jobs:
               "removeLabels": ["Optional array of existing label names"],
               "editIssueBody": "Optional full new issue body markdown"
             }
+
+          Reply policy:
+          - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
+          - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
 
           Important (Markdown formatting):
           - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
@@ -580,7 +652,8 @@ jobs:
 
           const extraComment = normalizeMarkdown(actions.comment);
           if (extraComment.trim()) {
-            gh(["issue", "comment", issueNumber, "--repo", repo, "--body", extraComment]);
+            const replyPath = path.join(outDir, "agent-reply.md");
+            fs.writeFileSync(replyPath, extraComment, "utf8");
           }
           NODE
 
@@ -657,67 +730,90 @@ jobs:
           url="$(gh pr create "${args[@]}")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      - name: Comment (completed)
+      - name: Update request comment (completed)
         if: success() && steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ inputs.authToken }}
         run: |
-          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          set -euo pipefail
+
+          export REPO="${{ steps.parse.outputs.repo }}"
+          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          export STATE_ID="${{ inputs.stateId }}"
+          export PR_URL="${{ steps.pr.outputs.url }}"
+          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+          export CHANGED="${{ steps.diff.outputs.changed }}"
+
+          export STATUS="completed"
+          if [ "${{ steps.diff.outputs.changed }}" = "true" ]; then
+            export STATUS="completed (repo changes)"
+          fi
+
+          node "$RUNNER_TEMP/ubq_agent_update_request_comment.js" || true
+
+      - name: Comment (agent reply)
+        if: success() && steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          repo="${{ steps.parse.outputs.repo }}"
+          issue_number="${{ steps.parse.outputs.issue_number }}"
+          reply_file="$RUNNER_TEMP/ubiquityos-agent/agent-reply.md"
           pr_url="${{ steps.pr.outputs.url }}"
 
-          summary=""
-          if [ -f "$RUNNER_TEMP/ubiquityos-agent/last-message.md" ]; then
-            summary="$(printf "\n\nAgent summary:\n\n%s\n" "$(cat "$RUNNER_TEMP/ubiquityos-agent/last-message.md")")"
+          reply=""
+          if [ -f "$reply_file" ]; then
+            reply="$(cat "$reply_file")"
           fi
 
-          if [ "${{ steps.diff.outputs.changed }}" != "true" ]; then
-            msg="$(cat <<EOF
-          Agent completed with no file changes.
-
-          Task:
-          > ${{ steps.parse.outputs.task }}
-
-          Run logs: ${run_url}${summary}
-          EOF
-          )"
-          else
-            msg="$(cat <<EOF
-          Agent completed.
-
-          Task:
-          > ${{ steps.parse.outputs.task }}
-
-          ${pr_url:+PR: ${pr_url}}
-          Run logs: ${run_url}${summary}
-          EOF
-          )"
+          # If we created a PR and the agent didn't mention it, append it.
+          if [ -n "$pr_url" ] && ! printf "%s" "$reply" | grep -q "$pr_url"; then
+            if [ -n "$reply" ]; then
+              reply="$(printf "%s\n\nPR: %s\n" "$reply" "$pr_url")"
+            else
+              reply="$(printf "PR: %s\n" "$pr_url")"
+            fi
           fi
 
-          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$msg"
+          if [ -z "${reply//[[:space:]]/}" ]; then
+            echo "No agent reply to post."
+            exit 0
+          fi
+
+          gh issue comment "$issue_number" --repo "$repo" --body "$reply"
+
+      - name: Update request comment (failed)
+        if: failure() && steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          export REPO="${{ steps.parse.outputs.repo }}"
+          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          export STATE_ID="${{ inputs.stateId }}"
+          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+          export CHANGED="${{ steps.diff.outputs.changed }}"
+          export STATUS="failed"
+
+          node "$RUNNER_TEMP/ubq_agent_update_request_comment.js" || true
 
       - name: Comment (failed)
         if: failure() && steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ inputs.authToken }}
         run: |
           run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          summary=""
-          if [ -f "$RUNNER_TEMP/ubiquityos-agent/last-message.md" ]; then
-            summary="$(printf "\n\nAgent summary:\n\n%s\n" "$(cat "$RUNNER_TEMP/ubiquityos-agent/last-message.md")")"
-          fi
-
-          msg="$(cat <<EOF
-          Agent run failed.
-
-          Task:
-          > ${{ steps.parse.outputs.task }}
-
-          Run logs: ${run_url}${summary}
-          EOF
-          )"
-
-          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$msg"
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "Agent run failed. Run logs: ${run_url}"
 
       - name: Stop token watchdog
         if: always()
