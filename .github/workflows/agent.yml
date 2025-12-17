@@ -182,6 +182,7 @@ jobs:
 
       - name: Start token watchdog
         if: steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ inputs.authToken }}
         run: |
