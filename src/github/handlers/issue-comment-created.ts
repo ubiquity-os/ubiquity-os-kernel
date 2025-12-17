@@ -228,11 +228,11 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   if (matches.length > 1) {
     context.logger.warn(
       { command: invocation.name, plugins: matches.map((m) => m.manifest.name) },
-      "Multiple plugins matched slash command; using the first match"
+      "Multiple plugins matched slash command; using the last match"
     );
   }
 
-  const match = matches[0];
+  const match = matches[matches.length - 1];
   if (!match) return;
 
   const manifestCommand = match.manifest.commands?.[match.resolvedCommandName];
@@ -420,13 +420,17 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
 }
 
 function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
-  const out: CommandDescriptor[] = [
-    { name: "help", description: "Show all available commands and examples.", example: "/help", parameters: {} },
-    { name: "agent", description: "Run the full-power agent to handle complex requests.", example: "@ubiquityos <request>", parameters: {} },
-  ];
+  const out = new Map<string, CommandDescriptor>();
+
+  function setCommand(command: CommandDescriptor) {
+    const key = command.name.toLowerCase();
+    out.delete(key);
+    out.set(key, command);
+  }
+
   for (const manifest of manifests) {
     for (const [name, command] of Object.entries(manifest.commands ?? {})) {
-      out.push({
+      setCommand({
         name,
         description: command.description,
         example: command["ubiquity:example"],
@@ -434,7 +438,16 @@ function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
       });
     }
   }
-  return out;
+
+  setCommand({ name: "help", description: "Show all available commands and examples.", example: "/help", parameters: {} });
+  setCommand({
+    name: "agent",
+    description: "Run the full-power agent to handle complex requests.",
+    example: "@ubiquityos <request>",
+    parameters: {},
+  });
+
+  return [...out.values()];
 }
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
@@ -555,7 +568,14 @@ ${JSON.stringify(commands)}
     return;
   }
 
-  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[commandName] !== undefined);
+  let pluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
+  for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+    const candidate = pluginsWithManifest[i];
+    if (candidate?.manifest?.commands?.[commandName] !== undefined) {
+      pluginWithManifest = candidate;
+      break;
+    }
+  }
   if (!pluginWithManifest) {
     await postReply(context, `I couldn't find a plugin for \`/${commandName}\`. Try \`@ubiquityos help\`.`);
     return;

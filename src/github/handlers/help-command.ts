@@ -3,12 +3,21 @@ import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configurati
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
+type CommandRow = {
+  key: string;
+  row: string;
+};
+
 async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.created">, plugin: string | GithubPlugin) {
-  const commands: string[] = [];
+  const commands: CommandRow[] = [];
   const manifest = await getManifest(context, plugin);
   if (manifest?.commands) {
     for (const [name, command] of Object.entries(manifest.commands)) {
-      commands.push(`| \`/${getContent(name)}\` | ${getContent(command.description)} | \`${getContent(command["ubiquity:example"])}\` |`);
+      const key = name.toLowerCase();
+      commands.push({
+        key,
+        row: `| \`/${getContent(name)}\` | ${getContent(command.description)} | \`${getContent(command["ubiquity:example"])}\` |`,
+      });
     }
   }
   return commands;
@@ -21,7 +30,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   const environment = context.eventHandler.environment;
 
   const comments = ["| Command | Description | Example |", "|---|---|---|", "| `/help` | List all available commands. | `/help` |"];
-  const commands: string[] = [];
+  const commandRows = new Map<string, string>();
   const configuration = await getConfig(context);
   for (const [pluginKey] of Object.entries(configuration.plugins)) {
     let plugin: string | GithubPlugin;
@@ -31,14 +40,17 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
-    commands.push(...(await parseCommandsFromManifest(context, plugin)));
+    for (const command of await parseCommandsFromManifest(context, plugin)) {
+      commandRows.set(command.key, command.row);
+    }
   }
-  if (!commands.length) {
+  if (!commandRows.size) {
     context.logger.warn("No commands found, will not post the help command message.");
   } else {
+    const commands = [...commandRows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
     const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [v${version}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${version}) [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
     await context.octokit.rest.issues.createComment({
-      body: comments.concat(commands.sort()).join("\n") + footer,
+      body: comments.concat(commands).join("\n") + footer,
       issue_number: context.payload.issue.number,
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
