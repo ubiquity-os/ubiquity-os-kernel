@@ -190,14 +190,16 @@ jobs:
           repo="${{ steps.parse.outputs.repo }}"
           issue_number="${{ steps.parse.outputs.issue_number }}"
 
+          watchdog_body="$(cat <<EOF
+          Agent run is still executing after ~55 minutes. If no completion comment appears, the GitHub App token may have expired (~60 minutes).
+
+          Run logs: ${run_url}
+          EOF
+          )"
+
           (
             sleep 3300
-            gh issue comment "$issue_number" --repo "$repo" --body "$(cat <<EOF
-            Agent run is still executing after ~55 minutes. If no completion comment appears, the GitHub App token may have expired (~60 minutes).
-
-            Run logs: ${run_url}
-            EOF
-            )"
+            gh issue comment "$issue_number" --repo "$repo" --body "$watchdog_body"
           ) &
 
           echo "$!" > "$RUNNER_TEMP/ubq_watchdog.pid"
