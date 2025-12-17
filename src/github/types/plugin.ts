@@ -74,7 +74,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
       installationId,
       authToken: this.authToken,
       stateId: this.stateId,
-      ttlSeconds: 600,
+      ttlSeconds: 3600,
     });
 
     const inputs = {
