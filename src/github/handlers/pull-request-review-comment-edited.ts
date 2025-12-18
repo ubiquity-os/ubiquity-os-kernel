@@ -60,7 +60,7 @@ function parseAgentBlock(block: string): ParsedAgentBlock | null {
   };
 }
 
-async function getInstallationBotLogin(context: GitHubContext<"issue_comment.edited">): Promise<string> {
+async function getInstallationBotLogin(context: GitHubContext<"pull_request_review_comment.edited">): Promise<string> {
   const installationId = context.payload.installation?.id;
   if (typeof installationId !== "number" || !Number.isFinite(installationId)) return "";
   const cached = botLoginCache.get(installationId);
@@ -77,7 +77,7 @@ async function getInstallationBotLogin(context: GitHubContext<"issue_comment.edi
   }
 }
 
-export default async function issueCommentEdited(context: GitHubContext<"issue_comment.edited">) {
+export default async function pullRequestReviewCommentEdited(context: GitHubContext<"pull_request_review_comment.edited">) {
   const senderLogin = context.payload.sender?.login ?? "";
   const senderType = context.payload.sender?.type ?? "";
   if (senderType !== "Bot" || !senderLogin) return;
@@ -94,7 +94,7 @@ export default async function issueCommentEdited(context: GitHubContext<"issue_c
 
   const owner = context.payload.repository.owner.login;
   const repo = context.payload.repository.name;
-  const issueNumber = context.payload.issue.number;
+  const issueNumber = context.payload.pull_request.number;
 
   await upsertAgentRunMemory({
     owner,

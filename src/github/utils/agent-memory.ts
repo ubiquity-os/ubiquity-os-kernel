@@ -9,14 +9,8 @@ type AgentRunMemoryEntry = Readonly<{
   summary?: string;
 }>;
 
-type AgentMemoryDoc = Readonly<{
-  version: 1;
-  entries: AgentRunMemoryEntry[];
-}>;
-
-const MAX_ENTRIES = 50;
-const SUMMARY_MAX_CHARS = 8_000;
-const KV_TTL_MS = 45 * 24 * 60 * 60_000;
+const SUMMARY_MAX_CHARS = 1_200;
+const IN_MEMORY_MAX_ENTRIES = 250;
 
 type KvKey = ReadonlyArray<unknown>;
 
@@ -24,12 +18,19 @@ type KvGetResult = Readonly<{ value: unknown }>;
 
 type KvSetOptions = Readonly<{ expireIn?: number }>;
 
+type KvListEntry = Readonly<{ key: KvKey; value: unknown }>;
+
+type KvListOptions = Readonly<{ reverse?: boolean; limit?: number; cursor?: string; batchSize?: number }>;
+
+type KvListSelector = Readonly<{ prefix: KvKey }>;
+
 type KvLike = Readonly<{
   get: (key: KvKey) => Promise<KvGetResult>;
   set: (key: KvKey, value: unknown, options?: KvSetOptions) => Promise<unknown>;
+  list: (selector: KvListSelector, options?: KvListOptions) => AsyncIterable<KvListEntry>;
 }>;
 
-const inMemory = new Map<string, AgentMemoryDoc>();
+const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,16 +49,20 @@ function clampText(value: string, maxChars: number): string {
 }
 
 function buildKvKey(owner: string, repo: string): KvKey {
-  return ["ubiquityos", "agent", "memory", owner, repo];
+  return ["ubiquityos", "agent", "memory", owner, repo, "events"];
 }
 
 function buildMapKey(owner: string, repo: string): string {
   return `${owner}/${repo}`;
 }
 
+function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: string): KvKey {
+  return [...buildKvKey(owner, repo), updatedAt, stateId];
+}
+
 function looksLikeKvLike(value: unknown): value is KvLike {
   if (!isRecord(value)) return false;
-  return typeof value.get === "function" && typeof value.set === "function";
+  return typeof value.get === "function" && typeof value.set === "function" && typeof value.list === "function";
 }
 
 async function getKv(): Promise<KvLike | null> {
@@ -75,56 +80,27 @@ async function getKv(): Promise<KvLike | null> {
   return kvPromise;
 }
 
-function parseDoc(value: unknown): AgentMemoryDoc {
-  if (!isRecord(value)) return { version: 1, entries: [] };
-  if (value.version !== 1) return { version: 1, entries: [] };
-  const entriesRaw = Array.isArray(value.entries) ? value.entries : [];
-  const entries: AgentRunMemoryEntry[] = [];
-  for (const entry of entriesRaw) {
-    if (!isRecord(entry) || entry.kind !== "agent_run") continue;
-    const stateId = normalizeString(entry.stateId).trim();
-    const status = normalizeString(entry.status).trim();
-    const updatedAt = normalizeString(entry.updatedAt).trim();
-    const issueNumber = typeof entry.issueNumber === "number" && Number.isFinite(entry.issueNumber) ? Math.trunc(entry.issueNumber) : null;
-    if (!stateId || !status || !updatedAt || issueNumber === null) continue;
-    entries.push({
-      kind: "agent_run",
-      stateId,
-      status,
-      issueNumber,
-      updatedAt,
-      runUrl: normalizeString(entry.runUrl).trim() || undefined,
-      prUrl: normalizeString(entry.prUrl).trim() || undefined,
-      summary: clampText(normalizeString(entry.summary), SUMMARY_MAX_CHARS) || undefined,
-    });
-  }
-  return { version: 1, entries };
+function parseEntry(value: unknown): AgentRunMemoryEntry | null {
+  if (!isRecord(value) || value.kind !== "agent_run") return null;
+  const stateId = normalizeString(value.stateId).trim();
+  const status = normalizeString(value.status).trim();
+  const updatedAt = normalizeString(value.updatedAt).trim();
+  const issueNumber = typeof value.issueNumber === "number" && Number.isFinite(value.issueNumber) ? Math.trunc(value.issueNumber) : null;
+  if (!stateId || !status || !updatedAt || issueNumber === null) return null;
+  return {
+    kind: "agent_run",
+    stateId,
+    status,
+    issueNumber,
+    updatedAt,
+    runUrl: normalizeString(value.runUrl).trim() || undefined,
+    prUrl: normalizeString(value.prUrl).trim() || undefined,
+    summary: clampText(normalizeString(value.summary), SUMMARY_MAX_CHARS) || undefined,
+  };
 }
 
-async function readDoc(owner: string, repo: string): Promise<AgentMemoryDoc> {
-  const kv = await getKv();
-  if (kv) {
-    const result = await kv.get(buildKvKey(owner, repo));
-    return parseDoc(result.value);
-  }
-
-  return inMemory.get(buildMapKey(owner, repo)) ?? { version: 1, entries: [] };
-}
-
-async function writeDoc(owner: string, repo: string, doc: AgentMemoryDoc): Promise<void> {
-  const kv = await getKv();
-  if (kv) {
-    await kv.set(buildKvKey(owner, repo), doc, { expireIn: KV_TTL_MS });
-    return;
-  }
-  inMemory.set(buildMapKey(owner, repo), doc);
-}
-
-function compareIsoDateStrings(a: string, b: string): number {
-  const aMs = Date.parse(a);
-  const bMs = Date.parse(b);
-  if (Number.isFinite(aMs) && Number.isFinite(bMs)) return aMs - bMs;
-  return a.localeCompare(b);
+function sanitizeEntry(value: AgentRunMemoryEntry): AgentRunMemoryEntry | null {
+  return parseEntry(value);
 }
 
 export async function upsertAgentRunMemory(
@@ -136,19 +112,21 @@ export async function upsertAgentRunMemory(
 ): Promise<void> {
   const owner = params.owner.trim();
   const repo = params.repo.trim();
-  const entry = params.entry;
+  const entry = sanitizeEntry(params.entry);
   if (!owner || !repo) return;
+  if (!entry) return;
 
-  const doc = await readDoc(owner, repo);
-  const nextEntries = [...doc.entries];
-  const idx = nextEntries.findIndex((e) => e.kind === "agent_run" && e.stateId === entry.stateId);
-  if (idx >= 0) nextEntries[idx] = entry;
-  else nextEntries.push(entry);
+  const kv = await getKv();
+  if (kv) {
+    await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId), entry);
+    return;
+  }
 
-  nextEntries.sort((a, b) => compareIsoDateStrings(a.updatedAt, b.updatedAt));
-  while (nextEntries.length > MAX_ENTRIES) nextEntries.shift();
-
-  await writeDoc(owner, repo, { version: 1, entries: nextEntries });
+  const key = buildMapKey(owner, repo);
+  const entries = inMemory.get(key) ?? [];
+  entries.push(entry);
+  while (entries.length > IN_MEMORY_MAX_ENTRIES) entries.shift();
+  inMemory.set(key, entries);
 }
 
 export async function getAgentMemorySnippet(
@@ -165,17 +143,33 @@ export async function getAgentMemorySnippet(
   const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : 2_000;
   if (!owner || !repo || limit === 0) return "";
 
-  const doc = await readDoc(owner, repo);
-  if (doc.entries.length === 0) return "";
+  const kv = await getKv();
+  const entries: AgentRunMemoryEntry[] = [];
 
-  const tail = doc.entries.slice(-limit).reverse();
+  if (kv) {
+    const scanLimit = Math.max(limit * 12, limit);
+    for await (const item of kv.list({ prefix: buildKvKey(owner, repo) }, { reverse: true, limit: scanLimit })) {
+      const parsed = parseEntry(item.value);
+      if (parsed) entries.push(parsed);
+    }
+  } else {
+    const key = buildMapKey(owner, repo);
+    entries.push(...(inMemory.get(key) ?? []).slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+  }
+
+  if (entries.length === 0) return "";
+
+  const seen = new Set<string>();
   const lines: string[] = [];
-  for (const e of tail) {
+  for (const e of entries) {
+    if (seen.has(e.stateId)) continue;
+    seen.add(e.stateId);
     const summaryFirstLine = (e.summary ?? "").split(/\r?\n/)[0]?.trim();
     const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
     const parts = [`[${e.updatedAt}]`, `#${e.issueNumber}`, e.status];
     if (headline) parts.push(`— ${headline}`);
     lines.push(`- ${parts.join(" ")}`);
+    if (lines.length >= limit) break;
   }
 
   return clampText(lines.join("\n"), maxChars);
