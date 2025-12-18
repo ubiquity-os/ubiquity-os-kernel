@@ -564,7 +564,8 @@ jobs:
           safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
           model: ${{ steps.parse.outputs.model }}
           effort: ${{ steps.parse.outputs.effort }}
-          codex-args: ${{ steps.parse.outputs.codex_args }}
+          # Allow outbound network for privileged runs so the agent can use `gh`/HTTP when needed.
+          codex-args: --config sandbox_workspace_write.network_access=true ${{ steps.parse.outputs.codex_args }}
 
       - name: Run Codex (restricted)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
