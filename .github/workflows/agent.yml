@@ -395,6 +395,13 @@ jobs:
             lines.push("- If `Time:`/`Priority:` labels exist, prefer setting those; they may trigger downstream automations (e.g., pricing).");
             lines.push("- Do NOT set any label starting with `Price:` unless the user explicitly asks for a specific `Price:` label.");
             lines.push("");
+            lines.push("GitHub CLI tips:");
+            lines.push("- Prefer non-interactive `gh api` calls for scripted operations.");
+            lines.push("- For `gh issue create`, always pass `--title` and `--body` (and labels) to avoid prompts; it prints the new issue URL on stdout.");
+            lines.push("- Always pass `--repo <owner>/<repo>` for `gh issue`/`gh pr` commands.");
+            lines.push("- If you're unsure about flags, run `gh <command> -h` to view the subcommand help.");
+            lines.push("- If `gh` errors about missing `GH_TOKEN`, stop and report it; do not attempt to discover tokens from files.");
+            lines.push("");
             lines.push(
               "If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:"
             );
