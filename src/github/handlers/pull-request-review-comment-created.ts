@@ -151,12 +151,17 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
 
 export default async function pullRequestReviewCommentCreated(context: GitHubContext<"pull_request_review_comment.created">) {
   const body = context.payload.comment.body?.trim() ?? "";
+  if (context.payload.comment.user?.type !== "User") {
+    context.logger.debug(
+      { author: context.payload.comment.user?.login, type: context.payload.comment.user?.type },
+      "Ignoring review comment from non-human author"
+    );
+    return;
+  }
   const afterMention = extractAfterUbiquityosMention(body);
   if (afterMention === null) return;
 
-  if (context.payload.comment.user?.type === "User") {
-    await addReactionEyes(context);
-  }
+  await addReactionEyes(context);
 
   const config = await getConfig(context);
   if (!config) {

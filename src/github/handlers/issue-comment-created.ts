@@ -109,6 +109,10 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   const bodyLower = body.toLowerCase();
+  if (context.payload.comment.user?.type !== "User") {
+    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
+    return;
+  }
 
   if (bodyLower.startsWith(`/help`)) {
     await postHelpCommand(context);
