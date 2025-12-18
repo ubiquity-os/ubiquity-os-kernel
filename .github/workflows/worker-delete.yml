@@ -7,27 +7,44 @@ jobs:
   delete:
     runs-on: ubuntu-latest
     name: Delete Deployment
-    # Optional workflow: only runs when Cloudflare secrets are configured.
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     steps:
+      - name: Skip if Cloudflare delete is not configured
+        id: gate
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "Missing Cloudflare secrets; skipping." >&2
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20.10.0"
 
       - name: Enable corepack
+        if: steps.gate.outputs.enabled == 'true'
         run: corepack enable
 
       - uses: oven-sh/setup-bun@v1
+        if: steps.gate.outputs.enabled == 'true'
 
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
 
       - name: Get Deleted Branch Name
+        if: steps.gate.outputs.enabled == 'true'
         id: get_branch
         run: |
           branch_name=$(echo '${{ github.event.ref }}' | sed 's#refs/heads/##' | sed 's#[^a-zA-Z0-9]#-#g')
           echo "branch_name=$branch_name" >> $GITHUB_ENV
       - name: Retrieve and Construct Full Worker Name
+        if: steps.gate.outputs.enabled == 'true'
         id: construct_worker_name
         run: |
           base_name=$(grep '^name = ' wrangler.toml | sed 's/^name = "\(.*\)"$/\1/')
@@ -36,6 +53,7 @@ jobs:
           full_worker_name=$(echo "${full_worker_name}" | cut -c 1-63)
           echo "full_worker_name=$full_worker_name" >> $GITHUB_ENV
       - name: Delete Deployment with Wrangler
+        if: steps.gate.outputs.enabled == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -43,6 +61,7 @@ jobs:
           command: delete --name ${{ env.full_worker_name }}
 
       - name: Output Deletion Result
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           echo "### Deployment URL" >> $GITHUB_STEP_SUMMARY
           echo 'Deployment `${{ env.full_worker_name }}` has been deleted.' >> $GITHUB_STEP_SUMMARY
