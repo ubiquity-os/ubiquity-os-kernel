@@ -237,7 +237,7 @@ jobs:
           const comment = ghJson([commentRoute]);
           const currentBody = String(comment?.body ?? "");
 
-          const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->\\s*/g;
+          const marker = /<!--\s*ubiquityos-agent[\s\S]*?-->\s*/g;
           const cleaned = currentBody.replace(marker, "").replace(/\\s*$/u, "");
           const nextBody = cleaned ? `${cleaned}\n\n${block}\n` : `${block}\n`;
 
@@ -927,7 +927,7 @@ jobs:
       - name: Cleanup agent temp files
         if: always() && steps.parse.outputs.allowed == 'true'
         run: |
-          rm -f .codex.prompt.txt .codex.last-message.md .ubiquityos.issue.json .ubiquityos.comments.json .ubiquityos.repo-labels.json .ubiquityos.issue.md .ubiquityos.time-labels.txt .ubiquityos.priority-labels.txt .ubiquityos.actions.json || true
+          rm -f .codex.prompt.txt .codex.last-message.md .ubiquityos.issue.json .ubiquityos.comments.json .ubiquityos.repo-labels.json .ubiquityos.issue.md .ubiquityos.time-labels.txt .ubiquityos.priority-labels.txt .ubiquityos.marketplace.json .ubiquityos.actions.json || true
 
       - name: Detect diff
         if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
