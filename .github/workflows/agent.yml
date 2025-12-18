@@ -380,23 +380,26 @@ jobs:
           lines.push("- The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.");
           lines.push("- Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.");
           lines.push("");
-
-          if (privileged) {
-            lines.push("GitHub operations (privileged):");
-            lines.push("- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).");
-            lines.push("- Do NOT push branches or open PRs; the workflow will handle that for repo file changes.");
-            lines.push("- Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.");
-            lines.push("- Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).");
-            lines.push("- Never print or leak tokens or secrets.");
-            lines.push("");
-            lines.push(
-              "If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:"
-            );
-          } else {
-            lines.push("GitHub operations:");
-            lines.push("- Do NOT push branches or open PRs; the workflow will handle that.");
-            lines.push("- If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:");
-          }
+            if (privileged) {
+              lines.push("GitHub operations (privileged):");
+              lines.push("- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).");
+              lines.push("- Authentication: `GH_TOKEN` is set (GitHub App installation token). Do not run `gh auth login`; just run `gh … --repo <owner>/<repo>`.");
+              lines.push("- Sandbox: outbound network for tool commands is enabled in this run.");
+              lines.push("- Do NOT push branches or open PRs; the workflow will handle that for repo file changes.");
+              lines.push("- Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.");
+              lines.push("- Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).");
+              lines.push("- Never print or leak tokens or secrets.");
+              lines.push('- Example (create a new issue with labels): `gh issue create --repo <owner>/<repo> --title \"...\" --body \"...\" --label \"Priority: 1 (Normal)\" --label \"Time: <1 Hour\"`.');
+              lines.push("");
+              lines.push(
+                "If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:"
+              );
+            } else {
+              lines.push("GitHub operations:");
+              lines.push("- Do NOT push branches or open PRs; the workflow will handle that.");
+              lines.push("- Sandbox: outbound network for tool commands is blocked and no GitHub token is provided; do not attempt to use `gh`.");
+              lines.push("- If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:");
+            }
 
           lines.push("");
           lines.push("  {");
