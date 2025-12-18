@@ -125,6 +125,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       await dispatchSlashCommand(context, slashInvocation);
       return;
     }
+    if (/^agent\b/i.test(afterMention)) {
+      const task = afterMention.replace(/^agent\b/i, "").trim() || body.trim();
+      await dispatchInternalAgent(context, task);
+      return;
+    }
     await commandRouter(context);
   } else if (body.startsWith(`/`)) {
     const slashInvocation = extractSlashCommandInvocation(body);
