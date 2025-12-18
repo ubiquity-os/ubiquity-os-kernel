@@ -3,7 +3,7 @@ import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
-import { getConfig } from "../utils/config";
+import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
@@ -126,7 +126,11 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
     });
-    const settings = agentMemory ? { agentMemory } : {};
+    const settings = {
+      ...(agentMemory ? { agentMemory } : {}),
+      environment: context.eventHandler.environment,
+      configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
+    };
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, {
       name: "agent",
       parameters: { task },
@@ -171,6 +175,12 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   if (afterMention === null) return;
 
   await addReactionEyes(context);
+
+  if (/^(agent|autogen|automation)\b/i.test(afterMention)) {
+    const task = afterMention.replace(/^(agent|autogen|automation)\b/i, "").trim() || body;
+    await dispatchInternalAgent(context, task);
+    return;
+  }
 
   const config = await getConfig(context);
   if (!config) {

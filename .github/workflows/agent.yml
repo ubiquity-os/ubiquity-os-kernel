@@ -87,6 +87,11 @@ jobs:
           const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
           const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
           const agentMemory = typeof settings.agentMemory === "string" ? settings.agentMemory : "";
+          const environment = typeof settings.environment === "string" ? settings.environment : "";
+          const configPathCandidates = Array.isArray(settings.configPathCandidates)
+            ? settings.configPathCandidates.filter((p) => typeof p === "string")
+            : [];
+          const marketplaceOrg = typeof settings.marketplaceOrg === "string" ? settings.marketplaceOrg : "ubiquity-os-marketplace";
 
           const repo = payload.repository?.full_name ?? "";
           const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
@@ -112,6 +117,10 @@ jobs:
 
           const taskFromMention = extractTaskFromMention(commentBody);
           const task = String(explicitTaskFromCommand || taskFromMention || "").trim();
+          const wantsMarketplaceInventory =
+            settings.wantsMarketplaceInventory !== undefined
+              ? Boolean(settings.wantsMarketplaceInventory)
+              : /\b(plugin|automation|autogen|marketplace)\b/i.test(task);
 
           let allowed = true;
           let denyReason = "";
@@ -161,6 +170,10 @@ jobs:
           setOutput("safety_strategy", safetyStrategy);
           setOutput("test_command", testCommand);
           setOutput("agent_memory", agentMemory);
+          setOutput("environment", environment);
+          setOutput("config_path_candidates", JSON.stringify(configPathCandidates));
+          setOutput("marketplace_org", marketplaceOrg);
+          setOutput("wants_marketplace_inventory", String(wantsMarketplaceInventory));
           setOutput("is_pull_request", String(isPullRequest));
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
@@ -363,12 +376,90 @@ jobs:
           fs.writeFileSync(".ubiquityos.issue.md", lines.join("\n"));
           NODE
 
+      - name: Fetch marketplace plugin inventory (best-effort)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.wants_marketplace_inventory == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const { execFileSync } = require("node:child_process");
+
+          const org = String(process.env.MARKETPLACE_ORG || "").trim() || "ubiquity-os-marketplace";
+          const outPath = ".ubiquityos.marketplace.json";
+
+          const result = {
+            org,
+            fetchedAt: new Date().toISOString(),
+            plugins: [],
+            errors: [],
+          };
+
+          function ghJson(args) {
+            const stdout = execFileSync("gh", ["api", ...args], { encoding: "utf8", env: process.env });
+            return JSON.parse(stdout);
+          }
+
+          function ghRaw(args) {
+            return execFileSync("gh", ["api", "-H", "Accept: application/vnd.github.raw", ...args], { encoding: "utf8", env: process.env });
+          }
+
+          try {
+            const repos = ghJson(["--paginate", `orgs/${org}/repos?per_page=100&type=public`]);
+            for (const repo of repos) {
+              const name = String(repo?.name || "").trim();
+              const defaultBranch = String(repo?.default_branch || "").trim();
+              if (!name) continue;
+
+              try {
+                const raw = ghRaw([`repos/${org}/${name}/contents/manifest.json${defaultBranch ? `?ref=${encodeURIComponent(defaultBranch)}` : ""}`]);
+                const manifest = JSON.parse(raw);
+
+                const commands = {};
+                for (const [cmdName, cmd] of Object.entries(manifest?.commands || {})) {
+                  if (!cmd || typeof cmd !== "object") continue;
+                  commands[cmdName] = {
+                    description: String(cmd.description || ""),
+                    example: String(cmd["ubiquity:example"] || ""),
+                  };
+                }
+
+                result.plugins.push({
+                  owner: org,
+                  repo: name,
+                  fullName: `${org}/${name}`,
+                  defaultBranch,
+                  manifest: {
+                    name: String(manifest?.name || ""),
+                    short_name: String(manifest?.short_name || ""),
+                    description: String(manifest?.description || ""),
+                    listeners: Array.isArray(manifest?.["ubiquity:listeners"]) ? manifest["ubiquity:listeners"] : [],
+                    commands,
+                  },
+                });
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                result.errors.push(`${org}/${name}: ${message}`);
+              }
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            result.errors.push(`list repos: ${message}`);
+          }
+
+          fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+          NODE
+
       - name: Write agent prompt
         if: steps.parse.outputs.allowed == 'true'
         env:
           TASK: ${{ steps.parse.outputs.task }}
           PRIVILEGED: ${{ steps.parse.outputs.privileged }}
           AGENT_MEMORY: ${{ steps.parse.outputs.agent_memory }}
+          ENVIRONMENT: ${{ steps.parse.outputs.environment }}
+          CONFIG_PATH_CANDIDATES_JSON: ${{ steps.parse.outputs.config_path_candidates }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
@@ -376,6 +467,14 @@ jobs:
           const task = String(process.env.TASK || "").trim();
           const privileged = String(process.env.PRIVILEGED || "") === "true";
           const agentMemory = String(process.env.AGENT_MEMORY || "").trim();
+          const environment = String(process.env.ENVIRONMENT || "").trim();
+          const configPathCandidatesJson = String(process.env.CONFIG_PATH_CANDIDATES_JSON || "").trim();
+          let configPathCandidates = [];
+          try {
+            configPathCandidates = configPathCandidatesJson ? JSON.parse(configPathCandidatesJson) : [];
+          } catch {
+            configPathCandidates = [];
+          }
 
           const lines = [];
           lines.push("You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.");
@@ -383,6 +482,13 @@ jobs:
           lines.push("Context:");
           lines.push("- The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.");
           lines.push("- Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.");
+          if (environment) {
+            lines.push(`- Kernel environment: ${environment}`);
+          }
+          if (Array.isArray(configPathCandidates) && configPathCandidates.length) {
+            lines.push(`- Config path candidates (edit the active one): ${configPathCandidates.join(", ")}`);
+          }
+          lines.push("- If present, marketplace plugin inventory is in `.ubiquityos.marketplace.json` (best-effort; may be empty if access is unavailable).");
           lines.push("");
           if (privileged) {
             lines.push("GitHub operations (privileged):");
