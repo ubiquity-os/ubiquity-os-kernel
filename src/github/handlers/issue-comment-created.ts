@@ -356,6 +356,13 @@ function isCloudflareAntibotHtml(status: number, html: string): boolean {
   return body.includes("<title>just a moment...</title>") || body.includes("cloudflare") || body.includes("cf-chl");
 }
 
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export async function callUbqAiRouter(
   context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">,
   prompt: string,
@@ -380,70 +387,84 @@ export async function callUbqAiRouter(
     ttlSeconds: 120,
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const payload = {
-      model: "gpt-5.2-chat-latest",
-      reasoning_effort: "none",
-      stream: false,
-      messages: [
-        { role: "system", content: prompt },
-        {
-          role: "user",
-          content: JSON.stringify(routerInput),
-        },
-      ],
-    };
+  const payload = {
+    model: "gpt-5.2-chat-latest",
+    reasoning_effort: "none",
+    stream: false,
+    messages: [
+      { role: "system", content: prompt },
+      {
+        role: "user",
+        content: JSON.stringify(routerInput),
+      },
+    ],
+  };
 
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-GitHub-Owner": owner,
-      "X-GitHub-Repo": repo,
-      "X-GitHub-Installation-Id": String(installationId),
-      "X-Ubiquity-Kernel-Token": kernelToken,
-    };
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "User-Agent": "ubiquity-os-kernel/router",
+    "X-GitHub-Owner": owner,
+    "X-GitHub-Repo": repo,
+    "X-GitHub-Installation-Id": String(installationId),
+    "X-Ubiquity-Kernel-Token": kernelToken,
+  };
 
-    const primaryUrl = new URL("/v1/chat/completions", context.eventHandler.aiBaseUrl).toString();
-    const fallbackUrl = new URL("/v1/chat/completions", context.eventHandler.aiFallbackBaseUrl).toString();
+  const primaryBase = normalizeBaseUrl(context.eventHandler.aiBaseUrl);
+  const fallbackBase = normalizeBaseUrl(context.eventHandler.aiFallbackBaseUrl);
+  const baseCandidates = [primaryBase, fallbackBase].filter(Boolean);
+  const bases = [...new Set(baseCandidates)];
 
-    const primaryResponse = await fetch(primaryUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify(payload),
-    });
+  const errors: string[] = [];
+  const overallDeadline = Date.now() + 25_000;
 
-    let response = primaryResponse;
-    let responseText = "";
-    if (!response.ok) {
-      responseText = await response.text().catch(() => "");
-      if (fallbackUrl !== primaryUrl && isCloudflareAntibotHtml(response.status, responseText)) {
-        context.logger.warn({ status: response.status }, "Router endpoint blocked by Cloudflare antibot; retrying fallback");
-        response = await fetch(fallbackUrl, {
-          method: "POST",
-          signal: controller.signal,
-          headers,
-          body: JSON.stringify(payload),
-        });
-        responseText = response.ok ? "" : await response.text().catch(() => "");
+  for (const baseUrl of bases) {
+    const remainingMs = overallDeadline - Date.now();
+    if (remainingMs <= 1000) break;
+
+    const endpoint = new URL("/v1/chat/completions", baseUrl).toString();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.min(15_000, remainingMs));
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        if (
+          baseUrl === primaryBase &&
+          fallbackBase &&
+          fallbackBase !== primaryBase &&
+          (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text))
+        ) {
+          context.logger.warn({ status: response.status }, "Router endpoint blocked; will try fallback");
+        }
+        const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
+        errors.push(`${endpoint} -> ${response.status} ${snippet}`);
+        continue;
       }
-    }
 
-    if (!response.ok) {
-      throw new Error(`Router error: ${response.status} ${responseText}`);
+      const data = (await response.json()) as ChatCompletion;
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== "string") {
+        errors.push(`${endpoint} -> ok but missing assistant content`);
+        continue;
+      }
+      return content;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${endpoint} -> ${message}`);
+      continue;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const data = (await response.json()) as ChatCompletion;
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      throw new Error("Router: missing assistant content");
-    }
-    return content;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error(`Router error (all endpoints failed):\n- ${errors.join("\n- ")}`);
 }
 
 async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string) {
