@@ -137,6 +137,22 @@ Recommended minimal metrics (per org):
 
 Implementation note: avoid large single KV values; use per-key records and `kv.list({ prefix }, { reverse, limit })`.
 
+## Local development (KV)
+
+This design assumes **Deno KV** in production (Deno Deploy). For local work, there are a few options:
+
+- **Best fidelity (recommended): run the kernel under Deno**, so `Deno.openKv()` is available and persists to a local SQLite
+  file (or `:memory:` for tests).
+- **Networked KV (optional): run `denokv` locally** (Docker) and connect via `Deno.openKv("http://localhost:4512")` with an
+  access token. This matches “remote KV” semantics more closely.
+- **Fallback (acceptable for unit tests only): in-memory KV adapter**, used when the runtime is not Deno (e.g., Bun-based dev
+  server). This should not be used to validate persistence or cross-request behavior.
+
+Notes:
+- KV has a **64 KiB per-value** limit and **~2 KiB per-key** serialized limit, so “append-only event keys” are preferred over
+  a single growing document.
+- Deno Deploy free-tier KV limits (storage + ops) should be monitored as usage grows; if needed, add TTL or aggregation.
+
 ## Autogen workflow (end-to-end)
 
 ### Flow A — Install an existing plugin
@@ -229,4 +245,3 @@ Phase 3 (inventory scaling)
 - Marketplace org choice: `ubiquity-os-marketplace` vs a dedicated “generated plugins” org.
 - Default branch policy for new plugins (development vs main).
 - Review policy for plugin repos (required reviewers / protected branches).
-
