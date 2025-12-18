@@ -5,7 +5,14 @@ import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configurati
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
-import { callUbqAiRouter, describeCommands, extractAfterUbiquityosMention, getIssueLabelNames, tryParseRouterDecision } from "./issue-comment-created";
+import {
+  callUbqAiRouter,
+  describeCommands,
+  extractAfterUbiquityosMention,
+  getIssueLabelNames,
+  truncateForRouter,
+  tryParseRouterDecision,
+} from "./issue-comment-created";
 
 async function addReactionEyes(context: GitHubContext<"pull_request_review_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -174,6 +181,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   const commands = describeCommands(manifests);
   const recentComments = await getReviewThreadCommentsForRouter(context, 10);
   const labels = getIssueLabelNames((context.payload.pull_request as unknown as { labels?: unknown }).labels);
+  const issueBody = truncateForRouter(context.payload.pull_request.body);
 
   const prompt = `
 You are **UbiquityOS**, a GitHub App assistant.
@@ -183,6 +191,7 @@ You will receive a single JSON object with:
 - repositoryName
 - issueNumber
 - issueTitle
+- issueBody (issue/PR body/spec)
 - isPullRequest
 - labels (current label names)
 - recentComments (array of comments in the current PR review thread: { author, body })
@@ -222,6 +231,7 @@ ${JSON.stringify(commands)}
       repositoryName: context.payload.repository.name,
       issueNumber: context.payload.pull_request.number,
       issueTitle: context.payload.pull_request.title,
+      issueBody,
       isPullRequest: true,
       labels,
       recentComments,

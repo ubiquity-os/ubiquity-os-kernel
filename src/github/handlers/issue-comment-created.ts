@@ -299,6 +299,12 @@ export type CommandDescriptor = Readonly<{
   parameters?: unknown;
 }>;
 
+export function truncateForRouter(value: unknown, maxChars = 8000): string {
+  const text = typeof value === "string" ? value : "";
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[truncated]`;
+}
+
 function stripCodeFences(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed.startsWith("```")) return trimmed;
@@ -584,6 +590,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const commands = describeCommands(manifests);
   const recentComments = await getRecentCommentsForRouter(context, 10);
   const labels = getIssueLabelNames(context.payload.issue.labels);
+  const issueBody = truncateForRouter(context.payload.issue.body);
 
   const prompt = `
 You are **UbiquityOS**, a GitHub App assistant.
@@ -593,6 +600,7 @@ You will receive a single JSON object with:
 - repositoryName
 - issueNumber
 - issueTitle
+- issueBody (issue/PR body/spec)
 - isPullRequest
 - labels (current label names)
 - recentComments (array of the last ~10 human comments: { author, body })
@@ -637,6 +645,7 @@ ${JSON.stringify(commands)}
       repositoryName: context.payload.repository.name,
       issueNumber: context.payload.issue.number,
       issueTitle: context.payload.issue.title,
+      issueBody,
       isPullRequest: Boolean(context.payload.issue.pull_request),
       labels,
       recentComments,

@@ -69,10 +69,13 @@ jobs:
             process.exit(1);
           }
 
-          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
-          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
-            ? settings.allowedAuthorAssociations
-            : ["OWNER", "MEMBER", "COLLABORATOR"];
+	          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
+	          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
+	            ? settings.allowedAuthorAssociations
+	            : ["OWNER", "MEMBER", "COLLABORATOR"];
+	          const privilegedAuthorAssociations = Array.isArray(settings.privilegedAuthorAssociations)
+	            ? settings.privilegedAuthorAssociations
+	            : ["OWNER", "MEMBER", "COLLABORATOR"];
 
           const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
           const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
@@ -109,8 +112,9 @@ jobs:
           const taskFromMention = extractTaskFromMention(commentBody);
           const task = String(explicitTaskFromCommand || taskFromMention || "").trim();
 
-          let allowed = true;
-          let denyReason = "";
+	          let allowed = true;
+	          let denyReason = "";
+	          let privileged = false;
 
           if (commentAuthorType !== "User") {
             allowed = false;
@@ -118,13 +122,15 @@ jobs:
           } else if (!allowedAuthorAssociations.includes(authorAssociation)) {
             allowed = false;
             denyReason = `Not authorized (author_association=${authorAssociation}).`;
-          } else if (!repo || !issueNumber) {
-            allowed = false;
-            denyReason = "Missing repo or issue number in event payload.";
-          } else if (!task) {
-            allowed = false;
-            denyReason = "Missing task text after @ubiquityos.";
-          }
+	          } else if (!repo || !issueNumber) {
+	            allowed = false;
+	            denyReason = "Missing repo or issue number in event payload.";
+	          } else if (!task) {
+	            allowed = false;
+	            denyReason = "Missing task text after @ubiquityos.";
+	          } else if (privilegedAuthorAssociations.includes(authorAssociation)) {
+	            privileged = true;
+	          }
 
           const branch = `${branchPrefix}/${process.env.STATE_ID || "run"}`.replace(/[^0-9A-Za-z._/-]+/g, "-");
 
@@ -142,6 +148,7 @@ jobs:
 	          setOutput("task", task);
 	          setOutput("comment_author", commentAuthor);
 	          setOutput("allowed", String(allowed));
+	          setOutput("privileged", String(privileged));
 	          setOutput("deny_reason", denyReason);
 	          setOutput("branch", branch);
           setOutput("commit_message", commitMessage);
@@ -283,21 +290,21 @@ jobs:
 
           echo "$!" > "$RUNNER_TEMP/ubq_watchdog.pid"
 
-      - name: Checkout target repo
-        if: steps.parse.outputs.allowed == 'true'
-        uses: actions/checkout@v5
-        with:
-          token: ${{ inputs.authToken }}
-          repository: ${{ steps.parse.outputs.repo }}
+	      - name: Checkout target repo
+	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+	        uses: actions/checkout@v5
+	        with:
+	          token: ${{ inputs.authToken }}
+	          repository: ${{ steps.parse.outputs.repo }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Create working branch
-        if: steps.parse.outputs.allowed == 'true'
-        run: |
-          git config user.name "UbiquityOS Agent"
-          git config user.email "bot@ubiquity.os"
-          git switch -c "${{ steps.parse.outputs.branch }}"
+	      - name: Create working branch
+	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+	        run: |
+	          git config user.name "UbiquityOS Agent"
+	          git config user.email "bot@ubiquity.os"
+	          git switch -c "${{ steps.parse.outputs.branch }}"
 
       - name: Fetch issue context + labels
         if: steps.parse.outputs.allowed == 'true'
@@ -354,54 +361,100 @@ jobs:
           fs.writeFileSync(".ubiquityos.issue.md", lines.join("\n"));
           NODE
 
-      - name: Write agent prompt
-        if: steps.parse.outputs.allowed == 'true'
-        run: |
-          set -euo pipefail
+	      - name: Write agent prompt
+	        if: steps.parse.outputs.allowed == 'true'
+	        run: |
+	          set -euo pipefail
 
-          cat > .codex.prompt.txt <<'PROMPT'
-          You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+	          if [ "${{ steps.parse.outputs.privileged }}" = "true" ]; then
+	            cat > .codex.prompt.txt <<'PROMPT'
+	            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
 
-          Context:
-          - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
-          - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+	            Context:
+	            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
+	            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
 
-          GitHub operations:
-          - Do NOT push branches or open PRs; the workflow will handle that.
-          - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
+	            GitHub operations (privileged):
+	            - The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).
+	            - Do NOT push branches or open PRs; the workflow will handle that for repo file changes.
+	            - Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.
+	            - Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).
+	            - Never print or leak tokens or secrets.
 
-            {
-              "comment": "Optional extra comment to post on the issue/PR",
-              "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
-              "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
-              "addLabels": ["Optional array of existing label names"],
-              "removeLabels": ["Optional array of existing label names"],
-              "editIssueBody": "Optional full new issue body markdown"
-            }
+	            If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:
 
-          Reply policy:
-          - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
-          - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
+	              {
+	                "comment": "Optional extra comment to post on the issue/PR",
+	                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
+	                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
+	                "addLabels": ["Optional array of existing label names"],
+	                "removeLabels": ["Optional array of existing label names"],
+	                "editIssueBody": "Optional full new issue body markdown"
+	              }
 
-          Important (Markdown formatting):
-          - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
-            - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
-            - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
-          - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+	            Reply policy:
+	            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread).
+	            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
 
-          Task:
-          ${{ steps.parse.outputs.task }}
+	            Important (Markdown formatting):
+	            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
+	              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
+	              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
+	            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
 
-          Constraints:
-          - Keep changes minimal and focused on the task.
-          - Do not reveal secrets or tokens.
-          - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
-          PROMPT
+	            Task:
+	            ${{ steps.parse.outputs.task }}
 
-      - name: Start ai.ubq.fi Responses forwarder
-        if: steps.parse.outputs.allowed == 'true'
-        env:
-          AUTH_TOKEN: ${{ inputs.authToken }}
+	            Constraints:
+	            - Keep changes minimal and focused on the task.
+	            - Do not reveal secrets or tokens.
+	            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
+	            PROMPT
+	          else
+	            cat > .codex.prompt.txt <<'PROMPT'
+	            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+
+	            Context:
+	            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
+	            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+
+	            GitHub operations:
+	            - Do NOT push branches or open PRs; the workflow will handle that.
+	            - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
+
+	              {
+	                "comment": "Optional extra comment to post on the issue/PR",
+	                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
+	                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
+	                "addLabels": ["Optional array of existing label names"],
+	                "removeLabels": ["Optional array of existing label names"],
+	                "editIssueBody": "Optional full new issue body markdown"
+	              }
+
+	            Reply policy:
+	            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
+	            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
+
+	            Important (Markdown formatting):
+	            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
+	              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
+	              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
+	            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+
+	            Task:
+	            ${{ steps.parse.outputs.task }}
+
+	            Constraints:
+	            - Keep changes minimal and focused on the task.
+	            - Do not reveal secrets or tokens.
+	            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
+	            PROMPT
+	          fi
+
+	      - name: Start ai.ubq.fi Responses forwarder
+	        if: steps.parse.outputs.allowed == 'true'
+	        env:
+	          AUTH_TOKEN: ${{ inputs.authToken }}
           KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
           GH_OWNER: ${{ steps.parse.outputs.repo_owner }}
           GH_REPO: ${{ steps.parse.outputs.repo_name }}
@@ -508,27 +561,45 @@ jobs:
           echo "Forwarder failed to start" >&2
           exit 1
 
-      - name: Run Codex
-        if: steps.parse.outputs.allowed == 'true'
-        id: run_codex
-        uses: openai/codex-action@v1
-        with:
-          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
-          openai-api-key: "ubq-forwarder"
-          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+	      - name: Run Codex (privileged)
+	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+	        uses: openai/codex-action@v1
+	        env:
+	          GH_TOKEN: ${{ inputs.authToken }}
+	        with:
+	          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
+	          openai-api-key: "ubq-forwarder"
+	          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
           allow-bots: "true"
           prompt-file: .codex.prompt.txt
           output-file: .codex.last-message.md
           working-directory: ${{ github.workspace }}
           sandbox: ${{ steps.parse.outputs.sandbox }}
           safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
-          model: ${{ steps.parse.outputs.model }}
-          effort: ${{ steps.parse.outputs.effort }}
-          codex-args: ${{ steps.parse.outputs.codex_args }}
+	          model: ${{ steps.parse.outputs.model }}
+	          effort: ${{ steps.parse.outputs.effort }}
+	          codex-args: ${{ steps.parse.outputs.codex_args }}
 
-      - name: Run tests (optional)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.test_command != ''
-        run: ${{ steps.parse.outputs.test_command }}
+	      - name: Run Codex (restricted)
+	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
+	        uses: openai/codex-action@v1
+	        with:
+	          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
+	          openai-api-key: "ubq-forwarder"
+	          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+	          allow-bots: "true"
+	          prompt-file: .codex.prompt.txt
+	          output-file: .codex.last-message.md
+	          working-directory: ${{ github.workspace }}
+	          sandbox: ${{ steps.parse.outputs.sandbox }}
+	          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+	          model: ${{ steps.parse.outputs.model }}
+	          effort: ${{ steps.parse.outputs.effort }}
+	          codex-args: ${{ steps.parse.outputs.codex_args }}
+
+	      - name: Run tests (optional)
+	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.test_command != ''
+	        run: ${{ steps.parse.outputs.test_command }}
 
       - name: Collect agent outputs
         if: always() && steps.parse.outputs.allowed == 'true'
@@ -682,24 +753,24 @@ jobs:
         run: |
           rm -f .codex.prompt.txt .codex.last-message.md .ubiquityos.issue.json .ubiquityos.comments.json .ubiquityos.repo-labels.json .ubiquityos.issue.md .ubiquityos.time-labels.txt .ubiquityos.priority-labels.txt .ubiquityos.actions.json || true
 
-      - name: Detect diff
-        if: success() && steps.parse.outputs.allowed == 'true'
-        id: diff
-        run: |
-          if git diff --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+	      - name: Detect diff
+	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+	        id: diff
+	        run: |
+	          if git diff --quiet; then
+	            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/ubiquityos-agent"
           git diff --name-only > "$RUNNER_TEMP/ubiquityos-agent/changed-files.txt"
 
-      - name: Commit + push
-        if: success() && steps.parse.outputs.allowed == 'true' && steps.diff.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-        run: |
-          set -euo pipefail
+	      - name: Commit + push
+	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
+	        env:
+	          GH_TOKEN: ${{ inputs.authToken }}
+	        run: |
+	          set -euo pipefail
 
           git add -A
           git commit -m "${{ steps.parse.outputs.commit_message }}" || true
@@ -707,13 +778,13 @@ jobs:
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ steps.parse.outputs.repo }}.git"
           git push -u origin "${{ steps.parse.outputs.branch }}"
 
-      - name: Create or find PR
-        if: success() && steps.parse.outputs.allowed == 'true' && steps.diff.outputs.changed == 'true'
-        id: pr
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-        run: |
-          set -euo pipefail
+	      - name: Create or find PR
+	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
+	        id: pr
+	        env:
+	          GH_TOKEN: ${{ inputs.authToken }}
+	        run: |
+	          set -euo pipefail
 
           repo="${{ steps.parse.outputs.repo }}"
           head="${{ steps.parse.outputs.branch }}"
