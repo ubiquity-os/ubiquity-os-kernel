@@ -69,13 +69,13 @@ jobs:
             process.exit(1);
           }
 
-	          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
-	          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
-	            ? settings.allowedAuthorAssociations
-	            : ["OWNER", "MEMBER", "COLLABORATOR"];
-	          const privilegedAuthorAssociations = Array.isArray(settings.privilegedAuthorAssociations)
-	            ? settings.privilegedAuthorAssociations
-	            : ["OWNER", "MEMBER", "COLLABORATOR"];
+          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
+          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
+            ? settings.allowedAuthorAssociations
+            : ["OWNER", "MEMBER", "COLLABORATOR"];
+          const privilegedAuthorAssociations = Array.isArray(settings.privilegedAuthorAssociations)
+            ? settings.privilegedAuthorAssociations
+            : ["OWNER", "MEMBER", "COLLABORATOR"];
 
           const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
           const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
@@ -85,20 +85,20 @@ jobs:
           const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
           const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
           const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
-	          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
+          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
 
-	          const repo = payload.repository?.full_name ?? "";
-	          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
-	          const issueNumber = payload.issue?.number ?? payload.pull_request?.number ?? "";
-	          const isPullRequest = Boolean(payload.issue?.pull_request) || Boolean(payload.pull_request);
-	          const commentKind = payload.issue ? "issue_comment" : payload.pull_request ? "pull_request_review_comment" : "";
-	          const commentBody = payload.comment?.body ?? "";
-	          const commentId = payload.comment?.id ?? "";
-	          const reviewRootCommentId = commentKind === "pull_request_review_comment" ? payload.comment?.in_reply_to_id ?? payload.comment?.id ?? "" : "";
-	          const commentAuthor = payload.comment?.user?.login ?? "";
-	          const commentAuthorType = payload.comment?.user?.type ?? "";
-	          const authorAssociation = payload.comment?.author_association ?? "";
-	          const installationId = payload.installation?.id ?? "";
+          const repo = payload.repository?.full_name ?? "";
+          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
+          const issueNumber = payload.issue?.number ?? payload.pull_request?.number ?? "";
+          const isPullRequest = Boolean(payload.issue?.pull_request) || Boolean(payload.pull_request);
+          const commentKind = payload.issue ? "issue_comment" : payload.pull_request ? "pull_request_review_comment" : "";
+          const commentBody = payload.comment?.body ?? "";
+          const commentId = payload.comment?.id ?? "";
+          const reviewRootCommentId = commentKind === "pull_request_review_comment" ? payload.comment?.in_reply_to_id ?? payload.comment?.id ?? "" : "";
+          const commentAuthor = payload.comment?.user?.login ?? "";
+          const commentAuthorType = payload.comment?.user?.type ?? "";
+          const authorAssociation = payload.comment?.author_association ?? "";
+          const installationId = payload.installation?.id ?? "";
 
           const command = safeJsonParse(process.env.COMMAND_JSON, null);
           const explicitTaskFromCommand = command?.parameters?.task ?? "";
@@ -112,9 +112,9 @@ jobs:
           const taskFromMention = extractTaskFromMention(commentBody);
           const task = String(explicitTaskFromCommand || taskFromMention || "").trim();
 
-	          let allowed = true;
-	          let denyReason = "";
-	          let privileged = false;
+          let allowed = true;
+          let denyReason = "";
+          let privileged = false;
 
           if (commentAuthorType !== "User") {
             allowed = false;
@@ -122,35 +122,35 @@ jobs:
           } else if (!allowedAuthorAssociations.includes(authorAssociation)) {
             allowed = false;
             denyReason = `Not authorized (author_association=${authorAssociation}).`;
-	          } else if (!repo || !issueNumber) {
-	            allowed = false;
-	            denyReason = "Missing repo or issue number in event payload.";
-	          } else if (!task) {
-	            allowed = false;
-	            denyReason = "Missing task text after @ubiquityos.";
-	          } else if (privilegedAuthorAssociations.includes(authorAssociation)) {
-	            privileged = true;
-	          }
+          } else if (!repo || !issueNumber) {
+            allowed = false;
+            denyReason = "Missing repo or issue number in event payload.";
+          } else if (!task) {
+            allowed = false;
+            denyReason = "Missing task text after @ubiquityos.";
+          } else if (privilegedAuthorAssociations.includes(authorAssociation)) {
+            privileged = true;
+          }
 
           const branch = `${branchPrefix}/${process.env.STATE_ID || "run"}`.replace(/[^0-9A-Za-z._/-]+/g, "-");
 
           const outputLines = [];
           const setOutput = (k, v) => outputLines.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
 
-	          setOutput("repo", repo);
-	          setOutput("repo_owner", repoOwner);
-	          setOutput("repo_name", repoName);
-	          setOutput("installation_id", installationId);
-	          setOutput("issue_number", issueNumber);
-	          setOutput("comment_id", commentId);
-	          setOutput("comment_kind", commentKind);
-	          setOutput("review_root_comment_id", reviewRootCommentId);
-	          setOutput("task", task);
-	          setOutput("comment_author", commentAuthor);
-	          setOutput("allowed", String(allowed));
-	          setOutput("privileged", String(privileged));
-	          setOutput("deny_reason", denyReason);
-	          setOutput("branch", branch);
+          setOutput("repo", repo);
+          setOutput("repo_owner", repoOwner);
+          setOutput("repo_name", repoName);
+          setOutput("installation_id", installationId);
+          setOutput("issue_number", issueNumber);
+          setOutput("comment_id", commentId);
+          setOutput("comment_kind", commentKind);
+          setOutput("review_root_comment_id", reviewRootCommentId);
+          setOutput("task", task);
+          setOutput("comment_author", commentAuthor);
+          setOutput("allowed", String(allowed));
+          setOutput("privileged", String(privileged));
+          setOutput("deny_reason", denyReason);
+          setOutput("branch", branch);
           setOutput("commit_message", commitMessage);
           setOutput("draft_pr", String(draftPr));
           setOutput("model", model);
@@ -170,16 +170,16 @@ jobs:
           cat > "$RUNNER_TEMP/ubq_agent_update_request_comment.js" <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
-	          const { execFileSync } = require("node:child_process");
+          const { execFileSync } = require("node:child_process");
 
-	          const repo = String(process.env.REPO || "").trim();
-	          const commentId = String(process.env.COMMENT_ID || "").trim();
-	          const commentKind = String(process.env.COMMENT_KIND || "").trim();
-	          const runUrl = String(process.env.RUN_URL || "").trim();
-	          const status = String(process.env.STATUS || "").trim();
-	          const stateId = String(process.env.STATE_ID || "").trim();
-	          const prUrl = String(process.env.PR_URL || "").trim();
-	          const summaryPath = String(process.env.SUMMARY_PATH || "").trim();
+          const repo = String(process.env.REPO || "").trim();
+          const commentId = String(process.env.COMMENT_ID || "").trim();
+          const commentKind = String(process.env.COMMENT_KIND || "").trim();
+          const runUrl = String(process.env.RUN_URL || "").trim();
+          const status = String(process.env.STATUS || "").trim();
+          const stateId = String(process.env.STATE_ID || "").trim();
+          const prUrl = String(process.env.PR_URL || "").trim();
+          const summaryPath = String(process.env.SUMMARY_PATH || "").trim();
           const detail = String(process.env.DETAIL || "").trim();
           const changed = String(process.env.CHANGED || "").trim();
 
@@ -214,23 +214,23 @@ jobs:
             blockLines.push("Agent summary:");
             blockLines.push(summary);
           }
-	          blockLines.push("-->");
-	          const block = blockLines.join("\n");
+          blockLines.push("-->");
+          const block = blockLines.join("\n");
 
-	          const commentRoute =
-	            commentKind === "pull_request_review_comment" ? `repos/${repo}/pulls/comments/${commentId}` : `repos/${repo}/issues/comments/${commentId}`;
-	          const comment = ghJson([commentRoute]);
-	          const currentBody = String(comment?.body ?? "");
+          const commentRoute =
+            commentKind === "pull_request_review_comment" ? `repos/${repo}/pulls/comments/${commentId}` : `repos/${repo}/issues/comments/${commentId}`;
+          const comment = ghJson([commentRoute]);
+          const currentBody = String(comment?.body ?? "");
 
           const marker = /<!--\\s*ubiquityos-agent[\\s\\S]*?-->\\s*/g;
           const cleaned = currentBody.replace(marker, "").replace(/\\s*$/u, "");
           const nextBody = cleaned ? `${cleaned}\n\n${block}\n` : `${block}\n`;
 
-	          const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
-	          const bodyPath = path.join(tmp, "comment-body.md");
-	          fs.writeFileSync(bodyPath, nextBody, "utf8");
-	          gh(["api", "-X", "PATCH", commentRoute, "-F", `body=@${bodyPath}`]);
-	          NODE
+          const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
+          const bodyPath = path.join(tmp, "comment-body.md");
+          fs.writeFileSync(bodyPath, nextBody, "utf8");
+          gh(["api", "-X", "PATCH", commentRoute, "-F", `body=@${bodyPath}`]);
+          NODE
 
       - name: Comment (rejected)
         if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
@@ -247,14 +247,14 @@ jobs:
 
       - name: Update request comment (started)
         if: steps.parse.outputs.allowed == 'true'
-	        env:
-	          GH_TOKEN: ${{ inputs.authToken }}
-	          REPO: ${{ steps.parse.outputs.repo }}
-	          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
-	          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
-	          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-	          STATUS: started
-	          STATE_ID: ${{ inputs.stateId }}
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: started
+          STATE_ID: ${{ inputs.stateId }}
         run: |
           set -euo pipefail
           if node "$RUNNER_TEMP/ubq_agent_update_request_comment.js"; then
@@ -272,14 +272,14 @@ jobs:
       - name: Start token watchdog
         if: steps.parse.outputs.allowed == 'true'
         continue-on-error: true
-	        env:
-	          GH_TOKEN: ${{ inputs.authToken }}
-	          REPO: ${{ steps.parse.outputs.repo }}
-	          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
-	          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
-	          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-	          STATUS: started
-	          STATE_ID: ${{ inputs.stateId }}
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
+          COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: started
+          STATE_ID: ${{ inputs.stateId }}
         run: |
           set -euo pipefail
           (
@@ -290,44 +290,44 @@ jobs:
 
           echo "$!" > "$RUNNER_TEMP/ubq_watchdog.pid"
 
-	      - name: Checkout target repo
-	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
-	        uses: actions/checkout@v5
-	        with:
-	          token: ${{ inputs.authToken }}
-	          repository: ${{ steps.parse.outputs.repo }}
+      - name: Checkout target repo
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        uses: actions/checkout@v5
+        with:
+          token: ${{ inputs.authToken }}
+          repository: ${{ steps.parse.outputs.repo }}
           fetch-depth: 0
           persist-credentials: false
 
-	      - name: Create working branch
-	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
-	        run: |
-	          git config user.name "UbiquityOS Agent"
-	          git config user.email "bot@ubiquity.os"
-	          git switch -c "${{ steps.parse.outputs.branch }}"
+      - name: Create working branch
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        run: |
+          git config user.name "UbiquityOS Agent"
+          git config user.email "bot@ubiquity.os"
+          git switch -c "${{ steps.parse.outputs.branch }}"
 
       - name: Fetch issue context + labels
         if: steps.parse.outputs.allowed == 'true'
         env:
           GH_TOKEN: ${{ inputs.authToken }}
         run: |
-	          set -euo pipefail
-	          repo="${{ steps.parse.outputs.repo }}"
-	          issue_number="${{ steps.parse.outputs.issue_number }}"
-	          comment_kind="${{ steps.parse.outputs.comment_kind }}"
-	          review_root_comment_id="${{ steps.parse.outputs.review_root_comment_id }}"
+          set -euo pipefail
+          repo="${{ steps.parse.outputs.repo }}"
+          issue_number="${{ steps.parse.outputs.issue_number }}"
+          comment_kind="${{ steps.parse.outputs.comment_kind }}"
+          review_root_comment_id="${{ steps.parse.outputs.review_root_comment_id }}"
 
-	          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
-	          if [ "$comment_kind" = "pull_request_review_comment" ]; then
-	            if [ -z "$review_root_comment_id" ]; then
-	              echo "Missing review_root_comment_id for pull_request_review_comment event" >&2
-	              exit 1
-	            fi
-	            gh api --paginate "repos/$repo/pulls/$issue_number/comments?per_page=100" | jq -s --arg root "$review_root_comment_id" 'add | map(select((.id|tostring) == $root or ((.in_reply_to_id // "")|tostring) == $root)) | sort_by(.created_at)' > .ubiquityos.comments.json
-	          else
-	            gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
-	          fi
-	          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
+          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
+          if [ "$comment_kind" = "pull_request_review_comment" ]; then
+            if [ -z "$review_root_comment_id" ]; then
+              echo "Missing review_root_comment_id for pull_request_review_comment event" >&2
+              exit 1
+            fi
+            gh api --paginate "repos/$repo/pulls/$issue_number/comments?per_page=100" | jq -s --arg root "$review_root_comment_id" 'add | map(select((.id|tostring) == $root or ((.in_reply_to_id // "")|tostring) == $root)) | sort_by(.created_at)' > .ubiquityos.comments.json
+          else
+            gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
+          fi
+          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
 
           jq -r '[.[] | select(.name | startswith("Time:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.time-labels.txt || true
           jq -r '[.[] | select(.name | startswith("Priority:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.priority-labels.txt || true
@@ -361,100 +361,100 @@ jobs:
           fs.writeFileSync(".ubiquityos.issue.md", lines.join("\n"));
           NODE
 
-	      - name: Write agent prompt
-	        if: steps.parse.outputs.allowed == 'true'
-	        run: |
-	          set -euo pipefail
+      - name: Write agent prompt
+        if: steps.parse.outputs.allowed == 'true'
+        run: |
+          set -euo pipefail
 
-	          if [ "${{ steps.parse.outputs.privileged }}" = "true" ]; then
-	            cat > .codex.prompt.txt <<'PROMPT'
-	            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+          if [ "${{ steps.parse.outputs.privileged }}" = "true" ]; then
+            cat > .codex.prompt.txt <<'PROMPT'
+            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
 
-	            Context:
-	            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
-	            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+            Context:
+            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
+            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
 
-	            GitHub operations (privileged):
-	            - The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).
-	            - Do NOT push branches or open PRs; the workflow will handle that for repo file changes.
-	            - Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.
-	            - Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).
-	            - Never print or leak tokens or secrets.
+            GitHub operations (privileged):
+            - The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).
+            - Do NOT push branches or open PRs; the workflow will handle that for repo file changes.
+            - Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.
+            - Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).
+            - Never print or leak tokens or secrets.
 
-	            If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:
+            If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:
 
-	              {
-	                "comment": "Optional extra comment to post on the issue/PR",
-	                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
-	                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
-	                "addLabels": ["Optional array of existing label names"],
-	                "removeLabels": ["Optional array of existing label names"],
-	                "editIssueBody": "Optional full new issue body markdown"
-	              }
+              {
+                "comment": "Optional extra comment to post on the issue/PR",
+                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
+                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
+                "addLabels": ["Optional array of existing label names"],
+                "removeLabels": ["Optional array of existing label names"],
+                "editIssueBody": "Optional full new issue body markdown"
+              }
 
-	            Reply policy:
-	            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread).
-	            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
+            Reply policy:
+            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread).
+            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
 
-	            Important (Markdown formatting):
-	            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
-	              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
-	              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
-	            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+            Important (Markdown formatting):
+            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
+              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
+              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
+            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
 
-	            Task:
-	            ${{ steps.parse.outputs.task }}
+            Task:
+            ${{ steps.parse.outputs.task }}
 
-	            Constraints:
-	            - Keep changes minimal and focused on the task.
-	            - Do not reveal secrets or tokens.
-	            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
-	            PROMPT
-	          else
-	            cat > .codex.prompt.txt <<'PROMPT'
-	            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+            Constraints:
+            - Keep changes minimal and focused on the task.
+            - Do not reveal secrets or tokens.
+            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
+            PROMPT
+          else
+            cat > .codex.prompt.txt <<'PROMPT'
+            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
 
-	            Context:
-	            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
-	            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+            Context:
+            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
+            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
 
-	            GitHub operations:
-	            - Do NOT push branches or open PRs; the workflow will handle that.
-	            - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
+            GitHub operations:
+            - Do NOT push branches or open PRs; the workflow will handle that.
+            - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
 
-	              {
-	                "comment": "Optional extra comment to post on the issue/PR",
-	                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
-	                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
-	                "addLabels": ["Optional array of existing label names"],
-	                "removeLabels": ["Optional array of existing label names"],
-	                "editIssueBody": "Optional full new issue body markdown"
-	              }
+              {
+                "comment": "Optional extra comment to post on the issue/PR",
+                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
+                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
+                "addLabels": ["Optional array of existing label names"],
+                "removeLabels": ["Optional array of existing label names"],
+                "editIssueBody": "Optional full new issue body markdown"
+              }
 
-	            Reply policy:
-	            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
-	            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
+            Reply policy:
+            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
+            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
 
-	            Important (Markdown formatting):
-	            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
-	              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
-	              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
-	            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+            Important (Markdown formatting):
+            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
+              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
+              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
+            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
 
-	            Task:
-	            ${{ steps.parse.outputs.task }}
+            Task:
+            ${{ steps.parse.outputs.task }}
 
-	            Constraints:
-	            - Keep changes minimal and focused on the task.
-	            - Do not reveal secrets or tokens.
-	            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
-	            PROMPT
-	          fi
+            Constraints:
+            - Keep changes minimal and focused on the task.
+            - Do not reveal secrets or tokens.
+            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
+            PROMPT
+          fi
 
-	      - name: Start ai.ubq.fi Responses forwarder
-	        if: steps.parse.outputs.allowed == 'true'
-	        env:
-	          AUTH_TOKEN: ${{ inputs.authToken }}
+      - name: Start ai.ubq.fi Responses forwarder
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
           KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
           GH_OWNER: ${{ steps.parse.outputs.repo_owner }}
           GH_REPO: ${{ steps.parse.outputs.repo_name }}
@@ -561,45 +561,45 @@ jobs:
           echo "Forwarder failed to start" >&2
           exit 1
 
-	      - name: Run Codex (privileged)
-	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
-	        uses: openai/codex-action@v1
-	        env:
-	          GH_TOKEN: ${{ inputs.authToken }}
-	        with:
-	          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
-	          openai-api-key: "ubq-forwarder"
-	          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+      - name: Run Codex (privileged)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        with:
+          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
           allow-bots: "true"
           prompt-file: .codex.prompt.txt
           output-file: .codex.last-message.md
           working-directory: ${{ github.workspace }}
           sandbox: ${{ steps.parse.outputs.sandbox }}
           safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
-	          model: ${{ steps.parse.outputs.model }}
-	          effort: ${{ steps.parse.outputs.effort }}
-	          codex-args: ${{ steps.parse.outputs.codex_args }}
+          model: ${{ steps.parse.outputs.model }}
+          effort: ${{ steps.parse.outputs.effort }}
+          codex-args: ${{ steps.parse.outputs.codex_args }}
 
-	      - name: Run Codex (restricted)
-	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
-	        uses: openai/codex-action@v1
-	        with:
-	          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
-	          openai-api-key: "ubq-forwarder"
-	          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
-	          allow-bots: "true"
-	          prompt-file: .codex.prompt.txt
-	          output-file: .codex.last-message.md
-	          working-directory: ${{ github.workspace }}
-	          sandbox: ${{ steps.parse.outputs.sandbox }}
-	          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
-	          model: ${{ steps.parse.outputs.model }}
-	          effort: ${{ steps.parse.outputs.effort }}
-	          codex-args: ${{ steps.parse.outputs.codex_args }}
+      - name: Run Codex (restricted)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
+        uses: openai/codex-action@v1
+        with:
+          # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ steps.parse.outputs.sandbox }}
+          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+          model: ${{ steps.parse.outputs.model }}
+          effort: ${{ steps.parse.outputs.effort }}
+          codex-args: ${{ steps.parse.outputs.codex_args }}
 
-	      - name: Run tests (optional)
-	        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.test_command != ''
-	        run: ${{ steps.parse.outputs.test_command }}
+      - name: Run tests (optional)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.test_command != ''
+        run: ${{ steps.parse.outputs.test_command }}
 
       - name: Collect agent outputs
         if: always() && steps.parse.outputs.allowed == 'true'
@@ -753,24 +753,24 @@ jobs:
         run: |
           rm -f .codex.prompt.txt .codex.last-message.md .ubiquityos.issue.json .ubiquityos.comments.json .ubiquityos.repo-labels.json .ubiquityos.issue.md .ubiquityos.time-labels.txt .ubiquityos.priority-labels.txt .ubiquityos.actions.json || true
 
-	      - name: Detect diff
-	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
-	        id: diff
-	        run: |
-	          if git diff --quiet; then
-	            echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Detect diff
+        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/ubiquityos-agent"
           git diff --name-only > "$RUNNER_TEMP/ubiquityos-agent/changed-files.txt"
 
-	      - name: Commit + push
-	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
-	        env:
-	          GH_TOKEN: ${{ inputs.authToken }}
-	        run: |
-	          set -euo pipefail
+      - name: Commit + push
+        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
 
           git add -A
           git commit -m "${{ steps.parse.outputs.commit_message }}" || true
@@ -778,13 +778,13 @@ jobs:
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ steps.parse.outputs.repo }}.git"
           git push -u origin "${{ steps.parse.outputs.branch }}"
 
-	      - name: Create or find PR
-	        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
-	        id: pr
-	        env:
-	          GH_TOKEN: ${{ inputs.authToken }}
-	        run: |
-	          set -euo pipefail
+      - name: Create or find PR
+        if: success() && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.diff.outputs.changed == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
 
           repo="${{ steps.parse.outputs.repo }}"
           head="${{ steps.parse.outputs.branch }}"
@@ -829,13 +829,13 @@ jobs:
         run: |
           set -euo pipefail
 
-	          export REPO="${{ steps.parse.outputs.repo }}"
-	          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
-	          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
-	          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-	          export STATE_ID="${{ inputs.stateId }}"
-	          export PR_URL="${{ steps.pr.outputs.url }}"
-	          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+          export REPO="${{ steps.parse.outputs.repo }}"
+          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
+          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          export STATE_ID="${{ inputs.stateId }}"
+          export PR_URL="${{ steps.pr.outputs.url }}"
+          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
           export CHANGED="${{ steps.diff.outputs.changed }}"
 
           export STATUS="completed"
@@ -887,13 +887,13 @@ jobs:
         run: |
           set -euo pipefail
 
-	          export REPO="${{ steps.parse.outputs.repo }}"
-	          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
-	          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
-	          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-	          export STATE_ID="${{ inputs.stateId }}"
-	          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
-	          export CHANGED="${{ steps.diff.outputs.changed }}"
+          export REPO="${{ steps.parse.outputs.repo }}"
+          export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
+          export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
+          export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          export STATE_ID="${{ inputs.stateId }}"
+          export SUMMARY_PATH="$RUNNER_TEMP/ubiquityos-agent/last-message.md"
+          export CHANGED="${{ steps.diff.outputs.changed }}"
           export STATUS="failed"
 
           node "$RUNNER_TEMP/ubq_agent_update_request_comment.js" || true
