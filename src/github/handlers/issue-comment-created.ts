@@ -130,13 +130,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       await dispatchSlashCommand(context, slashInvocation);
       return;
     }
-    const agentPrefixMatch = /^(agent|autogen|automation)\b/i.exec(afterMention);
+    const agentPrefixMatch = /^agent\b/i.exec(afterMention);
     if (agentPrefixMatch) {
-      const prefix = agentPrefixMatch[1]?.toLowerCase();
-      const task = afterMention.replace(/^(agent|autogen|automation)\b/i, "").trim() || body.trim();
-      await dispatchInternalAgent(context, task, {
-        wantsMarketplaceInventory: prefix === "autogen" || prefix === "automation",
-      });
+      const task = afterMention.replace(/^agent\b/i, "").trim() || body.trim();
+      await dispatchInternalAgent(context, task);
       return;
     }
     await commandRouter(context);
@@ -685,7 +682,8 @@ Rules:
 - Prefer an existing command when it clearly fits.
 - Use "help" when asked for available commands / how to use.
 - Use "reply" for questions, discussion, or research that doesn't need execution.
-- Use "agent" for anything that requires repo changes, reading long threads, rewriting specs, setting labels/time estimates, or GitHub operations not covered by commands.
+- Use "command" whenever a listed command can perform the work (even if it changes repo state). In particular, use "config" for editing .github/.ubiquity-os.config*.yml (install/update plugins, change plugin refs, update plugin settings).
+- Use "agent" only when no command fits or the request is explicitly complex/multi-step and needs general GitHub/coding work.
 - Never invent a command name; choose from the provided list.
 - If parameters are unclear, use "reply" to ask a single clarifying question AND include a copy/paste follow-up that starts with "@ubiquityos" and is fully self-contained.
 

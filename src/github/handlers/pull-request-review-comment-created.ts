@@ -1,11 +1,11 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
-import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
+import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { getManifest } from "../utils/plugins";
-import { dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
   callUbqAiRouter,
   describeCommands,
@@ -177,13 +177,10 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
 
   await addReactionEyes(context);
 
-  const agentPrefixMatch = /^(agent|autogen|automation)\b/i.exec(afterMention);
+  const agentPrefixMatch = /^agent\b/i.exec(afterMention);
   if (agentPrefixMatch) {
-    const prefix = agentPrefixMatch[1]?.toLowerCase();
-    const task = afterMention.replace(/^(agent|autogen|automation)\b/i, "").trim() || body;
-    await dispatchInternalAgent(context, task, {
-      wantsMarketplaceInventory: prefix === "autogen" || prefix === "automation",
-    });
+    const task = afterMention.replace(/^agent\b/i, "").trim() || body;
+    await dispatchInternalAgent(context, task);
     return;
   }
 
@@ -247,13 +244,19 @@ Return **ONLY** a JSON object matching ONE of these shapes (no markdown, no code
 3) Plain reply (post a reply in the review thread):
 { "action": "reply", "reply": "..." }
 
-4) Escalate to the full agent runner (for complex, multi-step, repo edits, or label/spec work):
+4) Invoke a command plugin:
+{ "action": "command", "command": { "name": "<commandName>", "parameters": { ... } } }
+
+5) Escalate to the full agent runner (for complex, multi-step, repo edits, or label/spec work):
 { "action": "agent", "task": "..." }
 
 Rules:
+- Prefer an existing command when it clearly fits.
 - Use "help" when asked for available commands / how to use.
 - Use "reply" for questions, discussion, or research that doesn't need execution.
-- Use "agent" for anything that requires repo changes, reading long threads, rewriting specs, setting labels/time estimates, or GitHub operations.
+- Use "command" whenever a listed command can perform the work (even if it changes repo state). In particular, use "config" for editing .github/.ubiquity-os.config*.yml (install/update plugins, change plugin refs, update plugin settings).
+- Use "agent" only when no command fits or the request is explicitly complex/multi-step and needs general GitHub/coding work.
+- Never invent a command name; choose from the provided list.
 - If parameters are unclear, use "reply" to ask a single clarifying question AND include a copy/paste follow-up that starts with "@ubiquityos" and is fully self-contained.
 
 Available commands (JSON):
@@ -295,6 +298,64 @@ ${JSON.stringify(commands)}
   }
   if (decision.action === "reply") {
     await postReplyInReviewThread(context, decision.reply);
+    return;
+  }
+  if (decision.action === "command") {
+    if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+      await postReplyInReviewThread(context, "I couldn't run that command because the GitHub App installation context is missing.");
+      return;
+    }
+
+    const commandName = decision.command?.name;
+    if (!commandName || typeof commandName !== "string") {
+      await postReplyInReviewThread(context, "I couldn't determine which command to run. Try `@ubiquityos help` in the PR conversation.");
+      return;
+    }
+
+    let pluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
+    for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+      const candidate = pluginsWithManifest[i];
+      if (candidate?.manifest?.commands?.[commandName] !== undefined) {
+        pluginWithManifest = candidate;
+        break;
+      }
+    }
+    if (!pluginWithManifest) {
+      await postReplyInReviewThread(context, `I couldn't find a plugin for \`/${commandName}\`. Use \`/help\` in the PR conversation to see commands.`);
+      return;
+    }
+
+    const command = {
+      name: commandName,
+      parameters: decision.command?.parameters ?? null,
+    };
+
+    const plugin = pluginWithManifest.target;
+    const settings = pluginWithManifest.settings?.with;
+
+    const isGithubPluginObject = isGithubPlugin(plugin);
+    const stateId = crypto.randomUUID();
+    const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+    const token = await context.eventHandler.getToken(context.payload.installation.id);
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
+
+    context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin from review thread.");
+    try {
+      if (!isGithubPluginObject) {
+        await dispatchWorker(plugin, await inputs.getInputs());
+      } else {
+        await dispatchWorkflow(context, {
+          owner: plugin.owner,
+          repository: plugin.repo,
+          workflowId: plugin.workflowId,
+          ref,
+          inputs: await inputs.getInputs(),
+        });
+      }
+    } catch (error) {
+      context.logger.error({ plugin, err: error }, "An error occurred while processing plugin; skipping plugin");
+      await postReplyInReviewThread(context, "That command failed to start. Check kernel logs for details.");
+    }
     return;
   }
 
