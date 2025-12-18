@@ -363,93 +363,79 @@ jobs:
 
       - name: Write agent prompt
         if: steps.parse.outputs.allowed == 'true'
+        env:
+          TASK: ${{ steps.parse.outputs.task }}
+          PRIVILEGED: ${{ steps.parse.outputs.privileged }}
         run: |
-          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
 
-          if [ "${{ steps.parse.outputs.privileged }}" = "true" ]; then
-            cat > .codex.prompt.txt <<'PROMPT'
-            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
+          const task = String(process.env.TASK || "").trim();
+          const privileged = String(process.env.PRIVILEGED || "") === "true";
 
-            Context:
-            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
-            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
+          const lines = [];
+          lines.push("You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.");
+          lines.push("");
+          lines.push("Context:");
+          lines.push("- The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.");
+          lines.push("- Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.");
+          lines.push("");
 
-            GitHub operations (privileged):
-            - The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).
-            - Do NOT push branches or open PRs; the workflow will handle that for repo file changes.
-            - Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.
-            - Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).
-            - Never print or leak tokens or secrets.
+          if (privileged) {
+            lines.push("GitHub operations (privileged):");
+            lines.push("- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).");
+            lines.push("- Do NOT push branches or open PRs; the workflow will handle that for repo file changes.");
+            lines.push("- Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.");
+            lines.push("- Use `gh` directly for GitHub actions not supported by `.ubiquityos.actions.json` (e.g., creating a new issue, commenting on another issue, cross-issue edits).");
+            lines.push("- Never print or leak tokens or secrets.");
+            lines.push("");
+            lines.push(
+              "If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:"
+            );
+          } else {
+            lines.push("GitHub operations:");
+            lines.push("- Do NOT push branches or open PRs; the workflow will handle that.");
+            lines.push("- If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:");
+          }
 
-            If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:
+          lines.push("");
+          lines.push("  {");
+          lines.push('    "comment": "Optional extra comment to post on the issue/PR",');
+          lines.push('    "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",');
+          lines.push('    "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",');
+          lines.push('    "addLabels": ["Optional array of existing label names"],');
+          lines.push('    "removeLabels": ["Optional array of existing label names"],');
+          lines.push('    "editIssueBody": "Optional full new issue body markdown"');
+          lines.push("  }");
+          lines.push("");
 
-              {
-                "comment": "Optional extra comment to post on the issue/PR",
-                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
-                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
-                "addLabels": ["Optional array of existing label names"],
-                "removeLabels": ["Optional array of existing label names"],
-                "editIssueBody": "Optional full new issue body markdown"
-              }
+          lines.push("Reply policy:");
+          lines.push(
+            privileged
+              ? "- Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread)."
+              : "- Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment)."
+          );
+          lines.push("- Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.");
+          lines.push("");
 
-            Reply policy:
-            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted on the triggering thread).
-            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
+          lines.push("Important (Markdown formatting):");
+          lines.push("- GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.");
+          lines.push("  - Correct: use JSON escapes `\\n` for newlines (parsed into real newlines).");
+          lines.push("  - Incorrect: writing literal `\\\\n` sequences (these render as `\\n` in GitHub).");
+          lines.push("- If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.");
+          lines.push("");
 
-            Important (Markdown formatting):
-            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
-              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
-              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
-            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
+          lines.push("Task:");
+          lines.push(task);
+          lines.push("");
 
-            Task:
-            ${{ steps.parse.outputs.task }}
+          lines.push("Constraints:");
+          lines.push("- Keep changes minimal and focused on the task.");
+          lines.push("- Do not reveal secrets or tokens.");
+          lines.push("- If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.");
 
-            Constraints:
-            - Keep changes minimal and focused on the task.
-            - Do not reveal secrets or tokens.
-            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
-            PROMPT
-          else
-            cat > .codex.prompt.txt <<'PROMPT'
-            You are an autonomous coding agent running inside a GitHub Actions job on ubuntu-latest.
-
-            Context:
-            - The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.
-            - Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.
-
-            GitHub operations:
-            - Do NOT push branches or open PRs; the workflow will handle that.
-            - If you want to request GitHub metadata changes (labels, issue body, extra comments), write a JSON file named `.ubiquityos.actions.json` with this shape:
-
-              {
-                "comment": "Optional extra comment to post on the issue/PR",
-                "timeLabel": "Optional; must match one of the lines in .ubiquityos.time-labels.txt",
-                "priorityLabel": "Optional; must match one of the lines in .ubiquityos.priority-labels.txt",
-                "addLabels": ["Optional array of existing label names"],
-                "removeLabels": ["Optional array of existing label names"],
-                "editIssueBody": "Optional full new issue body markdown"
-              }
-
-            Reply policy:
-            - Always include a concise, human-facing response in `.ubiquityos.actions.json.comment` (this will be posted as the visible issue/PR comment).
-            - Do NOT include run-log URLs or restate the full task in your `comment`; the workflow tracks run logs and status separately.
-
-            Important (Markdown formatting):
-            - GitHub Markdown requires real line breaks. When writing multiline fields like `comment` or `editIssueBody`, do NOT double-escape newlines.
-              - Correct: use JSON escapes `\n` for newlines (parsed into real newlines).
-              - Incorrect: writing literal `\\n` sequences (these render as `\n` in GitHub).
-            - If unsure, generate `.ubiquityos.actions.json` via a script (Node/Python) using a multiline string so JSON escaping is handled correctly.
-
-            Task:
-            ${{ steps.parse.outputs.task }}
-
-            Constraints:
-            - Keep changes minimal and focused on the task.
-            - Do not reveal secrets or tokens.
-            - If no repo changes are needed, do not create file edits; instead, write `.ubiquityos.actions.json` with a `comment` response.
-            PROMPT
-          fi
+          fs.writeFileSync(".codex.prompt.txt", `${lines.join("\n")}\n`, "utf8");
+          NODE
 
       - name: Start ai.ubq.fi Responses forwarder
         if: steps.parse.outputs.allowed == 'true'

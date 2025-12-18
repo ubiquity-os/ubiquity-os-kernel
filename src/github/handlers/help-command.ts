@@ -12,7 +12,8 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
   const commands: CommandRow[] = [];
   const manifest = await getManifest(context, plugin);
   if (manifest?.commands) {
-    for (const [name, command] of Object.entries(manifest.commands)) {
+    for (const [rawName, command] of Object.entries(manifest.commands)) {
+      const name = rawName.trim();
       const key = name.toLowerCase();
       commands.push({
         key,
@@ -80,5 +81,6 @@ async function getCommitHash(): Promise<string> {
  * Ensures that passed content does not break MD display within the table.
  */
 function getContent(content: string | undefined) {
-  return content ? content.replace("|", "\\|") : "-";
+  if (!content) return "-";
+  return content.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
 }

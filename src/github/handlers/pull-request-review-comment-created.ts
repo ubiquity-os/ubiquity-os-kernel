@@ -244,12 +244,7 @@ ${JSON.stringify(commands)}
       comment: context.payload.comment.body,
     });
   } catch (error) {
-    context.logger.error({ err: error }, "Router call failed");
-    const detail = error instanceof Error ? error.message : String(error);
-    await postReplyInReviewThread(
-      context,
-      ["I couldn't reach the router model right now. Please try again in a moment.", "", "<!-- router_error", detail, "-->"].join("\n")
-    );
+    context.logger.error({ err: error }, "Router call failed; ignoring mention");
     return;
   }
 
