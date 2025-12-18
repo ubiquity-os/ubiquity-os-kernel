@@ -57,6 +57,7 @@ app.post("/", async (ctx: Context) => {
         owner: env.UBQ_AGENT_OWNER,
         repo: env.UBQ_AGENT_REPO,
         workflowId: env.UBQ_AGENT_WORKFLOW,
+        ref: env.UBQ_AGENT_REF,
       },
       logger: ctx.var.logger,
     });

@@ -10,6 +10,8 @@ export const envSchema = T.Object({
   UBQ_AGENT_OWNER: T.String({ minLength: 1, default: "ubiquity-os" }),
   UBQ_AGENT_REPO: T.String({ minLength: 1, default: "ubiquity-os-kernel" }),
   UBQ_AGENT_WORKFLOW: T.String({ minLength: 1, default: "agent.yml" }),
+  // Optional override for which branch/tag to dispatch the agent workflow from (useful for testing without updating default branch).
+  UBQ_AGENT_REF: T.Optional(T.String()),
   // Router model endpoint (primary + fallback). The fallback avoids Cloudflare antibot pages that sometimes block CI IP ranges.
   UBQ_AI_BASE_URL: T.String({ minLength: 1, default: "https://ai.ubq.fi" }),
   UBQ_AI_FALLBACK_BASE_URL: T.String({ minLength: 1, default: "https://ai-ubq-fi.deno.dev" }),
@@ -27,6 +29,7 @@ declare global {
       UBQ_AGENT_OWNER?: string;
       UBQ_AGENT_REPO?: string;
       UBQ_AGENT_WORKFLOW?: string;
+      UBQ_AGENT_REF?: string;
       UBQ_AI_BASE_URL?: string;
       UBQ_AI_FALLBACK_BASE_URL?: string;
     }

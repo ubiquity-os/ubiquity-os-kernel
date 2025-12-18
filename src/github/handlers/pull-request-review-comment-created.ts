@@ -120,7 +120,7 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
 
   try {
     const stateId = crypto.randomUUID();
-    const ref = await getDefaultBranch(context, agentOwner, agentRepo);
+    const ref = context.eventHandler.agent.ref?.trim() || (await getDefaultBranch(context, agentOwner, agentRepo));
     const token = await context.eventHandler.getToken(context.payload.installation.id);
     const agentMemory = await getAgentMemorySnippet({
       owner: context.payload.repository.owner.login,
@@ -155,7 +155,7 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
         "",
         `Actions workflow: ${agentWorkflowUrl}`,
         "",
-        "If you're testing a feature branch, note that GitHub's workflow_dispatch API only triggers workflows that exist on the repo's default branch.",
+        "If you're testing a feature branch, set `UBQ_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
       ]
         .filter(Boolean)
         .join("\n")

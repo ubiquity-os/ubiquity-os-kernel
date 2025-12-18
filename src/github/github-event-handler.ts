@@ -19,6 +19,7 @@ export type Options = {
     owner: string;
     repo: string;
     workflowId: string;
+    ref?: string;
   };
   logger?: typeof logger;
 };
@@ -41,6 +42,7 @@ export class GitHubEventHandler {
     owner: string;
     repo: string;
     workflowId: string;
+    ref?: string;
   };
   public readonly logger = logger;
 
@@ -57,6 +59,7 @@ export class GitHubEventHandler {
       owner: options.agent?.owner ?? "ubiquity-os",
       repo: options.agent?.repo ?? "ubiquity-os-kernel",
       workflowId: options.agent?.workflowId ?? "agent.yml",
+      ref: options.agent?.ref,
     };
 
     if (options.logger) {
