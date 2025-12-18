@@ -11,12 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     # Optional workflow: only runs when Cloudflare + GitHub App secrets are configured.
-    if: >-
-      ${{ secrets.CLOUDFLARE_API_TOKEN != '' &&
-          secrets.CLOUDFLARE_ACCOUNT_ID != '' &&
-          secrets.APP_WEBHOOK_SECRET != '' &&
-          secrets.APP_ID != '' &&
-          secrets.APP_PRIVATE_KEY != '' }}
+    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.APP_WEBHOOK_SECRET != '' && secrets.APP_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
 
     environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
 
