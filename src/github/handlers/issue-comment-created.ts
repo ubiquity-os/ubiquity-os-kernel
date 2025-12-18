@@ -675,7 +675,8 @@ ${JSON.stringify(commands)}
     });
   } catch (error) {
     context.logger.error({ err: error }, "Router call failed");
-    await postReply(context, "I couldn't reach the router model right now. Please try again in a moment.");
+    const detail = error instanceof Error ? error.message : String(error);
+    await postReply(context, ["I couldn't reach the router model right now. Please try again in a moment.", "", "<!-- router_error", detail, "-->"].join("\n"));
     return;
   }
 
