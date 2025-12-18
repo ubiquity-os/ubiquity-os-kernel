@@ -46,7 +46,7 @@ export class GitHubEventHandler {
 
   constructor(options: Options) {
     this.environment = options.environment;
-    this._privateKey = options.privateKey;
+    this._privateKey = normalizeMultilineSecret(options.privateKey);
     this._appId = Number(options.appId);
     this._webhookSecret = options.webhookSecret;
     this._llmClient = options.llmClient;
@@ -145,4 +145,12 @@ export class GitHubEventHandler {
     const token = await auth({ type: "installation", installationId });
     return token.token;
   }
+}
+
+function normalizeMultilineSecret(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.includes("\n") && trimmed.includes("\\n")) {
+    return trimmed.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+  }
+  return trimmed.replace(/\r\n/g, "\n");
 }
