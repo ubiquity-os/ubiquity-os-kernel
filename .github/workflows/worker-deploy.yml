@@ -53,17 +53,21 @@ jobs:
             APP_PRIVATE_KEY
             APP_WEBHOOK_SECRET
             ENVIRONMENT
-            OPENROUTER_API_KEY
-            OPENROUTER_MODEL
-            OPENROUTER_BASE_URL
+            UBQ_AGENT_OWNER
+            UBQ_AGENT_REPO
+            UBQ_AGENT_WORKFLOW
+            UBQ_AI_BASE_URL
+            UBQ_AI_FALLBACK_BASE_URL
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
-          OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
+          UBQ_AGENT_OWNER: ${{ secrets.UBQ_AGENT_OWNER || 'ubiquity-os' }}
+          UBQ_AGENT_REPO: ${{ secrets.UBQ_AGENT_REPO || 'ubiquity-os-kernel' }}
+          UBQ_AGENT_WORKFLOW: ${{ secrets.UBQ_AGENT_WORKFLOW || 'agent.yml' }}
+          UBQ_AI_BASE_URL: ${{ secrets.UBQ_AI_BASE_URL || 'https://ai.ubq.fi' }}
+          UBQ_AI_FALLBACK_BASE_URL: ${{ secrets.UBQ_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
 
       - name: Write Deployment URL to Summary
         run: |
