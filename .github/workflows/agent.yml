@@ -512,6 +512,12 @@ jobs:
             lines.push("- If you're unsure about flags, run `gh <command> -h` to view the subcommand help.");
             lines.push("- If `gh` errors about missing `GH_TOKEN`, stop and report it; do not attempt to discover tokens from files.");
             lines.push("");
+            lines.push("Plugin install (PR-first):");
+            lines.push("- If the task is to enable/install a plugin, edit the active `.github/.ubiquity-os.config*.yml` in this repo (see the config path candidates above).");
+            lines.push("- Prefer a blank YAML value (`plugin-id:`) over `{}` when no plugin configuration is needed.");
+            lines.push("- If `.ubiquityos.marketplace.json` is present, use it to discover plugins and check `ubiquity:listeners` compatibility with the current event.");
+            lines.push("- Do not push branches or open PRs yourself; making file edits is enough for the workflow to open an install PR.");
+            lines.push("");
             lines.push(
               "If you want the workflow to apply metadata changes (labels, issue body, extra comment on the triggering thread), write a JSON file named `.ubiquityos.actions.json` with this shape:"
             );
