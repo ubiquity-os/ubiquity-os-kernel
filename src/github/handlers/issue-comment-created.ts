@@ -130,9 +130,13 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       await dispatchSlashCommand(context, slashInvocation);
       return;
     }
-    if (/^(agent|autogen|automation)\b/i.test(afterMention)) {
+    const agentPrefixMatch = /^(agent|autogen|automation)\b/i.exec(afterMention);
+    if (agentPrefixMatch) {
+      const prefix = agentPrefixMatch[1]?.toLowerCase();
       const task = afterMention.replace(/^(agent|autogen|automation)\b/i, "").trim() || body.trim();
-      await dispatchInternalAgent(context, task);
+      await dispatchInternalAgent(context, task, {
+        wantsMarketplaceInventory: prefix === "autogen" || prefix === "automation",
+      });
       return;
     }
     await commandRouter(context);
@@ -477,7 +481,7 @@ export async function callUbqAiRouter(
   throw new Error(`Router error (all endpoints failed):\n- ${errors.join("\n- ")}`);
 }
 
-async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string) {
+async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string, settingsOverrides?: Record<string, unknown>) {
   const agentOwner = context.eventHandler.agent.owner;
   const agentRepo = context.eventHandler.agent.repo;
   const agentWorkflowId = context.eventHandler.agent.workflowId;
@@ -500,6 +504,7 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
+      ...(settingsOverrides ?? {}),
     };
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, {
       name: "agent",

@@ -380,12 +380,10 @@ jobs:
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.wants_marketplace_inventory == 'true'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ inputs.authToken }}
           MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
-          const { execFileSync } = require("node:child_process");
 
           const org = String(process.env.MARKETPLACE_ORG || "").trim() || "ubiquity-os-marketplace";
           const outPath = ".ubiquityos.marketplace.json";
@@ -397,59 +395,107 @@ jobs:
             errors: [],
           };
 
-          function ghJson(args) {
-            const stdout = execFileSync("gh", ["api", ...args], { encoding: "utf8", env: process.env });
-            return JSON.parse(stdout);
-          }
+          const apiBase = "https://api.github.com";
+          const userAgent = "ubiquityos-agent";
 
-          function ghRaw(args) {
-            return execFileSync("gh", ["api", "-H", "Accept: application/vnd.github.raw", ...args], { encoding: "utf8", env: process.env });
-          }
-
-          try {
-            const repos = ghJson(["--paginate", `orgs/${org}/repos?per_page=100&type=public`]);
-            for (const repo of repos) {
-              const name = String(repo?.name || "").trim();
-              const defaultBranch = String(repo?.default_branch || "").trim();
-              if (!name) continue;
-
-              try {
-                const raw = ghRaw([`repos/${org}/${name}/contents/manifest.json${defaultBranch ? `?ref=${encodeURIComponent(defaultBranch)}` : ""}`]);
-                const manifest = JSON.parse(raw);
-
-                const commands = {};
-                for (const [cmdName, cmd] of Object.entries(manifest?.commands || {})) {
-                  if (!cmd || typeof cmd !== "object") continue;
-                  commands[cmdName] = {
-                    description: String(cmd.description || ""),
-                    example: String(cmd["ubiquity:example"] || ""),
-                  };
-                }
-
-                result.plugins.push({
-                  owner: org,
-                  repo: name,
-                  fullName: `${org}/${name}`,
-                  defaultBranch,
-                  manifest: {
-                    name: String(manifest?.name || ""),
-                    short_name: String(manifest?.short_name || ""),
-                    description: String(manifest?.description || ""),
-                    listeners: Array.isArray(manifest?.["ubiquity:listeners"]) ? manifest["ubiquity:listeners"] : [],
-                    commands,
-                  },
-                });
-              } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                result.errors.push(`${org}/${name}: ${message}`);
-              }
+          async function fetchJson(url) {
+            const res = await fetch(url, {
+              headers: {
+                Accept: "application/vnd.github+json",
+                "User-Agent": userAgent,
+              },
+            });
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(`${res.status} ${text.slice(0, 2000)}`);
             }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            result.errors.push(`list repos: ${message}`);
+            return res.json();
           }
 
-          fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+          async function fetchText(url) {
+            const res = await fetch(url, {
+              headers: {
+                Accept: "*/*",
+                "User-Agent": userAgent,
+              },
+            });
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(`${res.status} ${text.slice(0, 2000)}`);
+            }
+            return res.text();
+          }
+
+          function encodeRef(ref) {
+            return String(ref || "")
+              .split("/")
+              .map((s) => encodeURIComponent(s))
+              .join("/");
+          }
+
+          async function run() {
+            try {
+              const repos = [];
+              for (let page = 1; page <= 5; page++) {
+                const url = `${apiBase}/orgs/${encodeURIComponent(org)}/repos?per_page=100&type=public&page=${page}`;
+                const chunk = await fetchJson(url);
+                if (!Array.isArray(chunk) || chunk.length === 0) break;
+                repos.push(...chunk);
+                if (chunk.length < 100) break;
+              }
+
+              for (const repo of repos) {
+                const name = String(repo?.name || "").trim();
+                const defaultBranch = String(repo?.default_branch || "").trim();
+                if (!name) continue;
+
+                try {
+                  const ref = encodeRef(defaultBranch || "main");
+                  const rawUrl = `https://raw.githubusercontent.com/${org}/${name}/${ref}/manifest.json`;
+                  const raw = await fetchText(rawUrl);
+                  const manifest = JSON.parse(raw);
+
+                  const commands = {};
+                  for (const [cmdName, cmd] of Object.entries(manifest?.commands || {})) {
+                    if (!cmd || typeof cmd !== "object") continue;
+                    commands[cmdName] = {
+                      description: String(cmd.description || ""),
+                      example: String(cmd["ubiquity:example"] || ""),
+                    };
+                  }
+
+                  result.plugins.push({
+                    owner: org,
+                    repo: name,
+                    fullName: `${org}/${name}`,
+                    defaultBranch,
+                    manifest: {
+                      name: String(manifest?.name || ""),
+                      short_name: String(manifest?.short_name || ""),
+                      description: String(manifest?.description || ""),
+                      listeners: Array.isArray(manifest?.["ubiquity:listeners"]) ? manifest["ubiquity:listeners"] : [],
+                      commands,
+                    },
+                  });
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  result.errors.push(`${org}/${name}: ${message}`);
+                }
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              result.errors.push(`list repos: ${message}`);
+            }
+
+            fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+            process.stdout.write(`Marketplace inventory: ${result.plugins.length} plugins (${result.errors.length} errors)\\n`);
+          }
+
+          run().catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`Marketplace inventory failed: ${message}\\n`);
+            process.exitCode = 0;
+          });
           NODE
 
       - name: Write agent prompt

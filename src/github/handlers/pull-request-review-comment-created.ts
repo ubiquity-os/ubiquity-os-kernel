@@ -107,7 +107,7 @@ async function getReviewThreadCommentsForRouter(
   }
 }
 
-async function dispatchInternalAgent(context: GitHubContext<"pull_request_review_comment.created">, task: string) {
+async function dispatchInternalAgent(context: GitHubContext<"pull_request_review_comment.created">, task: string, settingsOverrides?: Record<string, unknown>) {
   const agentOwner = context.eventHandler.agent.owner;
   const agentRepo = context.eventHandler.agent.repo;
   const agentWorkflowId = context.eventHandler.agent.workflowId;
@@ -130,6 +130,7 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
+      ...(settingsOverrides ?? {}),
     };
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, {
       name: "agent",
@@ -176,9 +177,13 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
 
   await addReactionEyes(context);
 
-  if (/^(agent|autogen|automation)\b/i.test(afterMention)) {
+  const agentPrefixMatch = /^(agent|autogen|automation)\b/i.exec(afterMention);
+  if (agentPrefixMatch) {
+    const prefix = agentPrefixMatch[1]?.toLowerCase();
     const task = afterMention.replace(/^(agent|autogen|automation)\b/i, "").trim() || body;
-    await dispatchInternalAgent(context, task);
+    await dispatchInternalAgent(context, task, {
+      wantsMarketplaceInventory: prefix === "autogen" || prefix === "automation",
+    });
     return;
   }
 
