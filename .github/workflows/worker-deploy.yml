@@ -10,6 +10,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    # Optional workflow: only runs when Cloudflare + GitHub App secrets are configured.
+    if: >-
+      ${{ secrets.CLOUDFLARE_API_TOKEN != '' &&
+          secrets.CLOUDFLARE_ACCOUNT_ID != '' &&
+          secrets.APP_WEBHOOK_SECRET != '' &&
+          secrets.APP_ID != '' &&
+          secrets.APP_PRIVATE_KEY != '' }}
 
     environment: ${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
 
@@ -53,21 +60,11 @@ jobs:
             APP_PRIVATE_KEY
             APP_WEBHOOK_SECRET
             ENVIRONMENT
-            UBQ_AGENT_OWNER
-            UBQ_AGENT_REPO
-            UBQ_AGENT_WORKFLOW
-            UBQ_AI_BASE_URL
-            UBQ_AI_FALLBACK_BASE_URL
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          UBQ_AGENT_OWNER: ${{ secrets.UBQ_AGENT_OWNER || 'ubiquity-os' }}
-          UBQ_AGENT_REPO: ${{ secrets.UBQ_AGENT_REPO || 'ubiquity-os-kernel' }}
-          UBQ_AGENT_WORKFLOW: ${{ secrets.UBQ_AGENT_WORKFLOW || 'agent.yml' }}
-          UBQ_AI_BASE_URL: ${{ secrets.UBQ_AI_BASE_URL || 'https://ai.ubq.fi' }}
-          UBQ_AI_FALLBACK_BASE_URL: ${{ secrets.UBQ_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'development' }}
 
       - name: Write Deployment URL to Summary
         run: |
