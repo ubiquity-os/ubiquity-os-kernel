@@ -66,6 +66,7 @@ jobs:
           UBQ_AGENT_OWNER: ${{ secrets.UBQ_AGENT_OWNER || github.repository_owner }}
           UBQ_AGENT_REPO: ${{ secrets.UBQ_AGENT_REPO || github.event.repository.name }}
           UBQ_AGENT_WORKFLOW: ${{ secrets.UBQ_AGENT_WORKFLOW || 'agent.yml' }}
+          UBQ_AGENT_REF: ${{ secrets.UBQ_AGENT_REF || '' }}
           UBQ_AI_BASE_URL: ${{ secrets.UBQ_AI_BASE_URL || 'https://ai.ubq.fi' }}
           UBQ_AI_FALLBACK_BASE_URL: ${{ secrets.UBQ_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
           NODE_ENV: "production"

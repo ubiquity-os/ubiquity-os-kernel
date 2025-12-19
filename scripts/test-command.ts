@@ -160,11 +160,21 @@ async function waitForAgentFeedbackComment(
     });
 
     for (const c of newComments) {
-      const body = c.body;
+      const body = c.body ?? "";
+      if (extractActionsRunUrl(body)) return c;
+
+      // Common error/status messages (router failures, etc.)
+      if (body.includes("I couldn't reach the router model")) return c;
+      if (body.includes("Please try again in a moment")) return c;
+
+      // Legacy phrases (older kernel/plugin responses)
       if (body.includes("started an agent run.")) return c;
       if (body.includes("I couldn't start the agent run.")) return c;
       if (body.includes("Agent run failed.")) return c;
       if (body.includes("Agent completed")) return c;
+
+      // If the bot replied at all, surface it for debugging even if it doesn't match patterns.
+      if ((c.user?.type ?? "") === "Bot") return c;
     }
 
     await Bun.sleep(pollIntervalMs);

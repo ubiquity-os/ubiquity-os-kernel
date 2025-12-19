@@ -4,6 +4,7 @@ import { PluginInput } from "../types/plugin";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
+import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
 import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
@@ -127,11 +128,28 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
     });
-    const settings = {
+    const baseSettings: Record<string, unknown> = {
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
       ...(settingsOverrides ?? {}),
+    };
+
+    const marketplaceOrg = typeof baseSettings.marketplaceOrg === "string" ? baseSettings.marketplaceOrg.trim() : "ubiquity-os-marketplace";
+    const wantsMarketplaceToken = isPrivilegedAuthorAssociation(context.payload.comment.author_association);
+    let marketplaceAuthToken: string | null = null;
+    if (wantsMarketplaceToken) {
+      try {
+        marketplaceAuthToken = await tryGetInstallationTokenForOwner(context.eventHandler, marketplaceOrg);
+      } catch (error) {
+        context.logger.debug({ err: error, marketplaceOrg }, "Failed to mint marketplace installation token (non-fatal)");
+      }
+    }
+
+    const settings = {
+      ...baseSettings,
+      marketplaceOrg,
+      ...(marketplaceAuthToken ? { marketplaceAuthToken } : {}),
     };
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, {
       name: "agent",

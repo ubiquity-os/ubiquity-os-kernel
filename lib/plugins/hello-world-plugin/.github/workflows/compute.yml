@@ -49,7 +49,7 @@ jobs:
       - name: build
         run: bun run build
 
-      - name: execute directive
+      - name: Run Plugin
         run: node dist/main.js
         env:
           PLUGIN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

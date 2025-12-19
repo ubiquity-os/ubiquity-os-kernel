@@ -4,9 +4,10 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 
 ## 🧭 Routing & Prompting Policy
 
-- Do not implement brittle “keyword-trigger” special cases (e.g., `if (text.includes("install")) …`) to pick tools/plugins. Prefer improving prompts and providing the model the right structured context to decide.
-- Explicit user-facing commands are fine as entrypoints (e.g., `/help`, `/config`, `@UbiquityOS agent`) — the routing decision after that should remain prompt-driven.
-- Keep prompts lightweight by default; avoid dumping full plugin schemas/default config into every request unless explicitly needed.
+- **Never** implement AI behavior based on keyword/regex triggers (e.g., `if (text.includes("install")) …`) to pick tools/plugins. If the model is making a decision, that decision must be prompt-driven.
+- Explicit user-facing commands are fine as entrypoints (e.g., `/help`, `/config`, `@UbiquityOS agent`) — but what happens after the entrypoint must be determined by instructions + context, not brittle string matching.
+- Modern LLMs are capable of correct decisions when we (1) provide effective instructions and (2) distill the relevant context; prefer improving prompts/context over adding special-case code paths.
+- Keep prompts lightweight by default; only include heavier context (full plugin defaults/schemas) on demand.
 
 ## 🚀 Quick Start
 

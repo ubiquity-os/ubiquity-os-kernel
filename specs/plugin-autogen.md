@@ -1,4 +1,4 @@
-# Plugin Autogen & Marketplace Installation
+# Marketplace Plugin Install & Generation
 
 Status: Draft  
 Last updated: 2025-12-19
@@ -7,7 +7,7 @@ Last updated: 2025-12-19
 
 Define a safe, PR-driven system that lets **UbiquityOS**:
 
-1. Reuse existing marketplace plugins when a request matches prior automations.
+1. Reuse existing marketplace plugins when a request matches a known capability.
 2. Generate a new plugin repo when no good fit exists.
 3. Test the plugin against a sandbox issue/PR.
 4. Install it by opening a PR that edits the active `.github/.ubiquity-os.config*.yml`.
@@ -27,6 +27,12 @@ The kernel already does three key things that this system builds on:
 We already have a PR-based config editor pattern:
 
 - `lib/plugins/command-config` edits the active config via an LLM and opens a PR for maintainers to merge.
+
+## Current state (today)
+
+- Marketplace registry exists at `ubiquity-os-marketplace/.ubiquity-os/.github/ubiquity-os-marketplace.plugin-registry.json`.
+- “Install existing plugin” works end-to-end via `command-config` (PR-based config edit + registry-backed plugin resolution).
+- “Create new plugin repo” is the next milestone; this doc defines the guardrails + workflow.
 
 ## Goals
 
@@ -55,7 +61,7 @@ We already have a PR-based config editor pattern:
 ### Two capability tracks
 
 1) **Install existing plugin**
-- Search marketplace inventory (by event + keywords).
+- Search marketplace inventory (by event + intent matching).
 - Propose install via PR to the target repo’s config.
 
 2) **Create new plugin**
@@ -66,7 +72,7 @@ We already have a PR-based config editor pattern:
 
 ### Safety posture
 
-- Only **OWNER/MEMBER/COLLABORATOR** can trigger “plugin autogen” actions.
+- Only **OWNER/MEMBER/COLLABORATOR** can trigger plugin install/generation actions.
 - All repo-changing actions occur in GitHub Actions (agent workflow), with:
   - checkout of the target repo,
   - PR creation,
@@ -79,33 +85,36 @@ We already have a PR-based config editor pattern:
 Start simple (works for ~10–50 plugins):
 
 1. **Installed plugins for this repo** (already in config): immediate candidates.
-2. **Marketplace inventory**: enumerate repos in `ubiquity-os-marketplace` and fetch `manifest.json`.
+2. **Marketplace registry (preferred)**: a single JSON file in `ubiquity-os-marketplace/.ubiquity-os` that contains the
+   important subset of each plugin’s manifest + metadata for routing/selection:
+   - `ubiquity-os-marketplace/.ubiquity-os/.github/ubiquity-os-marketplace.plugin-registry.json`
+3. **Fallback (if registry is unavailable)**: enumerate repos in `ubiquity-os-marketplace` and fetch `manifest.json`.
 
 Optional optimization once the inventory grows:
 
-- A single registry file: `ubiquity-os-marketplace/registry.json` (generated nightly) containing the important subset of each manifest.
-- Cache the parsed inventory in Deno KV with a short TTL (e.g., 30–120 minutes).
+- Cache the parsed registry in Deno KV with a short TTL (e.g., 30–120 minutes), and include only top‑K candidates in the
+  router prompt.
 
 ### Event-aware filtering (recommended first filter)
 
-Manifests already support:
-
-- `manifest["ubiquity:listeners"]`: which webhook events the plugin supports.
+The plugin manifest schema supports `manifest["ubiquity:listeners"]` (array of webhook event names).
+The marketplace registry flattens this to `manifest.listeners` for routing/selection convenience.
 
 At routing/install time:
 
 1. Determine current event (`issue_comment.created`, `pull_request_review_comment.created`, etc.).
-2. Filter candidate plugins to those whose listeners include that event.
-3. Only then do keyword / intent matching.
+2. Filter candidate plugins to those whose listeners include that event (when present).
+3. Only then do intent matching (prompt-driven; no code keyword triggers).
 
 This keeps matching predictable and avoids irrelevant plugins.
 
 ## “Should we create a new plugin?”
 
-Creation should be explicit in Phase 1:
+Creation should be explicit in Phase 1 (to avoid accidental “repo sprawl”), but **not** via brittle keyword checks in code.
+Examples of explicit user intent:
 
-- `@ubiquityos agent create an automation plugin for: <task>`
-- or a dedicated slash command like `/automation <task>` (recommended once implemented).
+- `@ubiquityos agent create a plugin that: <task>`
+- `@ubiquityos agent turn this repeated workflow into a marketplace plugin: <task>`
 
 Later phases can auto-suggest creation if:
 
@@ -118,11 +127,11 @@ We need two categories of KV data:
 
 ### 1) Operational memory (recent runs / UX)
 
-Already implemented: store small “agent run notes” as per-run KV entries keyed by repo and time.
+Already implemented: store small “agent run notes” as per-run KV entries keyed by repo and time (see `src/github/utils/agent-memory.ts`).
 
 This helps the router/agent avoid repeating known failure modes, without storing full threads.
 
-### 2) Autogen signals
+### 2) Plugin generation signals
 
 Recommended minimal metrics (per repo):
 
@@ -139,7 +148,9 @@ Implementation note: avoid large single KV values; use per-key records and `kv.l
 
 ## Local development (KV)
 
-This design assumes **Deno KV** in production (Deno Deploy). For local work, there are a few options:
+This design assumes **Deno KV** in production (Deno Deploy). Locally, the kernel typically runs under Wrangler/workerd,
+so `Deno.openKv()` won’t be available; the current code uses an in-memory fallback where needed.
+For KV-focused work, there are a few options:
 
 - **Best fidelity (recommended): run the kernel under Deno**, so `Deno.openKv()` is available and persists to a local SQLite
   file (or `:memory:` for tests).
@@ -153,12 +164,12 @@ Notes:
   a single growing document.
 - Deno Deploy free-tier KV limits (storage + ops) should be monitored as usage grows; if needed, add TTL or aggregation.
 
-## Autogen workflow (end-to-end)
+## End-to-end workflow
 
 ### Flow A — Install an existing plugin
 
-1. User invokes autogen intent (admin-only).
-2. Agent searches marketplace inventory (event filter + keyword match).
+1. User requests enabling/installing a marketplace plugin (admin-only).
+2. Agent searches marketplace inventory (event filter + intent matching).
 3. Agent opens an **Install PR** in the target repo:
    - Edits `.github/.ubiquity-os.config.<env>.yml` (based on kernel `ENVIRONMENT`).
    - Adds plugin entry at the correct ref (default `development` during testing).
@@ -169,7 +180,7 @@ Notes:
 
 ### Flow B — Create a new plugin + install
 
-1. User invokes autogen intent (admin-only).
+1. User explicitly requests creating a marketplace plugin (admin-only).
 2. Agent searches inventory; finds no good fit.
 3. Agent scaffolds a new repo in `ubiquity-os-marketplace`:
    - Naming: `command-<intent>` or `daemon-<intent>` (clear purpose).
@@ -198,6 +209,11 @@ Minimum test gate before proposing install:
   - Verify the expected GitHub side effects (comment edits, labels, PR links, etc.).
 
 Prefer using/expanding `scripts/test-command.ts` as the unified local harness.
+
+Examples:
+
+- `bun run scripts/test-command.ts comment https://github.com/0x4007/ubiquity-os-sandbox/issues/20 "@ubiquityos install daemon-planner"`
+- `bun run scripts/test-command.ts comment https://github.com/0x4007/ubiquity-os-sandbox/issues/11 "@UbiquityOS agent rewrite the spec and set the best Time/Priority labels"`
 
 ## Configuration editing (PR-based)
 
