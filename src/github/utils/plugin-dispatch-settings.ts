@@ -1,6 +1,8 @@
 import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
 import { getConfigPathCandidatesForEnvironment } from "./config";
 
+const WORKFLOW_KERNEL_KEY_OVERRIDE_OWNERS = new Set(["ubiquity-os", "ubiquity-os-marketplace"]);
+
 export function buildPluginDispatchSettings(baseSettings: Record<string, unknown> | null | undefined): Record<string, unknown> {
   if (baseSettings && typeof baseSettings === "object") return { ...baseSettings };
   return {};
@@ -28,7 +30,7 @@ export async function withKernelContextWorkflowInputsIfNeeded(
 ): Promise<Record<string, string>> {
   const inputs = { ...baseInputs };
 
-  if (isGithubPlugin(plugin) && plugin.repo === "command-config") {
+  if (isGithubPlugin(plugin) && WORKFLOW_KERNEL_KEY_OVERRIDE_OWNERS.has(plugin.owner)) {
     inputs.kernelPublicKey = await getKernelPublicKeyPem();
   }
 

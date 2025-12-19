@@ -13,6 +13,11 @@ on:
         description: "Settings"
       authToken:
         description: "Auth Token"
+      ubiquityKernelToken:
+        description: "Kernel attestation token (optional)"
+      kernelPublicKey:
+        description: "Kernel public key PEM for signature verification (optional)"
+        required: false
       ref:
         description: "Ref"
       signature:
@@ -48,5 +53,5 @@ jobs:
         run: node dist/main.js
         env:
           PLUGIN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KERNEL_PUBLIC_KEY: ${{ secrets.KERNEL_PUBLIC_KEY }}
+          KERNEL_PUBLIC_KEY: ${{ (endsWith(github.actor, '[bot]') && github.event.inputs.kernelPublicKey) || secrets.KERNEL_PUBLIC_KEY }}
           LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
