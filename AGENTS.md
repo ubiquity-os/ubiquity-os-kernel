@@ -2,6 +2,12 @@
 
 Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest tests first; use the CLI harness only when you need to exercise HTTP plugins.
 
+## 🧭 Routing & Prompting Policy
+
+- Do not implement brittle “keyword-trigger” special cases (e.g., `if (text.includes("install")) …`) to pick tools/plugins. Prefer improving prompts and providing the model the right structured context to decide.
+- Explicit user-facing commands are fine as entrypoints (e.g., `/help`, `/config`, `@UbiquityOS agent`) — the routing decision after that should remain prompt-driven.
+- Keep prompts lightweight by default; avoid dumping full plugin schemas/default config into every request unless explicitly needed.
+
 ## 🚀 Quick Start
 
 ```bash
