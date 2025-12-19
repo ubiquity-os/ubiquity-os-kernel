@@ -33,6 +33,7 @@ export class GitHubEventHandler {
   readonly environment: string;
   private readonly _webhookSecret: string;
   private readonly _privateKey: string;
+  private _cachedKernelPublicKeyPem?: string;
   private readonly _appId: number;
   private readonly _llmClient: OpenAI;
   public readonly llm: string;
@@ -87,10 +88,10 @@ export class GitHubEventHandler {
     return signPayload(payload, this._privateKey);
   }
 
-  getPublicKey() {
-    // For now, return the private key as plugins may need it for verification
-    // In production, this should extract the public key from the private key
-    return this._privateKey;
+  async getKernelPublicKeyPem(): Promise<string> {
+    if (this._cachedKernelPublicKeyPem) return this._cachedKernelPublicKeyPem;
+    this._cachedKernelPublicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(this._privateKey);
+    return this._cachedKernelPublicKeyPem;
   }
 
   transformEvent(event: EmitterWebhookEvent) {
@@ -156,4 +157,38 @@ function normalizeMultilineSecret(value: string): string {
     return trimmed.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
   }
   return trimmed.replace(/\r\n/g, "\n");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function wrapPem(type: string, base64: string): string {
+  const lines = base64.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${type}-----\n${lines.join("\n")}\n-----END ${type}-----\n`;
+}
+
+async function deriveRsaPublicKeyPemFromPrivateKey(privateKeyPem: string): Promise<string> {
+  const pemContents = privateKeyPem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").trim();
+  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+
+  const privateKey = await crypto.subtle.importKey("pkcs8", binaryDer.buffer as ArrayBuffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["sign"]);
+
+  const jwk = (await crypto.subtle.exportKey("jwk", privateKey)) as JsonWebKey;
+  if (!jwk.n || !jwk.e) {
+    throw new Error("Unable to derive kernel public key: missing RSA modulus/exponent");
+  }
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    { kty: "RSA", n: jwk.n, e: jwk.e, alg: "RS256", ext: true },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    true,
+    ["verify"]
+  );
+
+  const spkiDer = new Uint8Array(await crypto.subtle.exportKey("spki", publicKey));
+  return wrapPem("PUBLIC KEY", bytesToBase64(spkiDer));
 }

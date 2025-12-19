@@ -20,3 +20,17 @@ export function withKernelContextSettingsIfNeeded(
 
   return settings;
 }
+
+export async function withKernelContextWorkflowInputsIfNeeded(
+  baseInputs: Record<string, string>,
+  plugin: string | GithubPlugin,
+  getKernelPublicKeyPem: () => Promise<string>
+): Promise<Record<string, string>> {
+  const inputs = { ...baseInputs };
+
+  if (isGithubPlugin(plugin) && plugin.repo === "command-config") {
+    inputs.kernelPublicKey = await getKernelPublicKeyPem();
+  }
+
+  return inputs;
+}

@@ -5,7 +5,7 @@ import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/pl
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { getManifest } from "../utils/plugins";
-import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings";
+import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
   callUbqAiRouter,
@@ -347,12 +347,14 @@ ${JSON.stringify(commands)}
       if (!isGithubPluginObject) {
         await dispatchWorker(plugin, await inputs.getInputs());
       } else {
+        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
+        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
         await dispatchWorkflow(context, {
           owner: plugin.owner,
           repository: plugin.repo,
           workflowId: plugin.workflowId,
           ref,
-          inputs: await inputs.getInputs(),
+          inputs: workflowInputs,
         });
       }
     } catch (error) {
