@@ -7,6 +7,7 @@ import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { createKernelAttestationToken } from "../utils/kernel-attestation";
 import { getManifest } from "../utils/plugins";
+import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { callPersonalAgent } from "./personal-agent";
@@ -270,7 +271,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const command = { name: match.resolvedCommandName, parameters };
 
   const plugin = match.target;
-  const settings = match.settings?.with;
+  const settings = withKernelContextSettingsIfNeeded(match.settings?.with, plugin, context.eventHandler.environment);
 
   const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
@@ -772,7 +773,7 @@ ${JSON.stringify(commands)}
   };
 
   const plugin = pluginWithManifest.target;
-  const settings = pluginWithManifest.settings?.with;
+  const settings = withKernelContextSettingsIfNeeded(pluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
   const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();

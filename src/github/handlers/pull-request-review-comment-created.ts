@@ -5,6 +5,7 @@ import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/pl
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { getManifest } from "../utils/plugins";
+import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
   callUbqAiRouter,
@@ -190,8 +191,9 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
-  for (const [pluginKey] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
@@ -201,6 +203,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     }
     const manifest = await getManifest(context, target);
     if (!manifest?.commands) continue;
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
     manifests.push(manifest);
   }
 
@@ -331,7 +334,7 @@ ${JSON.stringify(commands)}
     };
 
     const plugin = pluginWithManifest.target;
-    const settings = pluginWithManifest.settings?.with;
+    const settings = withKernelContextSettingsIfNeeded(pluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
     const isGithubPluginObject = isGithubPlugin(plugin);
     const stateId = crypto.randomUUID();
