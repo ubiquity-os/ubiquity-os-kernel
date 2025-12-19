@@ -77,19 +77,19 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
       ttlSeconds: 3600,
     });
 
-    const inputs = {
+    const signableInputs = {
       stateId: this.stateId,
       eventName: this.eventName,
       eventPayload: compressString(JSON.stringify(this.eventPayload)),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
-      ubiquityKernelToken,
       ref: this.ref,
       command: JSON.stringify(this.command),
     };
-    const signature = await this.eventHandler.signPayload(JSON.stringify(inputs));
+    const signature = await this.eventHandler.signPayload(JSON.stringify(signableInputs));
     return {
-      ...inputs,
+      ...signableInputs,
+      ubiquityKernelToken,
       signature,
     };
   }
