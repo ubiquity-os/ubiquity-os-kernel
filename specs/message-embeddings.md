@@ -14,6 +14,7 @@ Capture embeddings for every inbound GitHub message handled by the kernel (comme
 - Support cross-repo retrieval within an org, with optional global scope.
 - Map actor identity directly to GitHub user id (no separate identity system yet).
 - Add a simple query API for the router/agent to fetch related context.
+- Ingest only human-authored content (skip bot actors).
 
 ## Non-goals
 
@@ -40,7 +41,7 @@ Capture embeddings for every inbound GitHub message handled by the kernel (comme
 - Storage: Supabase tables `issues` and `issue_comments` with `embedding vector(1024)` plus `payload` JSON.
 - IDs: uses GitHub `node_id` for issue/comment ids (string).
 - Model: Voyage AI `voyage-large-2-instruct` (1024 dims).
-- Events: `issue_comment.*` and `issues.*` (no PR review comments yet).
+- Events: `issue_comment.*`, `issues.*`, and `pull_request_review_comment.*`.
 
 ## Architecture overview
 
@@ -75,11 +76,15 @@ create table issues (
   id varchar primary key,             -- GitHub node_id
   markdown text,
   plaintext text,
-  embedding vector(1024) not null,
+  embedding vector(1024),
+  embedding_status text not null default 'ready',
+  embedding_model text,
+  embedding_dim int,
   payload jsonb,
   author_id varchar not null,
   created_at timestamptz not null default now(),
-  modified_at timestamptz not null default now()
+  modified_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create table issue_comments (
@@ -87,18 +92,22 @@ create table issue_comments (
   issue_id varchar references issues(id) on delete cascade,
   markdown text,
   plaintext text,
-  embedding vector(1024) not null,
+  embedding vector(1024),
+  embedding_status text not null default 'ready',
+  embedding_model text,
+  embedding_dim int,
   payload jsonb,
   author_id varchar not null,
   created_at timestamptz not null default now(),
-  modified_at timestamptz not null default now()
+  modified_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
-create index issues_embedding_hnsw
-  on issues using hnsw (embedding vector_cosine_ops);
+create index issues_embedding_ivfflat
+  on issues using ivfflat (embedding vector_cosine_ops);
 
-create index issue_comments_embedding_hnsw
-  on issue_comments using hnsw (embedding vector_cosine_ops);
+create index issue_comments_embedding_ivfflat
+  on issue_comments using ivfflat (embedding vector_cosine_ops);
 
 create view memory_messages as
   select
@@ -107,7 +116,7 @@ create view memory_messages as
     payload->'repository'->>'name' as repo,
     payload->'repository'->'owner'->>'login' as owner,
     payload->'issue'->>'html_url' as source_url,
-    payload->'issue'->>'number' as issue_number,
+    coalesce(payload->'issue'->>'number', payload->'pull_request'->>'number') as issue_number,
     author_id,
     markdown,
     plaintext,
@@ -115,6 +124,9 @@ create view memory_messages as
     created_at,
     modified_at
   from issues
+  where deleted_at is null
+    and embedding_status = 'ready'
+    and embedding is not null
   union all
   select
     'issue_comment'::text as source_type,
@@ -129,13 +141,17 @@ create view memory_messages as
     embedding,
     created_at,
     modified_at
-  from issue_comments;
+  from issue_comments
+  where deleted_at is null
+    and embedding_status = 'ready'
+    and embedding is not null;
 ```
 
 Notes:
 
 - The view uses `payload` JSON to derive `owner`, `repo`, and URLs; add computed columns later if needed.
-- For async embeddings, make `embedding` nullable and add `embedding_status` + `embedding_model`.
+- For async embeddings, `embedding` is nullable and uses `embedding_status` for queue state.
+- Use `deleted_at` for soft deletes and filter it out in retrieval queries.
 - Long messages can be chunked later; keep chunk metadata in a future table if needed.
 
 ## Embedding generation
@@ -150,6 +166,7 @@ Notes:
 - Enqueue `{ table, id, attempt }` when a row is inserted/updated.
 - A scheduled worker drains N jobs per run (token bucket), with backoff on 429s.
 - Successful jobs set `embedding_status = 'ready'` and fill `embedding`.
+- Plugin knobs: `embeddingMode=async`, `embeddingQueueMaxPerRun`, `embeddingQueueDelaySeconds`, `embeddingQueueMaxAttempts`.
 
 ### Provider integration
 
@@ -166,7 +183,7 @@ Add a small helper in the kernel that can be called from the router or agent:
 
 ```
 searchMemory({
-  tenantId,
+  tenantId, // org id (owner id/login), fallback to installation id
   owner,
   repo,
   scope: 'repo' | 'org' | 'global',
@@ -192,7 +209,7 @@ Returned snippet format (example):
 ## Scope and identity
 
 - `actor_id` is the GitHub numeric user id (simple mapping for now).
-- `tenant_id` should default to the GitHub App installation id; store `owner`/`owner_id` for org scoping.
+- `tenant_id` should default to the org id (owner id/login), falling back to installation id for user-owned repos.
 - Scope is determined by `tenant_id` plus optional filters:
   - `repo` scope: owner+repo filter
   - `org` scope: owner filter (within tenant)
@@ -203,14 +220,22 @@ Returned snippet format (example):
 
 MVP sources (handled by the existing plugin):
 
+- Only ingest when the author is a human user (`user.type === "User"`).
 - `issue_comment.created`
 - `issue_comment.edited`
+- `pull_request_review_comment.created`
+- `pull_request_review_comment.edited`
 - `issues.opened`
 - `issues.edited`
 
+Deletion events (soft delete with `deleted_at`):
+
+- `issue_comment.deleted`
+- `pull_request_review_comment.deleted`
+- `issues.deleted`
+
 Phase 2 sources:
 
-- `pull_request_review_comment.created` and `pull_request_review_comment.edited`
 - `pull_request.opened` (PR title + body)
 - `push` event to backfill `specs/*.md` (optional, configurable)
 
@@ -234,15 +259,15 @@ Add env vars:
 - `SUPABASE_KEY` or `SUPABASE_SERVICE_ROLE_KEY`
 - `VOYAGEAI_API_KEY`
 - `DENO_KV_URL` (for Deploy KV or local)
-- `MEMORY_TENANT_ID` (default: GitHub App installation id; fallback to owner id)
+- `MEMORY_TENANT_ID` (default: org id; fallback to installation id)
 - `UBQ_AI_BASE_URL` (reuse if ai.ubq.fi hosts `/v1/embeddings`)
 
 ## Implementation phases
 
 ### Phase 0: Reuse existing plugin + read path
 
-- Keep `text-vector-embeddings` plugin ingest as-is.
-- Add the `memory_messages` view and HNSW indexes.
+- Keep `text-vector-embeddings` plugin ingest (issues, issue comments, PR review comments).
+- Add the `memory_messages` view and vector indexes (ivfflat; upgrade to HNSW when supported).
 - Add kernel search helper and wire it into router prompts.
 
 ### Phase 1: Queue embeddings (free tier friendly)
@@ -252,7 +277,7 @@ Add env vars:
 
 ### Phase 2: Expand ingest
 
-- Add PR review comments and PR bodies.
+- Add PR bodies (title + body).
 - Index `specs/*.md` and other agreed doc sources.
 - Add a simple backfill command (admin only).
 
@@ -263,7 +288,7 @@ Add env vars:
 
 ## Acceptance criteria
 
-- Every inbound comment event results in a stored message row.
+- Every inbound human comment/issue/review event results in a stored message row.
 - Querying memory returns relevant cross-repo conversations with source urls.
 - The router can include memory snippets without exceeding prompt budgets.
 - All data is persisted in Supabase with no TTL.
