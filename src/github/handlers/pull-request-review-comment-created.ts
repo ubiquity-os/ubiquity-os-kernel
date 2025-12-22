@@ -3,6 +3,7 @@ import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
+import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
 import { getManifest } from "../utils/plugins";
@@ -136,9 +137,9 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
     };
 
     const marketplaceOrg = typeof baseSettings.marketplaceOrg === "string" ? baseSettings.marketplaceOrg.trim() : "ubiquity-os-marketplace";
-    const wantsMarketplaceToken = isPrivilegedAuthorAssociation(context.payload.comment.author_association);
+    const shouldUseMarketplaceToken = isPrivilegedAuthorAssociation(context.payload.comment.author_association);
     let marketplaceAuthToken: string | null = null;
-    if (wantsMarketplaceToken) {
+    if (shouldUseMarketplaceToken) {
       try {
         marketplaceAuthToken = await tryGetInstallationTokenForOwner(context.eventHandler, marketplaceOrg);
       } catch (error) {
@@ -193,6 +194,17 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   }
   const afterMention = extractAfterUbiquityosMention(body);
   if (afterMention === null) return;
+
+  const shouldSkip = await shouldSkipDuplicateCommentEvent({
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+    eventName: context.key,
+    commentId: context.payload.comment.id,
+  });
+  if (shouldSkip) {
+    context.logger.info({ commentId: context.payload.comment.id }, "Skipping duplicate review comment event");
+    return;
+  }
 
   await addReactionEyes(context);
 

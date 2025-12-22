@@ -139,7 +139,12 @@ describe("handleEvent", () => {
         type: "User",
       },
       comment: {
+        id: 101,
         body: "/foo",
+        user: {
+          login: "test-user",
+          type: "User",
+        },
       },
       issue: {
         user: {
@@ -184,8 +189,8 @@ describe("handleEvent", () => {
     });
 
     expect(res).toBeTruthy();
-    // Slash command dispatch + event dispatch means 3 calls; ensure execution didn't break.
-    expect(dispatchWorker).toHaveBeenCalledTimes(3);
+    // Slash command dispatch should be attempted once; ensure execution didn't break.
+    expect(dispatchWorker).toHaveBeenCalledTimes(1);
 
     dispatchWorker.mockReset();
   });

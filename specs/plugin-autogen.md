@@ -28,6 +28,32 @@ We already have a PR-based config editor pattern:
 
 - `lib/plugins/command-config` edits the active config via an LLM and opens a PR for maintainers to merge.
 
+## Dispatch contract (kernel → GitHub Actions plugin)
+
+GitHub Actions plugins are invoked via `workflow_dispatch` with a fixed set of inputs (see `src/github/types/plugin.ts`).
+
+Key details for generated plugins:
+
+- `inputs.eventPayload` is a compressed JSON string; plugins should decompress it (or use plugin-sdk utilities).
+- `inputs.settings` is a JSON string of the plugin config.
+- `inputs.authToken` is a GitHub App installation token (use it for GitHub API calls).
+- `inputs.command` is a JSON string shaped like `{"name":"<command>","parameters":{...}}` (not a plain string like `"ping"`).
+- `inputs.signature` must be verified by the plugin (required for security).
+- GitHub `workflow_dispatch` requires the workflow file to exist on the plugin repo default branch.
+
+## GitHub Actions indexing lag (new repos)
+
+Newly created plugin repos can temporarily return `404 Not Found` for `workflow_dispatch` even when
+`.github/workflows/compute.yml` exists, due to GitHub Actions indexing delay.
+
+Mitigations:
+
+- Kernel: add a short linear polling retry on dispatch (preferred UX).
+- Agent runs: when validating a newly created plugin, poll `GET /actions/workflows` until the workflow appears before
+  dispatching test runs.
+- Plugin scaffolding: include a cheap `on: push` trigger (filtered to `.github/workflows/compute.yml`) and guard the real
+  job with `if: github.event_name == 'workflow_dispatch'` so the initial commit forces indexing without doing work.
+
 ## Current state (today)
 
 - Marketplace registry exists at `ubiquity-os-marketplace/.ubiquity-os/.github/ubiquity-os-marketplace.plugin-registry.json`.
@@ -172,7 +198,7 @@ Notes:
 2. Agent searches marketplace inventory (event filter + intent matching).
 3. Agent opens an **Install PR** in the target repo:
    - Edits `.github/.ubiquity-os.config.<env>.yml` (based on kernel `ENVIRONMENT`).
-   - Adds plugin entry at the correct ref (default `development` during testing).
+   - Adds plugin entry without `@ref` (defaults to the plugin repo’s default branch, typically `main`) unless a specific ref is explicitly requested.
 4. Agent comments back (or updates request comment) with:
    - install PR link
    - what it enables
@@ -184,6 +210,7 @@ Notes:
 2. Agent searches inventory; finds no good fit.
 3. Agent scaffolds a new repo in `ubiquity-os-marketplace`:
    - Naming: `command-<intent>` or `daemon-<intent>` (clear purpose).
+   - Default branch: create the initial commit on `main` (so the plugin is usable immediately via `workflow_dispatch`).
    - Adds `manifest.json` including:
      - `short_name`, `description`
      - `ubiquity:listeners` (must include the intended event)
@@ -259,5 +286,24 @@ Phase 3 (inventory scaling)
 ## Open questions
 
 - Marketplace org choice: `ubiquity-os-marketplace` vs a dedicated “generated plugins” org.
-- Default branch policy for new plugins (development vs main).
 - Review policy for plugin repos (required reviewers / protected branches).
+
+## Journal
+
+### 2025-12-19
+
+Done:
+- Kernel: added linear retry for `workflow_dispatch` `404` + fail-fast check when `compute.yml` is missing from the plugin repo default branch.
+- Kernel: added comment-event de-dupe (by event + comment id) to reduce double executions from repeated webhook deliveries.
+- Kernel: prevented double replies by skipping global plugin dispatch for **command plugins** when the triggering comment is a **slash command** (the slash router owns command invocation).
+- Agent workflow: clarified `inputs.command` JSON shape and GitHub Actions indexing/default-branch requirements for newly created plugin repos.
+- Spec: documented dispatch contract + indexing lag mitigations.
+
+Next goals:
+- Plugin scaffolding: ensure `compute.yml` exists on the plugin repo default branch; add a cheap `on: push` trigger to force indexing while guarding real work to `workflow_dispatch` only.
+- Local harness: extend `scripts/test-command.ts` to post a synthetic comment event so install → invoke can be exercised end-to-end without manual GitHub UI steps.
+- Repeatable testing: keep a long-lived “smoke” command plugin installed in the sandbox config (e.g., `/smoke`) and reuse it as an end-to-end health check, rather than creating/deleting repos for every test run.
+- Optional: implement KV “generation signals” (intent counts) to enable “want me to turn this into a plugin?” suggestions later.
+
+Decisions:
+- Default branch policy: create new marketplace plugin repos on the org default branch (currently `main`) so they are usable immediately via `workflow_dispatch`.

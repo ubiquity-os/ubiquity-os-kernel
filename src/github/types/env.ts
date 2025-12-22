@@ -15,6 +15,7 @@ export const envSchema = T.Object({
   // Router model endpoint (primary + fallback). The fallback avoids Cloudflare antibot pages that sometimes block CI IP ranges.
   UBQ_AI_BASE_URL: T.String({ minLength: 1, default: "https://ai.ubq.fi" }),
   UBQ_AI_FALLBACK_BASE_URL: T.String({ minLength: 1, default: "https://ai-ubq-fi.deno.dev" }),
+  UBQ_KERNEL_REFRESH_URL: T.Optional(T.String({ minLength: 1 })),
 });
 
 export type Env = Static<typeof envSchema>;
@@ -32,6 +33,7 @@ declare global {
       UBQ_AGENT_REF?: string;
       UBQ_AI_BASE_URL?: string;
       UBQ_AI_FALLBACK_BASE_URL?: string;
+      UBQ_KERNEL_REFRESH_URL?: string;
     }
   }
 }

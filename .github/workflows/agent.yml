@@ -21,13 +21,1962 @@ on:
         description: "Command"
       ubiquityKernelToken:
         description: "Kernel attestation token (optional)"
+      dryRun:
+        description: "Dry run (plan/matrix/consolidate without PR/comment/push)"
+        type: boolean
+        default: "false"
 
 jobs:
-  agent:
-    name: "Agent"
+  plan:
+    name: "Plan"
     runs-on: ubuntu-latest
     permissions: write-all
-    timeout-minutes: 75
+    timeout-minutes: 60
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      apply_order: ${{ steps.plan.outputs.apply_order }}
+      plan_json: ${{ steps.plan.outputs.plan_json }}
+      dry_run: ${{ steps.parse.outputs.dry_run }}
+      dry_run_force_matrix: ${{ steps.parse.outputs.dry_run_force_matrix }}
+      allowed: ${{ steps.parse.outputs.allowed }}
+      privileged: ${{ steps.parse.outputs.privileged }}
+      repo: ${{ steps.parse.outputs.repo }}
+      repo_owner: ${{ steps.parse.outputs.repo_owner }}
+      repo_name: ${{ steps.parse.outputs.repo_name }}
+      installation_id: ${{ steps.parse.outputs.installation_id }}
+      issue_number: ${{ steps.parse.outputs.issue_number }}
+      comment_id: ${{ steps.parse.outputs.comment_id }}
+      comment_kind: ${{ steps.parse.outputs.comment_kind }}
+      review_root_comment_id: ${{ steps.parse.outputs.review_root_comment_id }}
+      comment_author: ${{ steps.parse.outputs.comment_author }}
+      branch: ${{ steps.parse.outputs.branch }}
+      commit_message: ${{ steps.parse.outputs.commit_message }}
+      draft_pr: ${{ steps.parse.outputs.draft_pr }}
+      model: ${{ steps.parse.outputs.model }}
+      effort: ${{ steps.parse.outputs.effort }}
+      sandbox: ${{ steps.parse.outputs.sandbox }}
+      codex_args: ${{ steps.parse.outputs.codex_args }}
+      safety_strategy: ${{ steps.parse.outputs.safety_strategy }}
+      test_command: ${{ steps.parse.outputs.test_command }}
+      agent_memory: ${{ steps.parse.outputs.agent_memory }}
+      environment: ${{ steps.parse.outputs.environment }}
+      kernel_refresh_url: ${{ steps.parse.outputs.kernel_refresh_url }}
+      kernel_refresh_interval_seconds: ${{ steps.parse.outputs.kernel_refresh_interval_seconds }}
+      config_path_candidates: ${{ steps.parse.outputs.config_path_candidates }}
+      marketplace_org: ${{ steps.parse.outputs.marketplace_org }}
+      marketplace_auth_token: ${{ steps.parse.outputs.marketplace_auth_token }}
+      is_pull_request: ${{ steps.parse.outputs.is_pull_request }}
+      task: ${{ steps.parse.outputs.task }}
+
+    steps:
+      - name: Decompress event payload
+        if: ${{ !inputs.dryRun }}
+        uses: ubiquity-os/compress-action@main
+        id: eventPayload
+        with:
+          data: ${{ inputs.eventPayload }}
+          mode: decompress
+
+      - name: Build dry-run payload
+        if: ${{ inputs.dryRun }}
+        id: dryPayload
+        env:
+          SETTINGS_JSON: ${{ inputs.settings }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const settingsRaw = String(process.env.SETTINGS_JSON || "").trim();
+          let settings = {};
+          try {
+            settings = settingsRaw ? JSON.parse(settingsRaw) : {};
+          } catch {
+            settings = {};
+          }
+
+          const repo = String(settings.dryRunRepo || "").trim();
+          const issueRaw = String(settings.dryRunIssueNumber ?? settings.dryRunIssue ?? "").trim();
+          const issueNumber = Number.parseInt(issueRaw, 10);
+          const task = String(settings.dryRunTask || settings.task || "").trim();
+          const actor = String(process.env.ACTOR || "dry-run").trim() || "dry-run";
+
+          if (!repo || !Number.isFinite(issueNumber) || issueNumber <= 0 || !task) {
+            console.error("Dry run requires settings.dryRunRepo, settings.dryRunIssueNumber, and settings.dryRunTask.");
+            process.exit(1);
+          }
+
+          const payload = {
+            repository: { full_name: repo },
+            issue: { number: issueNumber },
+            comment: {
+              id: 0,
+              body: `@ubiquityos ${task}`,
+              user: { login: actor, type: "User" },
+              author_association: "OWNER",
+            },
+            installation: { id: 0 },
+          };
+
+          const output = JSON.stringify(payload);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `result<<EOF\n${output}\nEOF\n`);
+          NODE
+
+      - name: Mask tokens
+        run: |
+          echo "::add-mask::${{ inputs.authToken }}"
+          echo "::add-mask::${{ inputs.ubiquityKernelToken }}"
+
+      - name: Parse settings + validate invocation
+        id: parse
+        env:
+          EVENT_PAYLOAD: ${{ steps.dryPayload.outputs.result || steps.eventPayload.outputs.result }}
+          SETTINGS_JSON: ${{ inputs.settings }}
+          COMMAND_JSON: ${{ inputs.command }}
+          STATE_ID: ${{ inputs.stateId }}
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          function safeJsonParse(value, fallback) {
+            try {
+              if (!value) return fallback;
+              return JSON.parse(value);
+            } catch {
+              return fallback;
+            }
+          }
+
+          const payload = safeJsonParse(process.env.EVENT_PAYLOAD, null);
+          const payloadOk = Boolean(payload);
+          const dryRun = String(process.env.DRY_RUN || "") === "true";
+
+          const settings = safeJsonParse(process.env.SETTINGS_JSON, {});
+          const dryRunTask = dryRun ? String(settings.dryRunTask || settings.task || "").trim() : "";
+          const dryRunForceMatrix = dryRun
+            ? settings.dryRunForceMatrix !== undefined
+              ? Boolean(settings.dryRunForceMatrix)
+              : true
+            : false;
+          const allowedAuthorAssociations = Array.isArray(settings.allowedAuthorAssociations)
+            ? settings.allowedAuthorAssociations
+            : ["OWNER", "MEMBER", "COLLABORATOR"];
+          const privilegedAuthorAssociations = Array.isArray(settings.privilegedAuthorAssociations)
+            ? settings.privilegedAuthorAssociations
+            : ["OWNER", "MEMBER", "COLLABORATOR"];
+
+          const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
+          const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
+          const draftPr = settings.draftPr !== undefined ? Boolean(settings.draftPr) : true;
+          const model = typeof settings.model === "string" ? settings.model : "gpt-5.2";
+          const effort = typeof settings.effort === "string" ? settings.effort : "xhigh";
+          const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
+          const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
+          const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
+          const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
+          const agentMemory = typeof settings.agentMemory === "string" ? settings.agentMemory : "";
+          const environment = typeof settings.environment === "string" ? settings.environment : "";
+          const kernelRefreshUrl = typeof settings.kernelRefreshUrl === "string" ? settings.kernelRefreshUrl : "";
+          const kernelRefreshIntervalSeconds = (() => {
+            const raw = settings.kernelRefreshIntervalSeconds;
+            if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(300, Math.trunc(raw));
+            if (typeof raw === "string" && raw.trim()) {
+              const parsed = Number(raw);
+              if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
+            }
+            return 2700;
+          })();
+          const configPathCandidates = Array.isArray(settings.configPathCandidates)
+            ? settings.configPathCandidates.filter((p) => typeof p === "string")
+            : [];
+          const marketplaceOrg = typeof settings.marketplaceOrg === "string" ? settings.marketplaceOrg : "ubiquity-os-marketplace";
+          const marketplaceAuthToken = typeof settings.marketplaceAuthToken === "string" ? settings.marketplaceAuthToken : "";
+
+          const repo = payload?.repository?.full_name ?? "";
+          const [repoOwner, repoName] = typeof repo === "string" && repo.includes("/") ? repo.split("/", 2) : ["", ""];
+          const issueNumber = payload?.issue?.number ?? payload?.pull_request?.number ?? "";
+          const isPullRequest = Boolean(payload?.issue?.pull_request) || Boolean(payload?.pull_request);
+          const commentKind = payload?.issue ? "issue_comment" : payload?.pull_request ? "pull_request_review_comment" : "";
+          const commentBody = payload?.comment?.body ?? "";
+          const commentId = payload?.comment?.id ?? "";
+          const reviewRootCommentId =
+            commentKind === "pull_request_review_comment" ? payload?.comment?.in_reply_to_id ?? payload?.comment?.id ?? "" : "";
+          const commentAuthor = payload?.comment?.user?.login ?? "";
+          const commentAuthorType = payload?.comment?.user?.type ?? "";
+          const authorAssociation = payload?.comment?.author_association ?? "";
+          const installationId = payload?.installation?.id ?? "";
+
+          const command = safeJsonParse(process.env.COMMAND_JSON, null);
+          const explicitTaskFromCommand = command?.parameters?.task ?? "";
+
+          function extractTaskFromMention(body) {
+            const m = /@ubiquityos\b/i.exec(String(body || ""));
+            if (!m || m.index === undefined) return "";
+            return String(body).slice(m.index + m[0].length).trim();
+          }
+
+          const taskFromMention = extractTaskFromMention(commentBody);
+          let task = String(explicitTaskFromCommand || taskFromMention || "").trim();
+          if (dryRun && !task && dryRunTask) {
+            task = dryRunTask;
+          }
+
+          let allowed = true;
+          let denyReason = "";
+          let privileged = false;
+
+          if (dryRun) {
+            allowed = true;
+            privileged = true;
+            denyReason = "";
+          } else if (!payloadOk) {
+            allowed = false;
+            denyReason = "Missing/invalid EVENT_PAYLOAD";
+          } else if (commentAuthorType !== "User") {
+            allowed = false;
+            denyReason = `Only human users can invoke the agent (got user.type=${commentAuthorType}).`;
+          } else if (!allowedAuthorAssociations.includes(authorAssociation)) {
+            allowed = false;
+            denyReason = `Not authorized (author_association=${authorAssociation}).`;
+          } else if (!repo || !issueNumber) {
+            allowed = false;
+            denyReason = "Missing repo or issue number in event payload.";
+          } else if (!task) {
+            allowed = false;
+            denyReason = "Missing task text after @ubiquityos.";
+          } else if (privilegedAuthorAssociations.includes(authorAssociation)) {
+            privileged = true;
+          }
+
+          const branch = `${branchPrefix}/${process.env.STATE_ID || "run"}`.replace(/[^0-9A-Za-z._/-]+/g, "-");
+
+          const outputLines = [];
+          const setOutput = (k, v) => outputLines.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
+
+          setOutput("repo", repo);
+          setOutput("repo_owner", repoOwner);
+          setOutput("repo_name", repoName);
+          setOutput("installation_id", installationId);
+          setOutput("issue_number", issueNumber);
+          setOutput("comment_id", commentId);
+          setOutput("comment_kind", commentKind);
+          setOutput("review_root_comment_id", reviewRootCommentId);
+          setOutput("task", task);
+          setOutput("dry_run", String(dryRun));
+          setOutput("dry_run_force_matrix", String(dryRunForceMatrix));
+          setOutput("comment_author", commentAuthor);
+          setOutput("allowed", String(allowed));
+          setOutput("privileged", String(privileged));
+          setOutput("deny_reason", denyReason);
+          setOutput("branch", branch);
+          setOutput("commit_message", commitMessage);
+          setOutput("draft_pr", String(draftPr));
+          setOutput("model", model);
+          setOutput("effort", effort);
+          setOutput("sandbox", sandbox);
+          setOutput("codex_args", codexArgs);
+          setOutput("safety_strategy", safetyStrategy);
+          setOutput("test_command", testCommand);
+          setOutput("agent_memory", agentMemory);
+          setOutput("environment", environment);
+          setOutput("kernel_refresh_url", kernelRefreshUrl);
+          setOutput("kernel_refresh_interval_seconds", String(kernelRefreshIntervalSeconds));
+          setOutput("config_path_candidates", JSON.stringify(configPathCandidates));
+          setOutput("marketplace_org", marketplaceOrg);
+          setOutput("marketplace_auth_token", marketplaceAuthToken);
+          setOutput("is_pull_request", String(isPullRequest));
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
+          NODE
+
+      - name: Mask marketplace token
+        if: steps.parse.outputs.marketplace_auth_token != ''
+        run: |
+          echo "::add-mask::${{ steps.parse.outputs.marketplace_auth_token }}"
+
+      - name: Comment (rejected)
+        if: steps.parse.outputs.allowed != 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$(cat <<EOF
+          @${{ steps.parse.outputs.comment_author }} agent rejected: ${{ steps.parse.outputs.deny_reason }}
+
+          Run logs: ${run_url}
+          EOF
+          )"
+
+      - name: Fetch issue context + labels
+        if: steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+          repo="${{ steps.parse.outputs.repo }}"
+          issue_number="${{ steps.parse.outputs.issue_number }}"
+          comment_kind="${{ steps.parse.outputs.comment_kind }}"
+          review_root_comment_id="${{ steps.parse.outputs.review_root_comment_id }}"
+
+          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
+          if [ "$comment_kind" = "pull_request_review_comment" ]; then
+            if [ -z "$review_root_comment_id" ]; then
+              echo "Missing review_root_comment_id for pull_request_review_comment event" >&2
+              exit 1
+            fi
+            gh api --paginate "repos/$repo/pulls/$issue_number/comments?per_page=100" | jq -s --arg root "$review_root_comment_id" 'add | map(select((.id|tostring) == $root or ((.in_reply_to_id // "")|tostring) == $root)) | sort_by(.created_at)' > .ubiquityos.comments.json
+          else
+            gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
+          fi
+          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
+
+          jq -r '[.[] | select(.name | startswith("Time:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.time-labels.txt || true
+          jq -r '[.[] | select(.name | startswith("Priority:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.priority-labels.txt || true
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const issue = JSON.parse(fs.readFileSync(".ubiquityos.issue.json", "utf8"));
+          const comments = JSON.parse(fs.readFileSync(".ubiquityos.comments.json", "utf8"));
+
+          const title = issue.title || "Issue";
+          const url = issue.html_url || "";
+          const author = issue.user?.login || "unknown";
+
+          const bodySection = issue.body ? `## Body\n${issue.body}\n\n` : "";
+
+          const labels =
+            (issue.labels || [])
+              .map((l) => (typeof l?.name === "string" ? `- ${l.name}` : ""))
+              .filter(Boolean)
+              .join("\n") || "- (none)";
+
+          const commentsMarkdown = comments
+            .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
+            .join("\n\n");
+
+          const markdown = `# ${title}\n\nURL: ${url}\nAuthor: @${author}\n\n${bodySection}## Labels\n${labels}\n\n## Comments\n${commentsMarkdown}\n`;
+          fs.writeFileSync(".ubiquityos.issue.md", markdown);
+          NODE
+
+      - name: Write planner prompt
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          TASK: ${{ steps.parse.outputs.task }}
+          DRY_RUN: ${{ steps.parse.outputs.dry_run }}
+          DRY_RUN_FORCE_MATRIX: ${{ steps.parse.outputs.dry_run_force_matrix }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const task = String(process.env.TASK || "").trim();
+          const dryRun = String(process.env.DRY_RUN || "") === "true";
+          const dryRunForceMatrix = String(process.env.DRY_RUN_FORCE_MATRIX || "") === "true";
+          const maxAgents = 4;
+          let issueContext = "";
+          if (fs.existsSync(".ubiquityos.issue.md")) {
+            issueContext = fs.readFileSync(".ubiquityos.issue.md", "utf8").trim();
+            const limit = 12000;
+            if (issueContext.length > limit) {
+              issueContext = `${issueContext.slice(0, limit)}\n\n...(truncated)`;
+            }
+          }
+
+          const schema = [
+            "{",
+            '  "mode": "single|matrix",',
+            '  "reason": "short rationale",',
+            '  "agents": [',
+            "    {",
+            '      "id": "A",',
+            '      "title": "short focus area",',
+            '      "task": "agent-specific instructions",',
+            '      "allowed_paths": ["path/prefix/", "file.ext"],',
+            '      "depends_on": ["B"]',
+            "    }",
+            "  ],",
+            '  "apply_order": ["A", "B"]',
+            "}",
+          ].join("\n");
+
+          const dryRunNotes = dryRun
+            ? [
+                "Dry-run mode:",
+                dryRunForceMatrix
+                  ? "- Force output mode=matrix even if it is a single agent; include allowed_paths."
+                  : "- Prefer matrix if possible; otherwise single is acceptable.",
+              ].join("\n")
+            : "";
+
+          const sections = [
+            "You are a planning agent deciding whether to run a single agent or a matrix of agents.",
+            `Decision gate: choose matrix only if the work can be partitioned into disjoint file sets with minimal dependencies. If unsure, choose single.`,
+            `Constraints: max ${maxAgents} agents; allowed_paths must not overlap; use repo-relative paths; prefer directory prefixes with trailing slash.`,
+            "Output JSON ONLY. No extra text. Conform strictly to this schema:",
+            schema,
+            dryRunNotes,
+            ["Task:", task || "(missing)"].join("\n"),
+            issueContext ? ["Issue context:", issueContext].join("\n") : "",
+          ].filter(Boolean);
+
+          fs.writeFileSync(".codex.plan.prompt.txt", `${sections.join("\n\n")}\n`, "utf8");
+          NODE
+
+      - name: Start ai.ubq.fi Responses forwarder
+        if: steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          GH_OWNER: ${{ steps.parse.outputs.repo_owner }}
+          GH_REPO: ${{ steps.parse.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ steps.parse.outputs.installation_id }}
+          PORT: "4010"
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
+          const http = require("node:http");
+          const { Readable } = require("node:stream");
+
+          const port = Number.parseInt(process.env.PORT || "4010", 10);
+          // Prefer the direct Deno Deploy domain to avoid Cloudflare bot/challenge pages from CI IP ranges.
+          const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
+
+          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
+          const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!owner || !repo) {
+            console.error("Missing GH_OWNER/GH_REPO");
+            process.exit(1);
+          }
+
+          const readTokens = () => {
+            if (tokenFile) {
+              try {
+                const raw = require("node:fs").readFileSync(tokenFile, "utf8");
+                const data = JSON.parse(raw);
+                const authToken = typeof data.authToken === "string" ? data.authToken.trim() : "";
+                const kernelToken = typeof data.kernelToken === "string" ? data.kernelToken.trim() : "";
+                if (authToken) return { authToken, kernelToken };
+              } catch {
+                // ignore and fall back to initial
+              }
+            }
+            return { authToken: initialAuthToken, kernelToken: initialKernelToken };
+          };
+
+          const server = http.createServer(async (req, res) => {
+            try {
+              const url = new URL(req.url || "/", "http://127.0.0.1");
+              if (req.method === "GET" && url.pathname === "/health") {
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end("ok");
+                return;
+              }
+
+              const chunks = [];
+              for await (const chunk of req) chunks.push(chunk);
+              const body = Buffer.concat(chunks);
+
+              const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
+
+              const { authToken, kernelToken } = readTokens();
+              if (!authToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing auth token");
+                return;
+              }
+              if (authToken.startsWith("gh") && !kernelToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing kernel token");
+                return;
+              }
+
+              const headers = {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": req.headers["content-type"] || "application/json",
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+              };
+              if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
+              if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
+
+              const upstream = await fetch(upstreamUrl, {
+                method: req.method || "POST",
+                headers,
+                body: body.length ? body : undefined,
+              });
+
+              res.statusCode = upstream.status;
+
+              const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
+              for (const key of passthroughHeaders) {
+                const value = upstream.headers.get(key);
+                if (value) res.setHeader(key, value);
+              }
+
+              if (!upstream.body) {
+                const text = await upstream.text().catch(() => "");
+                res.end(text);
+                return;
+              }
+
+              Readable.fromWeb(upstream.body).pipe(res);
+            } catch (error) {
+              res.statusCode = 502;
+              res.setHeader("Content-Type", "text/plain");
+              res.end(String(error?.message || error || "upstream error"));
+            }
+          });
+
+          server.listen(port, "127.0.0.1", () => {
+            process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
+          });
+          NODE
+
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
+
+          for _ in {1..30}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              echo "Forwarder ready."
+              exit 0
+            fi
+            sleep 0.2
+          done
+
+          echo "Forwarder failed to start" >&2
+          exit 1
+
+      - name: Run Codex (planner)
+        if: steps.parse.outputs.allowed == 'true'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.plan.prompt.txt
+          output-file: .codex.plan.output.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ steps.parse.outputs.sandbox }}
+          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+          model: ${{ steps.parse.outputs.model }}
+          effort: ${{ steps.parse.outputs.effort }}
+
+      - name: Parse plan output
+        id: plan
+        if: always()
+        env:
+          ALLOWED: ${{ steps.parse.outputs.allowed }}
+          PRIVILEGED: ${{ steps.parse.outputs.privileged }}
+          DRY_RUN_FORCE_MATRIX: ${{ steps.parse.outputs.dry_run_force_matrix }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const defaultMatrix = {
+            include: [{ agent_id: "noop", agent_title: "noop", task: "", allowed_paths_json: "[]" }],
+          };
+          const defaultPlan = { mode: "single", reason: "planner unavailable", agents: [], apply_order: [] };
+          const allowed = String(process.env.ALLOWED || "") === "true";
+          const privileged = String(process.env.PRIVILEGED || "") === "true";
+          const dryRunForceMatrix = String(process.env.DRY_RUN_FORCE_MATRIX || "") === "true";
+
+          const readPlan = () => {
+            if (!fs.existsSync(".codex.plan.output.md")) return null;
+            const raw = fs.readFileSync(".codex.plan.output.md", "utf8").trim();
+            if (!raw) return null;
+            const start = raw.indexOf("{");
+            const end = raw.lastIndexOf("}");
+            const jsonText = start >= 0 && end >= 0 ? raw.slice(start, end + 1) : raw;
+            try {
+              return JSON.parse(jsonText);
+            } catch {
+              return null;
+            }
+          };
+
+          const sanitizePlan = (input) => {
+            const plan = input && typeof input === "object" ? input : {};
+            let mode = plan.mode === "matrix" ? "matrix" : "single";
+            const rawAgents = Array.isArray(plan.agents) ? plan.agents : [];
+            const agents = [];
+            const seen = new Set();
+
+            for (const entry of rawAgents) {
+              if (!entry || typeof entry !== "object") continue;
+              const id = typeof entry.id === "string" ? entry.id.trim() : "";
+              const task = typeof entry.task === "string" ? entry.task.trim() : "";
+              const title = typeof entry.title === "string" ? entry.title.trim() : "";
+              const allowedPaths = Array.isArray(entry.allowed_paths)
+                ? entry.allowed_paths.map((p) => (typeof p === "string" ? p.trim() : "")).filter(Boolean)
+                : [];
+              if (!id || seen.has(id) || !task || allowedPaths.length === 0) continue;
+              seen.add(id);
+              agents.push({
+                id,
+                title,
+                task,
+                allowed_paths: allowedPaths,
+                depends_on: Array.isArray(entry.depends_on)
+                  ? entry.depends_on.map((d) => (typeof d === "string" ? d.trim() : "")).filter(Boolean)
+                  : [],
+              });
+              if (agents.length >= 4) break;
+            }
+
+            const normalizePath = (value) => value.replace(/^\.?\//, "").replace(/\\/g, "/");
+            const hasOverlap = (() => {
+              const seen = [];
+              for (const agent of agents) {
+                for (const rawPath of agent.allowed_paths || []) {
+                  const pathValue = normalizePath(String(rawPath || ""));
+                  if (!pathValue) continue;
+                  for (const existing of seen) {
+                    const existingWithSlash = existing.endsWith("/") ? existing : `${existing}/`;
+                    const pathWithSlash = pathValue.endsWith("/") ? pathValue : `${pathValue}/`;
+                    if (pathValue === existing || pathValue.startsWith(existingWithSlash) || existing.startsWith(pathWithSlash)) {
+                      return true;
+                    }
+                  }
+                  seen.push(pathValue);
+                }
+              }
+              return false;
+            })();
+
+            if (mode === "matrix" && (!allowed || !privileged || agents.length === 0 || hasOverlap)) {
+              mode = "single";
+              agents.length = 0;
+            }
+
+            if (dryRunForceMatrix && allowed && privileged && agents.length > 0) {
+              mode = "matrix";
+            }
+
+            const idSet = new Set(agents.map((a) => a.id));
+            let applyOrder = Array.isArray(plan.apply_order)
+              ? plan.apply_order.map((id) => (typeof id === "string" ? id.trim() : "")).filter((id) => idSet.has(id))
+              : [];
+            if (applyOrder.length === 0) {
+              applyOrder = agents.map((a) => a.id);
+            }
+
+            return {
+              mode,
+              reason: typeof plan.reason === "string" ? plan.reason.trim() : "",
+              agents,
+              apply_order: applyOrder,
+            };
+          };
+
+          const parsed = sanitizePlan(readPlan() || defaultPlan);
+          const matrix =
+            parsed.mode === "matrix"
+              ? {
+                  include: parsed.agents.map((agent) => ({
+                    agent_id: agent.id,
+                    agent_title: agent.title || agent.id,
+                    task: agent.task,
+                    allowed_paths_json: JSON.stringify(agent.allowed_paths || []),
+                  })),
+                }
+              : defaultMatrix;
+
+          const outputs = [];
+          const setOutput = (k, v) => outputs.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
+
+          setOutput("mode", parsed.mode);
+          setOutput("matrix", JSON.stringify(matrix));
+          setOutput("apply_order", JSON.stringify(parsed.apply_order || []));
+          setOutput("plan_json", JSON.stringify(parsed));
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, outputs.join(""));
+          NODE
+
+      - name: Comment (matrix planned)
+        if: steps.plan.outputs.mode == 'matrix' && steps.parse.outputs.allowed == 'true' && steps.parse.outputs.repo != '' && steps.parse.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "${{ steps.parse.outputs.issue_number }}" --repo "${{ steps.parse.outputs.repo }}" --body "$(cat <<EOF
+          @${{ steps.parse.outputs.comment_author }} starting a multi-agent matrix run for this task.
+
+          Run logs: ${run_url}
+          EOF
+          )"
+
+      - name: Stop ai.ubq.fi Responses forwarder
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+
+  agent_matrix:
+    name: "Agent (matrix)"
+    needs: plan
+    if: needs.plan.outputs.allowed == 'true' && needs.plan.outputs.privileged == 'true' && needs.plan.outputs.mode == 'matrix'
+    runs-on: ubuntu-latest
+    permissions: write-all
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Mask tokens
+        run: |
+          echo "::add-mask::${{ inputs.authToken }}"
+          echo "::add-mask::${{ inputs.ubiquityKernelToken }}"
+
+      - name: Checkout target repo
+        uses: actions/checkout@v5
+        with:
+          token: ${{ inputs.authToken }}
+          repository: ${{ needs.plan.outputs.repo }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Initialize token refresh
+        if: needs.plan.outputs.allowed == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          KERNEL_REFRESH_URL: ${{ needs.plan.outputs.kernel_refresh_url }}
+          REFRESH_INTERVAL_SECONDS: ${{ needs.plan.outputs.kernel_refresh_interval_seconds }}
+          GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+        run: |
+          set -euo pipefail
+          real_gh="$(command -v gh || true)"
+          if [ -z "$real_gh" ]; then
+            echo "gh CLI not found; cannot set refresh-aware wrapper." >&2
+            exit 1
+          fi
+          export REAL_GH="$real_gh"
+
+          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
+
+          const binDir = path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const realGh = String(process.env.REAL_GH || "").trim();
+          const wrapperPath = path.join(binDir, "gh");
+          const wrapper = `#!/usr/bin/env bash
+          set -euo pipefail
+          token_file="\\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+          fi
+          exec "${realGh}" "$@"
+          `;
+          fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
+          NODE
+
+          cat > "$RUNNER_TEMP/ubq-token-refresh.js" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const retrySeconds = 60;
+
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const readTokens = () => {
+            try {
+              const raw = fs.readFileSync(tokenFile, "utf8");
+              const data = JSON.parse(raw);
+              return {
+                authToken: typeof data.authToken === "string" ? data.authToken.trim() : "",
+                kernelToken: typeof data.kernelToken === "string" ? data.kernelToken.trim() : "",
+              };
+            } catch {
+              return { authToken: "", kernelToken: "" };
+            }
+          };
+
+          const writeTokens = (authToken, kernelToken, expiresAt) => {
+            const payload = {
+              authToken,
+              kernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
+
+          const refreshOnce = async () => {
+            const { authToken, kernelToken } = readTokens();
+            if (!authToken || !kernelToken) {
+              throw new Error("Token refresh: missing authToken or kernelToken.");
+            }
+
+            const res = await fetch(refreshUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": "application/json",
+                "X-Ubiquity-Kernel-Token": kernelToken,
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+                "X-GitHub-Installation-Id": installationId,
+              },
+            });
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(`Token refresh failed: ${res.status} ${text}`);
+            }
+
+            const body = await res.json();
+            if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+              throw new Error("Token refresh response missing tokens.");
+            }
+
+            writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+          };
+
+          const loop = async () => {
+            if (!refreshUrl) {
+              console.error("Token refresh disabled: missing KERNEL_REFRESH_URL.");
+              return;
+            }
+            if (!owner || !repo || !installationId) {
+              console.error("Token refresh disabled: missing repo context.");
+              return;
+            }
+
+            while (true) {
+              await sleep(intervalSeconds * 1000);
+              try {
+                await refreshOnce();
+                process.stdout.write("Token refresh: updated.\n");
+              } catch (error) {
+                console.error(String(error?.message || error));
+                await sleep(retrySeconds * 1000);
+              }
+            }
+          };
+
+          loop().catch((error) => {
+            console.error(String(error?.message || error));
+          });
+          NODE
+
+          if [ -n "$KERNEL_REFRESH_URL" ]; then
+            node "$RUNNER_TEMP/ubq-token-refresh.js" &
+            echo "$!" > "$RUNNER_TEMP/ubq_token_refresh.pid"
+          else
+            echo "Kernel refresh URL not set; token refresh disabled."
+          fi
+
+      - name: Fetch issue context + labels
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+          repo="${{ needs.plan.outputs.repo }}"
+          issue_number="${{ needs.plan.outputs.issue_number }}"
+          comment_kind="${{ needs.plan.outputs.comment_kind }}"
+          review_root_comment_id="${{ needs.plan.outputs.review_root_comment_id }}"
+
+          gh api "repos/$repo/issues/$issue_number" > .ubiquityos.issue.json
+          if [ "$comment_kind" = "pull_request_review_comment" ]; then
+            if [ -z "$review_root_comment_id" ]; then
+              echo "Missing review_root_comment_id for pull_request_review_comment event" >&2
+              exit 1
+            fi
+            gh api --paginate "repos/$repo/pulls/$issue_number/comments?per_page=100" | jq -s --arg root "$review_root_comment_id" 'add | map(select((.id|tostring) == $root or ((.in_reply_to_id // "")|tostring) == $root)) | sort_by(.created_at)' > .ubiquityos.comments.json
+          else
+            gh api --paginate "repos/$repo/issues/$issue_number/comments?per_page=100" | jq -s 'add' > .ubiquityos.comments.json
+          fi
+          gh api --paginate "repos/$repo/labels?per_page=100" | jq -s 'add' > .ubiquityos.repo-labels.json
+
+          jq -r '[.[] | select(.name | startswith("Time:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.time-labels.txt || true
+          jq -r '[.[] | select(.name | startswith("Priority:")) | .name] | sort | .[]' .ubiquityos.repo-labels.json > .ubiquityos.priority-labels.txt || true
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const issue = JSON.parse(fs.readFileSync(".ubiquityos.issue.json", "utf8"));
+          const comments = JSON.parse(fs.readFileSync(".ubiquityos.comments.json", "utf8"));
+
+          const title = issue.title || "Issue";
+          const url = issue.html_url || "";
+          const author = issue.user?.login || "unknown";
+
+          const bodySection = issue.body ? `## Body\n${issue.body}\n\n` : "";
+
+          const labels =
+            (issue.labels || [])
+              .map((l) => (typeof l?.name === "string" ? `- ${l.name}` : ""))
+              .filter(Boolean)
+              .join("\n") || "- (none)";
+
+          const commentsMarkdown = comments
+            .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
+            .join("\n\n");
+
+          const markdown = `# ${title}\n\nURL: ${url}\nAuthor: @${author}\n\n${bodySection}## Labels\n${labels}\n\n## Comments\n${commentsMarkdown}\n`;
+          fs.writeFileSync(".ubiquityos.issue.md", markdown);
+          NODE
+
+      - name: Write matrix agent prompt
+        env:
+          TASK: ${{ matrix.task }}
+          AGENT_ID: ${{ matrix.agent_id }}
+          AGENT_TITLE: ${{ matrix.agent_title }}
+          ALLOWED_PATHS_JSON: ${{ matrix.allowed_paths_json }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const task = String(process.env.TASK || "").trim();
+          const agentId = String(process.env.AGENT_ID || "").trim();
+          const agentTitle = String(process.env.AGENT_TITLE || "").trim();
+          const allowedRaw = String(process.env.ALLOWED_PATHS_JSON || "").trim();
+          let allowedPaths = [];
+          try {
+            allowedPaths = allowedRaw ? JSON.parse(allowedRaw) : [];
+          } catch {
+            allowedPaths = [];
+          }
+
+          let issueContext = "";
+          if (fs.existsSync(".ubiquityos.issue.md")) {
+            issueContext = fs.readFileSync(".ubiquityos.issue.md", "utf8").trim();
+            const limit = 12000;
+            if (issueContext.length > limit) {
+              issueContext = `${issueContext.slice(0, limit)}\n\n...(truncated)`;
+            }
+          }
+
+          const allowedList = allowedPaths.length ? allowedPaths.map((p) => `- ${p}`).join("\n") : "- (none)";
+          const agentLabel = agentTitle ? `${agentId} — ${agentTitle}` : agentId || "matrix-agent";
+          const busAgentId = agentId || "matrix-agent";
+          const busInstructions = [
+            "Coordination (agent message bus):",
+            "- Poll checkpoints: start, before edits, before final response.",
+            "- Post a claim with files/paths you plan to touch; post updates if scope changes or conflicts appear.",
+            "- Auth env is already set (UBQ_AGENT_AUTH_TOKEN/GH_TOKEN, UBQ_KERNEL_TOKEN, UBQ_GH_OWNER, UBQ_GH_REPO, UBQ_GH_INSTALLATION_ID, UBQ_AGENT_BUS_URL).",
+            `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 50`,
+            `- Claim: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "claims" --kind "claim" --body "Working on <paths>"`,
+            `- Update: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "status" --kind "update" --body "Update <status>"`,
+            `- Conflict: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "conflicts" --kind "blocked" --body "Conflict details"`,
+          ].join("\n");
+
+          const sections = [
+            "You are a matrix sub-agent running inside a GitHub Actions job.",
+            `Agent: ${agentLabel}`,
+            "Constraints:",
+            "- Only modify files under the allowed paths.",
+            "- Do not edit `.ubiquityos.actions.json` or perform GitHub metadata operations.",
+            "- Do not commit or push; leave changes in the working tree only.",
+            "- If changes are unnecessary, leave the repo unchanged.",
+            `Allowed paths:\n${allowedList}`,
+            busInstructions,
+            ["Task:", task || "(missing)"].join("\n"),
+            issueContext ? ["Issue context:", issueContext].join("\n") : "",
+          ].filter(Boolean);
+
+          fs.writeFileSync(".codex.prompt.txt", `${sections.join("\n\n")}\n`, "utf8");
+          NODE
+
+      - name: Start ai.ubq.fi Responses forwarder
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          PORT: "4010"
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
+          const http = require("node:http");
+          const { Readable } = require("node:stream");
+
+          const port = Number.parseInt(process.env.PORT || "4010", 10);
+          const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
+
+          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
+          const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!owner || !repo) {
+            console.error("Missing GH_OWNER/GH_REPO");
+            process.exit(1);
+          }
+
+          const readTokens = () => {
+            if (tokenFile) {
+              try {
+                const raw = require("node:fs").readFileSync(tokenFile, "utf8");
+                const data = JSON.parse(raw);
+                const authToken = typeof data.authToken === "string" ? data.authToken.trim() : "";
+                const kernelToken = typeof data.kernelToken === "string" ? data.kernelToken.trim() : "";
+                if (authToken) return { authToken, kernelToken };
+              } catch {
+                // ignore and fall back to initial
+              }
+            }
+            return { authToken: initialAuthToken, kernelToken: initialKernelToken };
+          };
+
+          const server = http.createServer(async (req, res) => {
+            try {
+              const url = new URL(req.url || "/", "http://127.0.0.1");
+              if (req.method === "GET" && url.pathname === "/health") {
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end("ok");
+                return;
+              }
+
+              const chunks = [];
+              for await (const chunk of req) chunks.push(chunk);
+              const body = Buffer.concat(chunks);
+
+              const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
+
+              const { authToken, kernelToken } = readTokens();
+              if (!authToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing auth token");
+                return;
+              }
+              if (authToken.startsWith("gh") && !kernelToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing kernel token");
+                return;
+              }
+
+              const headers = {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": req.headers["content-type"] || "application/json",
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+              };
+              if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
+              if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
+
+              const upstream = await fetch(upstreamUrl, {
+                method: req.method || "POST",
+                headers,
+                body: body.length ? body : undefined,
+              });
+
+              res.statusCode = upstream.status;
+
+              const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
+              for (const key of passthroughHeaders) {
+                const value = upstream.headers.get(key);
+                if (value) res.setHeader(key, value);
+              }
+
+              if (!upstream.body) {
+                const text = await upstream.text().catch(() => "");
+                res.end(text);
+                return;
+              }
+
+              Readable.fromWeb(upstream.body).pipe(res);
+            } catch (error) {
+              res.statusCode = 502;
+              res.setHeader("Content-Type", "text/plain");
+              res.end(String(error?.message || error || "upstream error"));
+            }
+          });
+
+          server.listen(port, "127.0.0.1", () => {
+            process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
+          });
+          NODE
+
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
+
+          for _ in {1..30}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              echo "Forwarder ready."
+              exit 0
+            fi
+            sleep 0.2
+          done
+
+          echo "Forwarder failed to start" >&2
+          exit 1
+
+      - name: Run Codex (matrix agent)
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          UBQ_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UBQ_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UBQ_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UBQ_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UBQ_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UBQ_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ needs.plan.outputs.sandbox }}
+          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
+          model: ${{ needs.plan.outputs.model }}
+          effort: ${{ needs.plan.outputs.effort }}
+          codex-args: >-
+            ${{ needs.plan.outputs.codex_args }}
+            --config sandbox_workspace_write.network_access=true
+            --config shell_environment_policy.ignore_default_excludes=true
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_AGENT_AUTH_TOKEN","UBQ_KERNEL_TOKEN","UBQ_GH_OWNER","UBQ_GH_REPO","UBQ_GH_INSTALLATION_ID","UBQ_AGENT_BUS_URL"]
+
+      - name: Disallow metadata actions
+        run: |
+          if [ -f .ubiquityos.actions.json ]; then
+            echo "Matrix agents must not write .ubiquityos.actions.json" >&2
+            exit 1
+          fi
+
+      - name: Verify allowed paths
+        env:
+          ALLOWED_PATHS_JSON: ${{ matrix.allowed_paths_json }}
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+
+          const allowedRaw = String(process.env.ALLOWED_PATHS_JSON || "").trim();
+          let allowed = [];
+          try {
+            allowed = allowedRaw ? JSON.parse(allowedRaw) : [];
+          } catch {
+            allowed = [];
+          }
+          allowed = Array.isArray(allowed) ? allowed.filter((p) => typeof p === "string" && p.trim()).map((p) => p.trim()) : [];
+
+          const normalize = (value) => value.replace(/^\.?\//, "").replace(/\\/g, "/");
+          const allowedPrefixes = allowed.map((p) => {
+            const norm = normalize(p);
+            return norm.endsWith("/") ? norm : `${norm}`;
+          });
+
+          const diffOutput = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" });
+          const changedFiles = diffOutput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map(normalize);
+
+          const isAllowed = (file) => {
+            return allowedPrefixes.some((prefix) => {
+              if (!prefix) return false;
+              if (file === prefix) return true;
+              const withSlash = prefix.endsWith("/") ? prefix : `${prefix}/`;
+              return file.startsWith(withSlash);
+            });
+          };
+
+          const outside = changedFiles.filter((file) => !isAllowed(file));
+          if (outside.length > 0) {
+            console.error("Found changes outside allowed paths:");
+            for (const file of outside) console.error(`- ${file}`);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Create patch artifact
+        env:
+          TASK: ${{ matrix.task }}
+          AGENT_ID: ${{ matrix.agent_id }}
+          AGENT_TITLE: ${{ matrix.agent_title }}
+          ALLOWED_PATHS_JSON: ${{ matrix.allowed_paths_json }}
+          OUT_DIR: ${{ runner.temp }}/agent-patch-${{ matrix.agent_id }}
+        run: |
+          set -euo pipefail
+          out_dir="${OUT_DIR:-$RUNNER_TEMP/agent-patch-${{ matrix.agent_id }}}"
+          mkdir -p "$out_dir"
+
+          git diff --name-only > "$out_dir/changed-files.txt"
+          git diff --binary > "$out_dir/patch.diff"
+
+          if [ -f .codex.last-message.md ]; then
+            cp .codex.last-message.md "$out_dir/summary.md"
+          fi
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const outDir = process.env.OUT_DIR || "";
+          const task = String(process.env.TASK || "").trim();
+          const agentId = String(process.env.AGENT_ID || "").trim();
+          const agentTitle = String(process.env.AGENT_TITLE || "").trim();
+          const allowedRaw = String(process.env.ALLOWED_PATHS_JSON || "").trim();
+          let allowedPaths = [];
+          try {
+            allowedPaths = allowedRaw ? JSON.parse(allowedRaw) : [];
+          } catch {
+            allowedPaths = [];
+          }
+
+          const changedFilesPath = path.join(outDir, "changed-files.txt");
+          const changedFiles = fs.existsSync(changedFilesPath)
+            ? fs.readFileSync(changedFilesPath, "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+            : [];
+
+          const metadata = {
+            agent_id: agentId,
+            agent_title: agentTitle,
+            task,
+            allowed_paths: Array.isArray(allowedPaths) ? allowedPaths : [],
+            changed_files: changedFiles,
+            generated_at: new Date().toISOString(),
+          };
+
+          fs.writeFileSync(path.join(outDir, "metadata.json"), JSON.stringify(metadata, null, 2), "utf8");
+          NODE
+
+      - name: Upload patch artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: agent-patch-${{ matrix.agent_id }}
+          path: ${{ runner.temp }}/agent-patch-${{ matrix.agent_id }}
+
+      - name: Stop ai.ubq.fi Responses forwarder
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+
+      - name: Stop token refresher
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
+          fi
+          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
+            rm -f "$UBQ_TOKEN_FILE" || true
+          fi
+
+  consolidate:
+    name: "Consolidate"
+    needs: [plan, agent_matrix]
+    if: needs.plan.outputs.allowed == 'true' && needs.plan.outputs.privileged == 'true' && needs.plan.outputs.mode == 'matrix'
+    runs-on: ubuntu-latest
+    permissions: write-all
+    timeout-minutes: 360
+
+    steps:
+      - name: Mask tokens
+        run: |
+          echo "::add-mask::${{ inputs.authToken }}"
+          echo "::add-mask::${{ inputs.ubiquityKernelToken }}"
+
+      - name: Checkout target repo
+        uses: actions/checkout@v5
+        with:
+          token: ${{ inputs.authToken }}
+          repository: ${{ needs.plan.outputs.repo }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Initialize token refresh
+        if: needs.plan.outputs.allowed == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          KERNEL_REFRESH_URL: ${{ needs.plan.outputs.kernel_refresh_url }}
+          REFRESH_INTERVAL_SECONDS: ${{ needs.plan.outputs.kernel_refresh_interval_seconds }}
+          GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+        run: |
+          set -euo pipefail
+          real_gh="$(command -v gh || true)"
+          if [ -z "$real_gh" ]; then
+            echo "gh CLI not found; cannot set refresh-aware wrapper." >&2
+            exit 1
+          fi
+          export REAL_GH="$real_gh"
+
+          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
+
+          const binDir = path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const realGh = String(process.env.REAL_GH || "").trim();
+          const wrapperPath = path.join(binDir, "gh");
+          const wrapper = `#!/usr/bin/env bash
+          set -euo pipefail
+          token_file="\\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+          fi
+          exec "${realGh}" "$@"
+          `;
+          fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
+          NODE
+
+          cat > "$RUNNER_TEMP/ubq-token-refresh.js" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const retrySeconds = 60;
+
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const readTokens = () => {
+            try {
+              const raw = fs.readFileSync(tokenFile, "utf8");
+              const data = JSON.parse(raw);
+              return {
+                authToken: typeof data.authToken === "string" ? data.authToken.trim() : "",
+                kernelToken: typeof data.kernelToken === "string" ? data.kernelToken.trim() : "",
+              };
+            } catch {
+              return { authToken: "", kernelToken: "" };
+            }
+          };
+
+          const writeTokens = (authToken, kernelToken, expiresAt) => {
+            const payload = {
+              authToken,
+              kernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
+
+          const refreshOnce = async () => {
+            const { authToken, kernelToken } = readTokens();
+            if (!authToken || !kernelToken) {
+              throw new Error("Token refresh: missing authToken or kernelToken.");
+            }
+
+            const res = await fetch(refreshUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": "application/json",
+                "X-Ubiquity-Kernel-Token": kernelToken,
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+                "X-GitHub-Installation-Id": installationId,
+              },
+            });
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(`Token refresh failed: ${res.status} ${text}`);
+            }
+
+            const body = await res.json();
+            if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+              throw new Error("Token refresh response missing tokens.");
+            }
+
+            writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+          };
+
+          const loop = async () => {
+            if (!refreshUrl) {
+              console.error("Token refresh disabled: missing KERNEL_REFRESH_URL.");
+              return;
+            }
+            if (!owner || !repo || !installationId) {
+              console.error("Token refresh disabled: missing repo context.");
+              return;
+            }
+
+            while (true) {
+              await sleep(intervalSeconds * 1000);
+              try {
+                await refreshOnce();
+                process.stdout.write("Token refresh: updated.\n");
+              } catch (error) {
+                console.error(String(error?.message || error));
+                await sleep(retrySeconds * 1000);
+              }
+            }
+          };
+
+          loop().catch((error) => {
+            console.error(String(error?.message || error));
+          });
+          NODE
+
+          if [ -n "$KERNEL_REFRESH_URL" ]; then
+            node "$RUNNER_TEMP/ubq-token-refresh.js" &
+            echo "$!" > "$RUNNER_TEMP/ubq_token_refresh.pid"
+          else
+            echo "Kernel refresh URL not set; token refresh disabled."
+          fi
+
+      - name: Create working branch
+        run: |
+          git config user.name "UbiquityOS Agent"
+          git config user.email "bot@ubiquity.os"
+          git switch -c "${{ needs.plan.outputs.branch }}"
+
+      - name: Download patch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/agent-patches
+          pattern: agent-patch-*
+
+      - name: Build matrix summary
+        env:
+          APPLY_ORDER_JSON: ${{ needs.plan.outputs.apply_order }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/agent-patches
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const artifactsDir = String(process.env.ARTIFACTS_DIR || "").trim();
+          const applyOrderRaw = String(process.env.APPLY_ORDER_JSON || "[]");
+          let applyOrder = [];
+          try {
+            applyOrder = JSON.parse(applyOrderRaw);
+          } catch {
+            applyOrder = [];
+          }
+          if (!Array.isArray(applyOrder)) applyOrder = [];
+
+          const summaryPath = path.join(process.env.RUNNER_TEMP || "/tmp", "agent-summary.md");
+          const lines = [];
+
+          const readArtifact = (agentId) => {
+            const dir = path.join(artifactsDir, `agent-patch-${agentId}`);
+            const metaPath = path.join(dir, "metadata.json");
+            const summaryFile = path.join(dir, "summary.md");
+            if (!fs.existsSync(metaPath)) return null;
+            let meta = null;
+            try {
+              meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+            } catch {
+              meta = null;
+            }
+            const summary = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, "utf8").trim() : "";
+            return { meta, summary };
+          };
+
+          for (const agentId of applyOrder) {
+            const data = readArtifact(agentId);
+            if (!data || !data.meta) continue;
+            const title = data.meta.agent_title ? `${agentId} — ${data.meta.agent_title}` : agentId;
+            lines.push(`## ${title}`);
+            if (data.meta.task) lines.push(`Task: ${data.meta.task}`);
+            if (Array.isArray(data.meta.changed_files) && data.meta.changed_files.length) {
+              lines.push("Changed files:");
+              for (const file of data.meta.changed_files) lines.push(`- ${file}`);
+            }
+            if (data.summary) {
+              lines.push("");
+              lines.push(data.summary);
+            }
+            lines.push("");
+          }
+
+          if (lines.length === 0) {
+            lines.push("No agent summaries were produced.");
+          }
+
+          fs.writeFileSync(summaryPath, lines.join("\n"), "utf8");
+          NODE
+
+      - name: Apply agent patches
+        id: apply
+        env:
+          APPLY_ORDER_JSON: ${{ needs.plan.outputs.apply_order }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/agent-patches
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { execFileSync } = require("node:child_process");
+
+          const artifactsDir = String(process.env.ARTIFACTS_DIR || "").trim();
+          const applyOrderRaw = String(process.env.APPLY_ORDER_JSON || "[]");
+          let applyOrder = [];
+          try {
+            applyOrder = JSON.parse(applyOrderRaw);
+          } catch {
+            applyOrder = [];
+          }
+          if (!Array.isArray(applyOrder)) applyOrder = [];
+
+          let conflicts = false;
+          const applied = [];
+          const skipped = [];
+          const missing = [];
+
+          for (const agentId of applyOrder) {
+            const patchPath = path.join(artifactsDir, `agent-patch-${agentId}`, "patch.diff");
+            if (!fs.existsSync(patchPath)) {
+              missing.push(agentId);
+              continue;
+            }
+            const content = fs.readFileSync(patchPath, "utf8");
+            if (!content.trim()) {
+              skipped.push(agentId);
+              continue;
+            }
+            try {
+              execFileSync("git", ["apply", "--3way", "--reject", patchPath], { stdio: "inherit" });
+              applied.push(agentId);
+            } catch (error) {
+              conflicts = true;
+              applied.push(agentId);
+            }
+          }
+
+          const outputLines = [];
+          outputLines.push(`conflicts=${conflicts}`);
+          outputLines.push(`applied=${applied.join(",")}`);
+          outputLines.push(`skipped=${skipped.join(",")}`);
+          outputLines.push(`missing=${missing.join(",")}`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputLines.join("\n")}\n`);
+          NODE
+
+      - name: Prepare conflict report
+        if: steps.apply.outputs.conflicts == 'true'
+        env:
+          ARTIFACTS_DIR: ${{ runner.temp }}/agent-patches
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { execFileSync } = require("node:child_process");
+
+          const reportPath = path.join(process.env.RUNNER_TEMP || "/tmp", "conflict-report.md");
+          const findOutput = execFileSync("find", [".", "-name", "*.rej", "-o", "-name", "*.orig"], { encoding: "utf8" });
+          const files = findOutput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+          const lines = [];
+          lines.push("# Conflict Report");
+          if (files.length === 0) {
+            lines.push("No .rej or .orig files found; git apply reported conflicts, but no rejects remain.");
+          }
+
+          for (const file of files) {
+            lines.push(`## ${file}`);
+            const content = fs.readFileSync(file, "utf8");
+            const limited = content.length > 6000 ? `${content.slice(0, 6000)}\n...(truncated)` : content;
+            lines.push("```");
+            lines.push(limited);
+            lines.push("```");
+          }
+
+          fs.writeFileSync(reportPath, lines.join("\n"), "utf8");
+          NODE
+
+      - name: Write conflict resolver prompt
+        if: steps.apply.outputs.conflicts == 'true'
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const planJson = String(process.env.PLAN_JSON || "").trim();
+          const reportPath = path.join(process.env.RUNNER_TEMP || "/tmp", "conflict-report.md");
+          const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, "utf8").trim() : "No report available.";
+          const busInstructions = [
+            "Coordination (agent message bus):",
+            "- Poll for context from other agents before resolving conflicts.",
+            "- Post a summary when conflicts are resolved.",
+            "- Auth env is already set (UBQ_AGENT_AUTH_TOKEN/GH_TOKEN, UBQ_KERNEL_TOKEN, UBQ_GH_OWNER, UBQ_GH_REPO, UBQ_GH_INSTALLATION_ID, UBQ_AGENT_BUS_URL).",
+            `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 100`,
+            `- Update: node scripts/agent-bus.mjs post --agent "conflict-resolver" --channel "conflicts" --kind "resolution" --body "Resolved conflicts in <files>"`,
+          ].join("\n");
+
+          const sections = [
+            "You are a conflict resolver agent. Your job is to resolve patch rejects from a multi-agent run.",
+            "Rules:",
+            "- Prioritize the original plan and agent tasks to decide which hunks to keep.",
+            "- Only touch files that are mentioned in the conflict report or required by the plan.",
+            "- Remove any .rej/.orig files after integrating needed changes.",
+            "- Do not run git commit or push.",
+            busInstructions,
+            "Plan JSON:",
+            planJson || "(missing)",
+            "Conflict report:",
+            report,
+          ];
+
+          fs.writeFileSync(".codex.resolve.prompt.txt", `${sections.join("\n\n")}\n`, "utf8");
+          NODE
+
+      - name: Start ai.ubq.fi Responses forwarder
+        if: steps.apply.outputs.conflicts == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          PORT: "4010"
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ubq-responses-forwarder.js" <<'NODE'
+          const http = require("node:http");
+          const { Readable } = require("node:stream");
+
+          const port = Number.parseInt(process.env.PORT || "4010", 10);
+          const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
+
+          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
+          const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!owner || !repo) {
+            console.error("Missing GH_OWNER/GH_REPO");
+            process.exit(1);
+          }
+
+          const readTokens = () => {
+            if (tokenFile) {
+              try {
+                const raw = require("node:fs").readFileSync(tokenFile, "utf8");
+                const data = JSON.parse(raw);
+                const authToken = typeof data.authToken === "string" ? data.authToken.trim() : "";
+                const kernelToken = typeof data.kernelToken === "string" ? data.kernelToken.trim() : "";
+                if (authToken) return { authToken, kernelToken };
+              } catch {
+                // ignore and fall back to initial
+              }
+            }
+            return { authToken: initialAuthToken, kernelToken: initialKernelToken };
+          };
+
+          const server = http.createServer(async (req, res) => {
+            try {
+              const url = new URL(req.url || "/", "http://127.0.0.1");
+              if (req.method === "GET" && url.pathname === "/health") {
+                res.writeHead(200, { "Content-Type": "text/plain" });
+                res.end("ok");
+                return;
+              }
+
+              const chunks = [];
+              for await (const chunk of req) chunks.push(chunk);
+              const body = Buffer.concat(chunks);
+
+              const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
+
+              const { authToken, kernelToken } = readTokens();
+              if (!authToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing auth token");
+                return;
+              }
+              if (authToken.startsWith("gh") && !kernelToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing kernel token");
+                return;
+              }
+
+              const headers = {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": req.headers["content-type"] || "application/json",
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+              };
+              if (installationId) headers["X-GitHub-Installation-Id"] = installationId;
+              if (kernelToken) headers["X-Ubiquity-Kernel-Token"] = kernelToken;
+
+              const upstream = await fetch(upstreamUrl, {
+                method: req.method || "POST",
+                headers,
+                body: body.length ? body : undefined,
+              });
+
+              res.statusCode = upstream.status;
+
+              const passthroughHeaders = ["content-type", "cache-control", "x-request-id", "x-ubq-upstream"];
+              for (const key of passthroughHeaders) {
+                const value = upstream.headers.get(key);
+                if (value) res.setHeader(key, value);
+              }
+
+              if (!upstream.body) {
+                const text = await upstream.text().catch(() => "");
+                res.end(text);
+                return;
+              }
+
+              Readable.fromWeb(upstream.body).pipe(res);
+            } catch (error) {
+              res.statusCode = 502;
+              res.setHeader("Content-Type", "text/plain");
+              res.end(String(error?.message || error || "upstream error"));
+            }
+          });
+
+          server.listen(port, "127.0.0.1", () => {
+            process.stdout.write(`ubq-responses-forwarder listening on 127.0.0.1:${port}\n`);
+          });
+          NODE
+
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
+
+          for _ in {1..30}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              echo "Forwarder ready."
+              exit 0
+            fi
+            sleep 0.2
+          done
+
+          echo "Forwarder failed to start" >&2
+          exit 1
+
+      - name: Run Codex (conflict resolver)
+        if: steps.apply.outputs.conflicts == 'true'
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          UBQ_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UBQ_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UBQ_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UBQ_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UBQ_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UBQ_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.resolve.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ needs.plan.outputs.sandbox }}
+          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
+          model: ${{ needs.plan.outputs.model }}
+          effort: ${{ needs.plan.outputs.effort }}
+          codex-args: >-
+            ${{ needs.plan.outputs.codex_args }}
+            --config sandbox_workspace_write.network_access=true
+            --config shell_environment_policy.ignore_default_excludes=true
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_AGENT_AUTH_TOKEN","UBQ_KERNEL_TOKEN","UBQ_GH_OWNER","UBQ_GH_REPO","UBQ_GH_INSTALLATION_ID","UBQ_AGENT_BUS_URL"]
+
+      - name: Verify conflicts resolved
+        if: steps.apply.outputs.conflicts == 'true'
+        run: |
+          if find . -name "*.rej" -o -name "*.orig" | grep -q .; then
+            echo "Conflict rejects remain after resolver run." >&2
+            exit 1
+          fi
+
+      - name: Run tests (optional)
+        if: needs.plan.outputs.test_command != ''
+        run: ${{ needs.plan.outputs.test_command }}
+
+      - name: Detect diff
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/ubiquityos-agent"
+          git diff --name-only > "$RUNNER_TEMP/ubiquityos-agent/changed-files.txt"
+
+      - name: Capture dry-run artifacts
+        if: needs.plan.outputs.dry_run == 'true'
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/dry-run"
+          mkdir -p "$out_dir"
+          git diff --binary > "$out_dir/patch.diff"
+          if [ -f "$RUNNER_TEMP/agent-summary.md" ]; then
+            cp "$RUNNER_TEMP/agent-summary.md" "$out_dir/agent-summary.md"
+          fi
+
+      - name: Upload dry-run artifacts
+        if: needs.plan.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: dry-run-output
+          path: ${{ runner.temp }}/dry-run
+
+      - name: Commit + push
+        if: steps.diff.outputs.changed == 'true' && needs.plan.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
+            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
+            if [ -n "$refreshed_token" ]; then
+              export GH_TOKEN="$refreshed_token"
+            fi
+          fi
+
+          git add -A
+          git commit -m "${{ needs.plan.outputs.commit_message }}" || true
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ needs.plan.outputs.repo }}.git"
+          git push -u origin "${{ needs.plan.outputs.branch }}"
+
+      - name: Create or find PR
+        if: steps.diff.outputs.changed == 'true' && needs.plan.outputs.dry_run != 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          repo="${{ needs.plan.outputs.repo }}"
+          head="${{ needs.plan.outputs.branch }}"
+          base="$(gh api "repos/$repo" -q .default_branch || echo "main")"
+          title="Agent: #${{ needs.plan.outputs.issue_number }}"
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          existing="$(gh pr list --repo "$repo" --head "$head" --json url -q '.[0].url' || true)"
+          if [ -n "$existing" ]; then
+            echo "url=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          body_file="$RUNNER_TEMP/ubiquityos-agent/pr-body.md"
+          mkdir -p "$(dirname "$body_file")"
+          cat > "$body_file" <<EOF
+          Trigger: #${{ needs.plan.outputs.issue_number }}
+
+          Task:
+          > ${{ needs.plan.outputs.task }}
+
+          Run logs: ${run_url}
+          EOF
+
+          summary_file="$RUNNER_TEMP/agent-summary.md"
+          if [ -f "$summary_file" ]; then
+            printf "\nMatrix agent summary:\n\n" >> "$body_file"
+            cat "$summary_file" >> "$body_file"
+          fi
+
+          args=(--repo "$repo" --head "$head" --base "$base" --title "$title" --body-file "$body_file")
+          if [ "${{ needs.plan.outputs.draft_pr }}" = "true" ]; then
+            args+=(--draft)
+          fi
+          url="$(gh pr create "${args[@]}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment (matrix summary)
+        if: success() && needs.plan.outputs.repo != '' && needs.plan.outputs.issue_number != '' && needs.plan.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+        run: |
+          set -euo pipefail
+
+          repo="${{ needs.plan.outputs.repo }}"
+          issue_number="${{ needs.plan.outputs.issue_number }}"
+          pr_url="${{ steps.pr.outputs.url }}"
+          summary_file="$RUNNER_TEMP/agent-summary.md"
+          reply_file="$RUNNER_TEMP/matrix-reply.md"
+
+          {
+            echo "Matrix run completed."
+            if [ -n "$pr_url" ]; then
+              echo ""
+              echo "PR: ${pr_url}"
+            fi
+            if [ -f "$summary_file" ]; then
+              echo ""
+              cat "$summary_file"
+            fi
+          } > "$reply_file"
+
+          gh issue comment "$issue_number" --repo "$repo" --body-file "$reply_file"
+
+      - name: Stop ai.ubq.fi Responses forwarder
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+
+      - name: Stop token refresher
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
+          fi
+          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
+            rm -f "$UBQ_TOKEN_FILE" || true
+          fi
+
+  agent:
+    name: "Agent"
+    needs: plan
+    if: needs.plan.outputs.allowed == 'true' && needs.plan.outputs.mode != 'matrix' && needs.plan.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions: write-all
+    timeout-minutes: 360
     environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'main' || 'development' }}
 
     steps:
@@ -88,6 +2037,16 @@ jobs:
           const testCommand = typeof settings.testCommand === "string" ? settings.testCommand : "";
           const agentMemory = typeof settings.agentMemory === "string" ? settings.agentMemory : "";
           const environment = typeof settings.environment === "string" ? settings.environment : "";
+          const kernelRefreshUrl = typeof settings.kernelRefreshUrl === "string" ? settings.kernelRefreshUrl : "";
+          const kernelRefreshIntervalSeconds = (() => {
+            const raw = settings.kernelRefreshIntervalSeconds;
+            if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(300, Math.trunc(raw));
+            if (typeof raw === "string" && raw.trim()) {
+              const parsed = Number(raw);
+              if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
+            }
+            return 2700;
+          })();
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
             : [];
@@ -168,6 +2127,8 @@ jobs:
           setOutput("test_command", testCommand);
           setOutput("agent_memory", agentMemory);
           setOutput("environment", environment);
+          setOutput("kernel_refresh_url", kernelRefreshUrl);
+          setOutput("kernel_refresh_interval_seconds", String(kernelRefreshIntervalSeconds));
           setOutput("config_path_candidates", JSON.stringify(configPathCandidates));
           setOutput("marketplace_org", marketplaceOrg);
           setOutput("marketplace_auth_token", marketplaceAuthToken);
@@ -180,6 +2141,156 @@ jobs:
         if: steps.parse.outputs.marketplace_auth_token != ''
         run: |
           echo "::add-mask::${{ steps.parse.outputs.marketplace_auth_token }}"
+
+      - name: Initialize token refresh
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          AUTH_TOKEN: ${{ inputs.authToken }}
+          KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          KERNEL_REFRESH_URL: ${{ steps.parse.outputs.kernel_refresh_url }}
+          REFRESH_INTERVAL_SECONDS: ${{ steps.parse.outputs.kernel_refresh_interval_seconds }}
+          GH_OWNER: ${{ steps.parse.outputs.repo_owner }}
+          GH_REPO: ${{ steps.parse.outputs.repo_name }}
+          GH_INSTALLATION_ID: ${{ steps.parse.outputs.installation_id }}
+        run: |
+          set -euo pipefail
+          real_gh="$(command -v gh || true)"
+          if [ -z "$real_gh" ]; then
+            echo "gh CLI not found; cannot set refresh-aware wrapper." >&2
+            exit 1
+          fi
+          export REAL_GH="$real_gh"
+
+          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
+
+          const binDir = path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const realGh = String(process.env.REAL_GH || "").trim();
+          const wrapperPath = path.join(binDir, "gh");
+          const wrapper = `#!/usr/bin/env bash
+          set -euo pipefail
+          token_file="\\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+          fi
+          exec "${realGh}" "$@"
+          `;
+          fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
+          NODE
+
+          cat > "$RUNNER_TEMP/ubq-token-refresh.js" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const retrySeconds = 60;
+
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const readTokens = () => {
+            try {
+              const raw = fs.readFileSync(tokenFile, "utf8");
+              const data = JSON.parse(raw);
+              return {
+                authToken: typeof data.authToken === "string" ? data.authToken.trim() : "",
+                kernelToken: typeof data.kernelToken === "string" ? data.kernelToken.trim() : "",
+              };
+            } catch {
+              return { authToken: "", kernelToken: "" };
+            }
+          };
+
+          const writeTokens = (authToken, kernelToken, expiresAt) => {
+            const payload = {
+              authToken,
+              kernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
+
+          const refreshOnce = async () => {
+            const { authToken, kernelToken } = readTokens();
+            if (!authToken || !kernelToken) {
+              throw new Error("Token refresh: missing authToken or kernelToken.");
+            }
+
+            const res = await fetch(refreshUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                "Content-Type": "application/json",
+                "X-Ubiquity-Kernel-Token": kernelToken,
+                "X-GitHub-Owner": owner,
+                "X-GitHub-Repo": repo,
+                "X-GitHub-Installation-Id": installationId,
+              },
+            });
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(`Token refresh failed: ${res.status} ${text}`);
+            }
+
+            const body = await res.json();
+            if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+              throw new Error("Token refresh response missing tokens.");
+            }
+
+            writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+          };
+
+          const loop = async () => {
+            if (!refreshUrl) {
+              console.error("Token refresh disabled: missing KERNEL_REFRESH_URL.");
+              return;
+            }
+            if (!owner || !repo || !installationId) {
+              console.error("Token refresh disabled: missing repo context.");
+              return;
+            }
+
+            while (true) {
+              await sleep(intervalSeconds * 1000);
+              try {
+                await refreshOnce();
+                process.stdout.write("Token refresh: updated.\n");
+              } catch (error) {
+                console.error(String(error?.message || error));
+                await sleep(retrySeconds * 1000);
+              }
+            }
+          };
+
+          loop().catch((error) => {
+            console.error(String(error?.message || error));
+          });
+          NODE
+
+          if [ -n "$KERNEL_REFRESH_URL" ]; then
+            node "$RUNNER_TEMP/ubq-token-refresh.js" &
+            echo "$!" > "$RUNNER_TEMP/ubq_token_refresh.pid"
+          else
+            echo "Kernel refresh URL not set; token refresh disabled."
+          fi
 
       - name: Write request comment updater
         if: steps.parse.outputs.allowed == 'true'
@@ -216,22 +2327,21 @@ jobs:
           const summary = summaryPath && fs.existsSync(summaryPath) ? fs.readFileSync(summaryPath, "utf8").trim() : "";
 
           const updatedAt = new Date().toISOString();
-          const blockLines = [];
-          blockLines.push("<!-- ubiquityos-agent");
-          if (runUrl) blockLines.push(`Run logs: ${runUrl}`);
-          if (status) blockLines.push(`Status: ${status}`);
-          if (changed) blockLines.push(`Repo changes: ${changed}`);
-          if (prUrl) blockLines.push(`PR: ${prUrl}`);
-          if (stateId) blockLines.push(`StateId: ${stateId}`);
-          if (detail) blockLines.push(detail);
-          blockLines.push("If this run exceeds ~55 minutes, GitHub App auth may expire and prevent a final status comment.");
-          blockLines.push(`Updated: ${updatedAt}`);
-          if (summary) {
-            blockLines.push("");
-            blockLines.push("Agent summary:");
-            blockLines.push(summary);
-          }
-          blockLines.push("-->");
+          const blockLines = [
+            "<!-- ubiquityos-agent",
+            runUrl ? `Run logs: ${runUrl}` : null,
+            status ? `Status: ${status}` : null,
+            changed ? `Repo changes: ${changed}` : null,
+            prUrl ? `PR: ${prUrl}` : null,
+            stateId ? `StateId: ${stateId}` : null,
+            detail ? detail : null,
+            "If this run exceeds ~55 minutes, GitHub App auth may expire and prevent a final status comment.",
+            `Updated: ${updatedAt}`,
+            summary ? "" : null,
+            summary ? "Agent summary:" : null,
+            summary ? summary : null,
+            "-->",
+          ].filter((line) => line !== null);
           const block = blockLines.join("\n");
 
           const commentRoute =
@@ -355,27 +2465,24 @@ jobs:
           const issue = JSON.parse(fs.readFileSync(".ubiquityos.issue.json", "utf8"));
           const comments = JSON.parse(fs.readFileSync(".ubiquityos.comments.json", "utf8"));
 
-          const lines = [];
-          lines.push(`# ${issue.title || "Issue"}`);
-          lines.push("");
-          lines.push(`URL: ${issue.html_url || ""}`);
-          lines.push(`Author: @${issue.user?.login || "unknown"}`);
-          lines.push("");
-          if (issue.body) {
-            lines.push("## Body");
-            lines.push(issue.body);
-            lines.push("");
-          }
-          lines.push("## Labels");
-          lines.push((issue.labels || []).map((l) => (typeof l?.name === "string" ? `- ${l.name}` : "")).filter(Boolean).join("\n") || "- (none)");
-          lines.push("");
-          lines.push("## Comments");
-          for (const c of comments) {
-            lines.push(`### @${c.user?.login || "unknown"} — ${c.created_at || ""}`);
-            lines.push(c.body || "");
-            lines.push("");
-          }
-          fs.writeFileSync(".ubiquityos.issue.md", lines.join("\n"));
+          const title = issue.title || "Issue";
+          const url = issue.html_url || "";
+          const author = issue.user?.login || "unknown";
+
+          const bodySection = issue.body ? `## Body\n${issue.body}\n\n` : "";
+
+          const labels =
+            (issue.labels || [])
+              .map((l) => (typeof l?.name === "string" ? `- ${l.name}` : ""))
+              .filter(Boolean)
+              .join("\n") || "- (none)";
+
+          const commentsMarkdown = comments
+            .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
+            .join("\n\n");
+
+          const markdown = `# ${title}\n\nURL: ${url}\nAuthor: @${author}\n\n${bodySection}## Labels\n${labels}\n\n## Comments\n${commentsMarkdown}\n`;
+          fs.writeFileSync(".ubiquityos.issue.md", markdown);
           NODE
 
       - name: Fetch marketplace plugin registry (best-effort)
@@ -469,22 +2576,29 @@ jobs:
                 "- For `gh issue create`, always pass `--title` and `--body` (and labels) to avoid prompts; it prints the new issue URL on stdout.",
                 "- Always pass `--repo <owner>/<repo>` for `gh issue`/`gh pr` commands.",
                 "- If you're unsure about flags, run `gh <command> -h` to view the subcommand help.",
-                "- If `gh` errors about missing `GH_TOKEN`, stop and report it; do not attempt to discover tokens from files.",
+                "- If `gh` errors about missing `GH_TOKEN`, set it from the workflow input token (`.inputs.authToken` in `$GITHUB_EVENT_PATH`) and retry; do not attempt to discover tokens from other files.",
                 "",
                 "Plugin install (PR-first):",
                 "- If the task is to enable/install a plugin, edit the active `.github/.ubiquity-os.config*.yml` in this repo (see the config path candidates above).",
                 "- Prefer a blank YAML value (`plugin-id:`) over `{}` when no plugin configuration is needed.",
+                "- Prefer installing marketplace plugins without `@ref` so the kernel uses the plugin repo’s default branch (`main`); only specify `@<ref>` if explicitly requested.",
                 "- If `.ubiquityos.marketplace.json` is present, use it to discover existing marketplace plugins before creating a new one.",
                 "- Do not push branches or open PRs yourself; making file edits is enough for the workflow to open an install PR.",
                 "",
                 "Marketplace plugin generation (when explicitly requested):",
                 "- First, check if an existing marketplace plugin already fits; prefer installing/reusing over duplicating.",
                 "- If creating a new plugin repo in the marketplace org:",
-                "  - Work in `$RUNNER_TEMP` (or `/tmp`) so you don't accidentally commit the plugin repo into this checked-out repo.",
-                "  - Create the repo under `$UBQ_MARKETPLACE_ORG` and push the initial implementation there (you may open a PR in that repo if needed).",
-                "  - Ensure `manifest.json` is valid (must include non-empty `name` and `short_name`, and `ubiquity:listeners` if it should run on specific events).",
-                "  - Add a `.github/workflows/compute.yml` that accepts the kernel dispatch inputs (stateId/eventPayload/settings/authToken/signature/etc).",
-                "  - Run the plugin's tests/lint (or at minimum a build) before proposing installation.",
+                  "  - Work in `$RUNNER_TEMP` (or `/tmp`) so you don't accidentally commit the plugin repo into this checked-out repo.",
+                  "  - Create the repo under `$UBQ_MARKETPLACE_ORG` and push the initial implementation there (you may open a PR in that repo if needed).",
+                  "  - Ensure `manifest.json` is valid (must include non-empty `name` and `short_name`, and `ubiquity:listeners` if it should run on specific events).",
+                  "  - Add a `.github/workflows/compute.yml` that accepts the kernel dispatch inputs (stateId/eventPayload/settings/authToken/signature/etc).",
+                  "  - Create on the default branch (`main`) so the plugin is usable immediately after install.",
+                  "  - GitHub `workflow_dispatch` requires the workflow file to exist on the plugin repo *default branch* (not only on a non-default branch). Ensure `compute.yml` is present on `main`.",
+                  '  - The kernel passes `inputs.command` as JSON: `{"name":"<cmd>","parameters":{...}}` (not a plain string). Parse it (or use plugin-sdk) and route on `.name`.',
+                  "  - GitHub Actions can take 1–3 minutes to index workflows in a newly created repo; `workflow_dispatch` may return 404 even if the file exists.",
+                  "    - Mitigation (preferred): include a cheap `on: push` trigger for `.github/workflows/compute.yml` and guard the real job with `if: github.event_name == 'workflow_dispatch'` so the initial commit forces indexing without doing work.",
+                  "    - If validating immediately, poll `gh api repos/<org>/<repo>/actions/workflows` until it lists your workflow before dispatching/testing.",
+                  "  - Run the plugin's tests/lint (or at minimum a build) before proposing installation.",
               ]
             : [
                 "GitHub operations:",
@@ -576,24 +2690,32 @@ jobs:
           // Prefer the direct Deno Deploy domain to avoid Cloudflare bot/challenge pages from CI IP ranges.
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
-          const authToken = String(process.env.AUTH_TOKEN || "").trim();
-          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
+          const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
 
-          if (!authToken) {
-            console.error("Missing AUTH_TOKEN");
-            process.exit(1);
-          }
-          if (authToken.startsWith("gh") && !kernelToken) {
-            console.error("Missing KERNEL_TOKEN (required for GitHub auth to ai.ubq.fi)");
-            process.exit(1);
-          }
           if (!owner || !repo) {
             console.error("Missing GH_OWNER/GH_REPO");
             process.exit(1);
           }
+
+          const readTokens = () => {
+            if (tokenFile) {
+              try {
+                const raw = require("node:fs").readFileSync(tokenFile, "utf8");
+                const data = JSON.parse(raw);
+                const authToken = typeof data.authToken === "string" ? data.authToken.trim() : "";
+                const kernelToken = typeof data.kernelToken === "string" ? data.kernelToken.trim() : "";
+                if (authToken) return { authToken, kernelToken };
+              } catch {
+                // ignore and fall back to initial
+              }
+            }
+            return { authToken: initialAuthToken, kernelToken: initialKernelToken };
+          };
 
           const server = http.createServer(async (req, res) => {
             try {
@@ -609,6 +2731,20 @@ jobs:
               const body = Buffer.concat(chunks);
 
               const upstreamUrl = new URL(url.pathname + url.search, baseUrl);
+
+              const { authToken, kernelToken } = readTokens();
+              if (!authToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing auth token");
+                return;
+              }
+              if (authToken.startsWith("gh") && !kernelToken) {
+                res.statusCode = 401;
+                res.setHeader("Content-Type", "text/plain");
+                res.end("Missing kernel token");
+                return;
+              }
 
               const headers = {
                 Authorization: `Bearer ${authToken}`,
@@ -691,7 +2827,7 @@ jobs:
             ${{ steps.parse.outputs.codex_args }}
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_MARKETPLACE_GH_TOKEN","UBQ_MARKETPLACE_ORG"]
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_MARKETPLACE_GH_TOKEN","UBQ_MARKETPLACE_ORG","UBQ_TOKEN_FILE"]
 
       - name: Run Codex (restricted)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
@@ -885,6 +3021,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
+            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
+            if [ -n "$refreshed_token" ]; then
+              export GH_TOKEN="$refreshed_token"
+            fi
+          fi
+
           git add -A
           git commit -m "${{ steps.parse.outputs.commit_message }}" || true
 
@@ -1026,6 +3169,16 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/ubq_watchdog.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_watchdog.pid")" 2>/dev/null || true
+          fi
+
+      - name: Stop token refresher
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
+          fi
+          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
+            rm -f "$UBQ_TOKEN_FILE" || true
           fi
 
       - name: Stop ai.ubq.fi Responses forwarder

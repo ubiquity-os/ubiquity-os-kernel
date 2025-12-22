@@ -1,10 +1,11 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger";
 import { GitHubEventHandler } from "../github-event-handler";
+import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
-import { getPluginsForEvent } from "../utils/plugins";
+import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
 import issueCommentEdited from "./issue-comment-edited";
@@ -30,6 +31,44 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("push", handlePushEvent);
   eventHandler.on("installation.created", () => {}); // No-op to handle event
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
+}
+
+function extractLeadingSlashCommandName(body: string): string | null {
+  const trimmed = body.trimStart();
+  const match = /^\/([\w-]+)/u.exec(trimmed);
+  return match?.[1] ? match[1].toLowerCase() : null;
+}
+
+function extractSlashCommandNameFromCommentBody(body: string): string | null {
+  const direct = extractLeadingSlashCommandName(body);
+  if (direct) return direct;
+
+  const mention = /@ubiquityos\b/i.exec(body);
+  if (!mention || mention.index === undefined) return null;
+  const afterMention = body.slice(mention.index + mention[0].length);
+  return extractLeadingSlashCommandName(afterMention);
+}
+
+async function filterPluginsForSlashCommandEvent(context: GitHubContext, plugins: ResolvedPlugin[], slashCommandName: string): Promise<ResolvedPlugin[]> {
+  const filtered: ResolvedPlugin[] = [];
+  for (const plugin of plugins) {
+    try {
+      const manifest = await getManifest(context, plugin.target);
+      if (!manifest?.commands) {
+        filtered.push(plugin);
+        continue;
+      }
+      const commandNames = Object.keys(manifest.commands).map((name) => name.toLowerCase());
+      if (commandNames.includes(slashCommandName)) {
+        context.logger.debug({ plugin: plugin.key, command: slashCommandName }, "Skipping global dispatch for command plugin; slash handler will dispatch");
+        continue;
+      }
+    } catch (error) {
+      context.logger.debug({ plugin: plugin.key, err: error }, "Failed to inspect plugin manifest for slash-command filtering; allowing dispatch");
+    }
+    filtered.push(plugin);
+  }
+  return filtered;
 }
 
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
@@ -61,6 +100,24 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   }
 
   const resolvedPlugins = await getPluginsForEvent(context, config.plugins, context.key);
+
+  if (context.key === "issue_comment.created" && "comment" in context.payload) {
+    const commandName = extractSlashCommandNameFromCommentBody(String(context.payload.comment?.body ?? ""));
+    if (commandName) {
+      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
+      resolvedPlugins.length = 0;
+      resolvedPlugins.push(...filtered);
+    }
+  }
+
+  if (context.key === "pull_request_review_comment.created" && "comment" in context.payload) {
+    const commandName = extractSlashCommandNameFromCommentBody(String(context.payload.comment?.body ?? ""));
+    if (commandName) {
+      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
+      resolvedPlugins.length = 0;
+      resolvedPlugins.push(...filtered);
+    }
+  }
 
   if (resolvedPlugins.length === 0) {
     context.logger.debug("No handler found for event");

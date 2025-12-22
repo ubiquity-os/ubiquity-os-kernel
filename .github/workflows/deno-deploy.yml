@@ -69,6 +69,7 @@ jobs:
           UBQ_AGENT_REF: ${{ secrets.UBQ_AGENT_REF || '' }}
           UBQ_AI_BASE_URL: ${{ secrets.UBQ_AI_BASE_URL || 'https://ai.ubq.fi' }}
           UBQ_AI_FALLBACK_BASE_URL: ${{ secrets.UBQ_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
+          UBQ_KERNEL_REFRESH_URL: ${{ secrets.UBQ_KERNEL_REFRESH_URL || '' }}
           NODE_ENV: "production"
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}

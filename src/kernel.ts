@@ -5,12 +5,16 @@ import { Context, Hono, HonoRequest } from "hono";
 import { getRuntimeKey, env as honoEnv } from "hono/adapter";
 import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
+import { createAppAuth } from "@octokit/auth-app";
 import OpenAI from "openai";
 import packageJson from "../package.json";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
+import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation";
+import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa";
 import { logger } from "./logger/logger";
+import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
 export const app = new Hono();
 
@@ -36,6 +40,73 @@ app.get("/x25519_public_key", async (ctx: Context) => {
   return ctx.text(sodium.default.crypto_scalarmult_base(binaryPrivate, "base64"));
 });
 
+app.post("/internal/agent/refresh-token", async (ctx: Context) => {
+  try {
+    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const authHeader = ctx.req.header("authorization") ?? "";
+    const authToken = getBearerToken(authHeader);
+    if (!authToken) {
+      return ctx.json({ error: "Missing Authorization bearer token." }, 401);
+    }
+    if (!authToken.startsWith("gh")) {
+      return ctx.json({ error: "GitHub installation token required." }, 400);
+    }
+
+    const kernelToken = (ctx.req.header("x-ubiquity-kernel-token") ?? "").trim();
+    if (!kernelToken) {
+      return ctx.json({ error: "Missing X-Ubiquity-Kernel-Token." }, 401);
+    }
+
+    const owner = (ctx.req.header("x-github-owner") ?? "").trim();
+    const repo = (ctx.req.header("x-github-repo") ?? "").trim();
+    const installationIdRaw = (ctx.req.header("x-github-installation-id") ?? "").trim();
+    if (!owner || !repo || !installationIdRaw) {
+      return ctx.json({ error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id." }, 400);
+    }
+
+    const installationId = Number(installationIdRaw);
+    if (!Number.isFinite(installationId)) {
+      return ctx.json({ error: "Invalid X-GitHub-Installation-Id." }, 400);
+    }
+
+    const privateKey = normalizeMultilineSecret(env.APP_PRIVATE_KEY);
+    const publicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(privateKey);
+    const verification = await verifyKernelAttestationToken({
+      token: kernelToken,
+      publicKeyPem,
+      expected: {
+        owner,
+        repo,
+        installationId,
+        authToken,
+      },
+    });
+    if (!verification.ok) {
+      return ctx.json({ error: verification.error }, 401);
+    }
+
+    const auth = createAppAuth({ appId: Number(env.APP_ID), privateKey });
+    const refreshed = await auth({ type: "installation", installationId });
+    const refreshedKernelToken = await createKernelAttestationToken({
+      sign: (payload) => signPayload(payload, privateKey),
+      owner,
+      repo,
+      installationId,
+      authToken: refreshed.token,
+      stateId: verification.payload.state_id,
+      ttlSeconds: 3600,
+    });
+
+    return ctx.json({
+      authToken: refreshed.token,
+      ubiquityKernelToken: refreshedKernelToken,
+      expiresAt: "expiresAt" in refreshed ? refreshed.expiresAt : null,
+    });
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
+  }
+});
+
 app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
@@ -53,6 +124,7 @@ app.post("/", async (ctx: Context) => {
       llm: "gpt-5.2",
       aiBaseUrl: env.UBQ_AI_BASE_URL,
       aiFallbackBaseUrl: env.UBQ_AI_FALLBACK_BASE_URL,
+      kernelRefreshUrl: env.UBQ_KERNEL_REFRESH_URL,
       agent: {
         owner: env.UBQ_AGENT_OWNER,
         repo: env.UBQ_AGENT_REPO,
@@ -87,6 +159,13 @@ function handleUncaughtError(ctx: Context, error: unknown) {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
+}
+
+function getBearerToken(authHeader: string): string {
+  const trimmed = authHeader.trim();
+  if (!trimmed) return "";
+  const match = /^Bearer\s+(.+)$/iu.exec(trimmed);
+  return match ? match[1].trim() : "";
 }
 
 function getEventName(request: HonoRequest): WebhookEventName {

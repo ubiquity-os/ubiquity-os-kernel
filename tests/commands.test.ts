@@ -23,10 +23,24 @@ jest.mock("../src/github/utils/workflow-dispatch", () => ({
 
 config({ path: ".dev.vars" });
 
-const name = "ubiquity-os-kernel";
+const kernelRepo = "ubiquity-os-kernel";
+const name = kernelRepo;
 const eventName = "issue_comment.created";
 const UBIQUITY_OS_OWNER = "ubiquity-os";
 const openAi = {} as unknown as OpenAI;
+const baseComment = {
+  user: {
+    login: "test-user",
+    type: "User",
+  },
+};
+
+let nextCommentId = 1000;
+const makeComment = (body: string) => ({
+  ...baseComment,
+  id: nextCommentId++,
+  body,
+});
 
 type LlmRequestPayload = {
   messages?: Array<{ role?: string; content?: unknown }>;
@@ -49,6 +63,15 @@ const eventHandler = {
   environment: "production",
   getToken: jest.fn().mockReturnValue("1234"),
   signPayload: jest.fn().mockReturnValue("sha256=1234"),
+  aiBaseUrl: "https://ai.ubq.fi",
+  aiFallbackBaseUrl: "https://ai-ubq-fi.deno.dev",
+  getKernelPublicKeyPem: jest.fn().mockResolvedValue("test-kernel-key"),
+  kernelRefreshUrl: "",
+  agent: {
+    owner: "ubiquity-os",
+    repo: kernelRepo,
+    workflowId: "agent.yml",
+  },
   logger: logger,
 } as unknown as GitHubEventHandler;
 
@@ -191,9 +214,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "@UbiquityOS can you tell me all available commands",
-        },
+        comment: makeComment("@UbiquityOS can you tell me all available commands"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger: logger,
     } as unknown as GitHubContext);
@@ -236,9 +257,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "@UbiquityOS can you say hello to @pavlovcik",
-        },
+        comment: makeComment("@UbiquityOS can you say hello to @pavlovcik"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
@@ -278,9 +297,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "Hey @UbiquityOS can you say hello to @pavlovcik",
-        },
+        comment: makeComment("Hey @UbiquityOS can you say hello to @pavlovcik"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
@@ -316,9 +333,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "Hey @UbiquityOS rewrite spec based on the thread and set the best time label",
-        },
+        comment: makeComment("Hey @UbiquityOS rewrite spec based on the thread and set the best time label"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
@@ -359,9 +374,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "@UbiquityOS who is the creator of the universe",
-        },
+        comment: makeComment("@UbiquityOS who is the creator of the universe"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
@@ -419,9 +432,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: {
-          body: "/help",
-        },
+        comment: makeComment("/help"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);

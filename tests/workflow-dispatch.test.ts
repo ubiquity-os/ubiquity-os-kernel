@@ -7,6 +7,7 @@ describe("dispatchWorkflow", () => {
   it("should dispatch the provided workflow id", async () => {
     const createWorkflowDispatch = jest.fn().mockResolvedValue({ ok: true });
     const getRepoInstallation = jest.fn().mockResolvedValue({ data: { id: 123 } });
+    const getRepo = jest.fn().mockResolvedValue({ data: { default_branch: "main" } });
 
     const context = {
       octokit: {
@@ -21,6 +22,9 @@ describe("dispatchWorkflow", () => {
           rest: {
             actions: {
               createWorkflowDispatch,
+            },
+            repos: {
+              get: getRepo,
             },
           },
         }),

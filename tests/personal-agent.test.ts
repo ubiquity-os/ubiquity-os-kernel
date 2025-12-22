@@ -9,6 +9,7 @@ import { server } from "./__mocks__/node";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
 const commentCreateEvent = "issue_comment.created";
+let nextCommentId = 1000;
 
 beforeAll(() => {
   server.listen();
@@ -91,6 +92,9 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
         get: () => ({
           data: { default_branch: "main" },
         }),
+        getCollaboratorPermissionLevel: () => ({
+          data: { role_name: "admin" },
+        }),
       },
     },
   };
@@ -100,8 +104,15 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
     name: commentCreateEvent,
     payload: {
       action: "created",
-      repository: { owner: { login: "test_acc" } },
-      comment: { body: commentBody },
+      repository: { owner: { login: "test_acc" }, name: "ubiquity-os-kernel" },
+      comment: {
+        id: nextCommentId++,
+        body: commentBody,
+        user: {
+          login: "test_acc",
+          type: "User",
+        },
+      },
       issue: { user: { login: "test_acc2" }, number: 1 },
     } as GitHubContext<"issue_comment.created">["payload"],
     logger: logger,

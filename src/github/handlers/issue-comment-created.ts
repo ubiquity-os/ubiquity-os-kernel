@@ -4,6 +4,7 @@ import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
+import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
 import { createKernelAttestationToken } from "../utils/kernel-attestation";
 import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
@@ -114,6 +115,17 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   const bodyLower = body.toLowerCase();
   if (context.payload.comment.user?.type !== "User") {
     context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
+    return;
+  }
+
+  const shouldSkip = await shouldSkipDuplicateCommentEvent({
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+    eventName: context.key,
+    commentId: context.payload.comment.id,
+  });
+  if (shouldSkip) {
+    context.logger.info({ commentId: context.payload.comment.id }, "Skipping duplicate comment event");
     return;
   }
 
@@ -501,17 +513,19 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
     });
+    const kernelRefreshUrl = context.eventHandler.kernelRefreshUrl.trim();
     const baseSettings: Record<string, unknown> = {
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
+      ...(kernelRefreshUrl ? { kernelRefreshUrl } : {}),
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
       ...(settingsOverrides ?? {}),
     };
 
     const marketplaceOrg = typeof baseSettings.marketplaceOrg === "string" ? baseSettings.marketplaceOrg.trim() : "ubiquity-os-marketplace";
-    const wantsMarketplaceToken = isPrivilegedAuthorAssociation(context.payload.comment.author_association);
+    const shouldUseMarketplaceToken = isPrivilegedAuthorAssociation(context.payload.comment.author_association);
     let marketplaceAuthToken: string | null = null;
-    if (wantsMarketplaceToken) {
+    if (shouldUseMarketplaceToken) {
       try {
         marketplaceAuthToken = await tryGetInstallationTokenForOwner(context.eventHandler, marketplaceOrg);
       } catch (error) {
