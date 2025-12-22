@@ -788,10 +788,10 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\\${UBQ_TOKEN_FILE:-}"
-          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+          token_file="\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
             auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
-            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+            if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
           `;
@@ -891,6 +891,42 @@ jobs:
           loop().catch((error) => {
             console.error(String(error?.message || error));
           });
+          NODE
+
+          node <<'NODE'
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!refreshUrl) {
+            console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
+            process.exit(0);
+          }
+          if (!authToken || !kernelToken || !owner || !repo || !installationId) {
+            console.error("Token refresh warmup skipped: missing auth/context.");
+            process.exit(0);
+          }
+
+          fetch(refreshUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+              "X-Ubiquity-Kernel-Token": kernelToken,
+              "X-GitHub-Owner": owner,
+              "X-GitHub-Repo": repo,
+              "X-GitHub-Installation-Id": installationId,
+            },
+          })
+            .then((res) => {
+              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            })
+            .catch((err) => {
+              process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
+            });
           NODE
 
           if [ -n "$KERNEL_REFRESH_URL" ]; then
@@ -1353,10 +1389,10 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\\${UBQ_TOKEN_FILE:-}"
-          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+          token_file="\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
             auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
-            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+            if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
           `;
@@ -1456,6 +1492,42 @@ jobs:
           loop().catch((error) => {
             console.error(String(error?.message || error));
           });
+          NODE
+
+          node <<'NODE'
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!refreshUrl) {
+            console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
+            process.exit(0);
+          }
+          if (!authToken || !kernelToken || !owner || !repo || !installationId) {
+            console.error("Token refresh warmup skipped: missing auth/context.");
+            process.exit(0);
+          }
+
+          fetch(refreshUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+              "X-Ubiquity-Kernel-Token": kernelToken,
+              "X-GitHub-Owner": owner,
+              "X-GitHub-Repo": repo,
+              "X-GitHub-Installation-Id": installationId,
+            },
+          })
+            .then((res) => {
+              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            })
+            .catch((err) => {
+              process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
+            });
           NODE
 
           if [ -n "$KERNEL_REFRESH_URL" ]; then
@@ -2180,10 +2252,10 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\\${UBQ_TOKEN_FILE:-}"
-          if [ -n "\\${token_file}" ] && [ -f "\\${token_file}" ]; then
+          token_file="\${UBQ_TOKEN_FILE:-}"
+          if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
             auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
-            if [ -n "\\${auth_token}" ]; then export GH_TOKEN="\\${auth_token}"; fi
+            if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
           `;
@@ -2283,6 +2355,42 @@ jobs:
           loop().catch((error) => {
             console.error(String(error?.message || error));
           });
+          NODE
+
+          node <<'NODE'
+          const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
+          const authToken = String(process.env.AUTH_TOKEN || "").trim();
+          const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
+          const owner = String(process.env.GH_OWNER || "").trim();
+          const repo = String(process.env.GH_REPO || "").trim();
+          const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          if (!refreshUrl) {
+            console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
+            process.exit(0);
+          }
+          if (!authToken || !kernelToken || !owner || !repo || !installationId) {
+            console.error("Token refresh warmup skipped: missing auth/context.");
+            process.exit(0);
+          }
+
+          fetch(refreshUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+              "X-Ubiquity-Kernel-Token": kernelToken,
+              "X-GitHub-Owner": owner,
+              "X-GitHub-Repo": repo,
+              "X-GitHub-Installation-Id": installationId,
+            },
+          })
+            .then((res) => {
+              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            })
+            .catch((err) => {
+              process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
+            });
           NODE
 
           if [ -n "$KERNEL_REFRESH_URL" ]; then
