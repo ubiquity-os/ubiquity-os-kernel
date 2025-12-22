@@ -2,6 +2,12 @@
 
 Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest tests first; use the CLI harness only when you need to exercise HTTP plugins.
 
+## Research Policy (UbiquityOS)
+
+- Do NOT use Perplexity or any web search for UbiquityOS internals, configs, or behavior; there is no public documentation.
+- For UbiquityOS research, rely on local code, tests, and docs in this repository (use `rg` and read source).
+- If the question is about non-UbiquityOS dependencies or general tooling, external research is allowed; otherwise stay local.
+
 ## 🧭 Routing & Prompting Policy
 
 - **Never** implement AI behavior based on keyword/regex triggers (e.g., `if (text.includes("install")) …`) to pick tools/plugins. If the model is making a decision, that decision must be prompt-driven.
