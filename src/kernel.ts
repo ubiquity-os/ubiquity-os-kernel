@@ -110,6 +110,7 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
 app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UBQ_KERNEL_REFRESH_INTERVAL_SECONDS);
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
@@ -125,6 +126,7 @@ app.post("/", async (ctx: Context) => {
       aiBaseUrl: env.UBQ_AI_BASE_URL,
       aiFallbackBaseUrl: env.UBQ_AI_FALLBACK_BASE_URL,
       kernelRefreshUrl: env.UBQ_KERNEL_REFRESH_URL,
+      kernelRefreshIntervalSeconds,
       agent: {
         owner: env.UBQ_AGENT_OWNER,
         repo: env.UBQ_AGENT_REPO,
@@ -190,4 +192,10 @@ function getId(request: HonoRequest): string {
     throw new Error(`Missing "x-github-delivery" header`);
   }
   return id;
+}
+
+function parseOptionalNumber(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

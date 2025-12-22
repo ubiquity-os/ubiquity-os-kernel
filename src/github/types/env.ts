@@ -16,6 +16,7 @@ export const envSchema = T.Object({
   UBQ_AI_BASE_URL: T.String({ minLength: 1, default: "https://ai.ubq.fi" }),
   UBQ_AI_FALLBACK_BASE_URL: T.String({ minLength: 1, default: "https://ai-ubq-fi.deno.dev" }),
   UBQ_KERNEL_REFRESH_URL: T.Optional(T.String({ minLength: 1 })),
+  UBQ_KERNEL_REFRESH_INTERVAL_SECONDS: T.Optional(T.String({ minLength: 1 })),
 });
 
 export type Env = Static<typeof envSchema>;
@@ -34,6 +35,7 @@ declare global {
       UBQ_AI_BASE_URL?: string;
       UBQ_AI_FALLBACK_BASE_URL?: string;
       UBQ_KERNEL_REFRESH_URL?: string;
+      UBQ_KERNEL_REFRESH_INTERVAL_SECONDS?: string;
     }
   }
 }

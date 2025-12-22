@@ -514,10 +514,12 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
       repo: context.payload.repository.name,
     });
     const kernelRefreshUrl = context.eventHandler.kernelRefreshUrl.trim();
+    const kernelRefreshIntervalSeconds = context.eventHandler.kernelRefreshIntervalSeconds;
     const baseSettings: Record<string, unknown> = {
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
       ...(kernelRefreshUrl ? { kernelRefreshUrl } : {}),
+      ...(Number.isFinite(kernelRefreshIntervalSeconds) ? { kernelRefreshIntervalSeconds } : {}),
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
       ...(settingsOverrides ?? {}),
     };
