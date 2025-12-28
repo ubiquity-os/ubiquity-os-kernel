@@ -446,7 +446,7 @@ jobs:
           // Prefer the direct Deno Deploy domain to avoid Cloudflare bot/challenge pages from CI IP ranges.
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
-          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
@@ -769,15 +769,15 @@ jobs:
           fi
           export REAL_GH="$real_gh"
 
-          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
-          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          export UOS_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UOS_TOKEN_FILE=$UOS_TOKEN_FILE" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
 
           node <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
@@ -788,9 +788,9 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\${UBQ_TOKEN_FILE:-}"
+          token_file="\${UOS_TOKEN_FILE:-}"
           if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
-            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UOS_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
             if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
@@ -802,7 +802,7 @@ jobs:
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
@@ -1024,7 +1024,7 @@ jobs:
             "Coordination (agent message bus):",
             "- Poll checkpoints: start, before edits, before final response.",
             "- Post a claim with files/paths you plan to touch; post updates if scope changes or conflicts appear.",
-            "- Auth env is already set (UBQ_AGENT_AUTH_TOKEN/GH_TOKEN, UBQ_KERNEL_TOKEN, UBQ_GH_OWNER, UBQ_GH_REPO, UBQ_GH_INSTALLATION_ID, UBQ_AGENT_BUS_URL).",
+            "- Auth env is already set (UOS_AGENT_AUTH_TOKEN/GH_TOKEN, UOS_KERNEL_TOKEN, UOS_GH_OWNER, UOS_GH_REPO, UOS_GH_INSTALLATION_ID, UOS_AGENT_BUS_URL).",
             `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 50`,
             `- Claim: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "claims" --kind "claim" --body "Working on <paths>"`,
             `- Update: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "status" --kind "update" --body "Update <status>"`,
@@ -1066,7 +1066,7 @@ jobs:
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
-          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
@@ -1182,12 +1182,12 @@ jobs:
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
-          UBQ_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
-          UBQ_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
-          UBQ_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
-          UBQ_GH_REPO: ${{ needs.plan.outputs.repo_name }}
-          UBQ_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UBQ_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
         with:
           openai-api-key: "ubq-forwarder"
           responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
@@ -1203,7 +1203,7 @@ jobs:
             ${{ needs.plan.outputs.codex_args }}
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_AGENT_AUTH_TOKEN","UBQ_KERNEL_TOKEN","UBQ_GH_OWNER","UBQ_GH_REPO","UBQ_GH_INSTALLATION_ID","UBQ_AGENT_BUS_URL"]
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
 
       - name: Disallow metadata actions
         run: |
@@ -1325,8 +1325,8 @@ jobs:
           if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
           fi
-          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
-            rm -f "$UBQ_TOKEN_FILE" || true
+          if [ -n "${UOS_TOKEN_FILE:-}" ] && [ -f "$UOS_TOKEN_FILE" ]; then
+            rm -f "$UOS_TOKEN_FILE" || true
           fi
 
   consolidate:
@@ -1370,15 +1370,15 @@ jobs:
           fi
           export REAL_GH="$real_gh"
 
-          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
-          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          export UOS_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UOS_TOKEN_FILE=$UOS_TOKEN_FILE" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
 
           node <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
@@ -1389,9 +1389,9 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\${UBQ_TOKEN_FILE:-}"
+          token_file="\${UOS_TOKEN_FILE:-}"
           if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
-            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UOS_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
             if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
@@ -1403,7 +1403,7 @@ jobs:
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
@@ -1712,7 +1712,7 @@ jobs:
             "Coordination (agent message bus):",
             "- Poll for context from other agents before resolving conflicts.",
             "- Post a summary when conflicts are resolved.",
-            "- Auth env is already set (UBQ_AGENT_AUTH_TOKEN/GH_TOKEN, UBQ_KERNEL_TOKEN, UBQ_GH_OWNER, UBQ_GH_REPO, UBQ_GH_INSTALLATION_ID, UBQ_AGENT_BUS_URL).",
+            "- Auth env is already set (UOS_AGENT_AUTH_TOKEN/GH_TOKEN, UOS_KERNEL_TOKEN, UOS_GH_OWNER, UOS_GH_REPO, UOS_GH_INSTALLATION_ID, UOS_AGENT_BUS_URL).",
             `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 100`,
             `- Update: node scripts/agent-bus.mjs post --agent "conflict-resolver" --channel "conflicts" --kind "resolution" --body "Resolved conflicts in <files>"`,
           ].join("\n");
@@ -1753,7 +1753,7 @@ jobs:
           const port = Number.parseInt(process.env.PORT || "4010", 10);
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
-          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
@@ -1870,12 +1870,12 @@ jobs:
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
-          UBQ_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
-          UBQ_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
-          UBQ_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
-          UBQ_GH_REPO: ${{ needs.plan.outputs.repo_name }}
-          UBQ_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UBQ_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
         with:
           openai-api-key: "ubq-forwarder"
           responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
@@ -1891,7 +1891,7 @@ jobs:
             ${{ needs.plan.outputs.codex_args }}
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_AGENT_AUTH_TOKEN","UBQ_KERNEL_TOKEN","UBQ_GH_OWNER","UBQ_GH_REPO","UBQ_GH_INSTALLATION_ID","UBQ_AGENT_BUS_URL"]
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
 
       - name: Verify conflicts resolved
         if: steps.apply.outputs.conflicts == 'true'
@@ -1941,8 +1941,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
-            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
+          if [ -n "${UOS_TOKEN_FILE:-}" ] && [ -f "$UOS_TOKEN_FILE" ]; then
+            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UOS_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
             if [ -n "$refreshed_token" ]; then
               export GH_TOKEN="$refreshed_token"
             fi
@@ -2038,8 +2038,8 @@ jobs:
           if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
           fi
-          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
-            rm -f "$UBQ_TOKEN_FILE" || true
+          if [ -n "${UOS_TOKEN_FILE:-}" ] && [ -f "$UOS_TOKEN_FILE" ]; then
+            rm -f "$UOS_TOKEN_FILE" || true
           fi
 
   agent:
@@ -2233,15 +2233,15 @@ jobs:
           fi
           export REAL_GH="$real_gh"
 
-          export UBQ_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
-          echo "UBQ_TOKEN_FILE=$UBQ_TOKEN_FILE" >> "$GITHUB_ENV"
+          export UOS_TOKEN_FILE="$RUNNER_TEMP/ubq_tokens.json"
+          echo "UOS_TOKEN_FILE=$UOS_TOKEN_FILE" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/ubq-bin" >> "$GITHUB_PATH"
 
           node <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           fs.writeFileSync(tokenFile, JSON.stringify({ authToken, kernelToken, refreshedAt: new Date().toISOString() }, null, 2), "utf8");
@@ -2252,9 +2252,9 @@ jobs:
           const wrapperPath = path.join(binDir, "gh");
           const wrapper = `#!/usr/bin/env bash
           set -euo pipefail
-          token_file="\${UBQ_TOKEN_FILE:-}"
+          token_file="\${UOS_TOKEN_FILE:-}"
           if [ -n "\${token_file}" ] && [ -f "\${token_file}" ]; then
-            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
+            auth_token=$(node -e 'const fs=require("fs"); const p=process.env.UOS_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')
             if [ -n "\${auth_token}" ]; then export GH_TOKEN="\${auth_token}"; fi
           fi
           exec "${realGh}" "$@"
@@ -2266,7 +2266,7 @@ jobs:
           const fs = require("node:fs");
           const path = require("node:path");
 
-          const tokenFile = process.env.UBQ_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
@@ -2666,8 +2666,8 @@ jobs:
                 "GitHub operations (privileged):",
                 "- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).",
                 "- Authentication: `GH_TOKEN` is set (GitHub App installation token) and is available to tool commands. Do not run `gh auth login`; just run `gh ... --repo <owner>/<repo>`.",
-                "- Marketplace auth (optional): if you need to create/update repos under the marketplace org, `UBQ_MARKETPLACE_GH_TOKEN` may be set and `UBQ_MARKETPLACE_ORG` is provided.",
-                '  - For marketplace ops, prefix commands like: `GH_TOKEN=\"$UBQ_MARKETPLACE_GH_TOKEN\" gh ... --repo \"$UBQ_MARKETPLACE_ORG/<repo>\"`.',
+                "- Marketplace auth (optional): if you need to create/update repos under the marketplace org, `UOS_MARKETPLACE_GH_TOKEN` may be set and `UOS_MARKETPLACE_ORG` is provided.",
+                '  - For marketplace ops, prefix commands like: `GH_TOKEN=\"$UOS_MARKETPLACE_GH_TOKEN\" gh ... --repo \"$UOS_MARKETPLACE_ORG/<repo>\"`.',
                 "- Sandbox: outbound network for tool commands is enabled in this run.",
                 "- For the checked-out repo (the one that triggered this run): do NOT push branches or open PRs; the workflow will handle that for repo file changes.",
                 "- Prefer using `.ubiquityos.actions.json` for changes to the triggering issue/PR (body + labels), so the workflow can validate labels and handle markdown newlines.",
@@ -2697,7 +2697,7 @@ jobs:
                 "- First, check if an existing marketplace plugin already fits; prefer installing/reusing over duplicating.",
                 "- If creating a new plugin repo in the marketplace org:",
                   "  - Work in `$RUNNER_TEMP` (or `/tmp`) so you don't accidentally commit the plugin repo into this checked-out repo.",
-                  "  - Create the repo under `$UBQ_MARKETPLACE_ORG` and push the initial implementation there (you may open a PR in that repo if needed).",
+                  "  - Create the repo under `$UOS_MARKETPLACE_ORG` and push the initial implementation there (you may open a PR in that repo if needed).",
                   "  - Ensure `manifest.json` is valid (must include non-empty `name` and `short_name`, and `ubiquity:listeners` if it should run on specific events).",
                   "  - Add a `.github/workflows/compute.yml` that accepts the kernel dispatch inputs (stateId/eventPayload/settings/authToken/signature/etc).",
                   "  - Create on the default branch (`main`) so the plugin is usable immediately after install.",
@@ -2798,7 +2798,7 @@ jobs:
           // Prefer the direct Deno Deploy domain to avoid Cloudflare bot/challenge pages from CI IP ranges.
           const baseUrl = process.env.AI_BASE_URL || "https://ai-ubq-fi.deno.dev";
 
-          const tokenFile = String(process.env.UBQ_TOKEN_FILE || "").trim();
+          const tokenFile = String(process.env.UOS_TOKEN_FILE || "").trim();
           const initialAuthToken = String(process.env.AUTH_TOKEN || "").trim();
           const initialKernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
@@ -2915,8 +2915,8 @@ jobs:
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
-          UBQ_MARKETPLACE_GH_TOKEN: ${{ steps.parse.outputs.marketplace_auth_token }}
-          UBQ_MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
+          UOS_MARKETPLACE_GH_TOKEN: ${{ steps.parse.outputs.marketplace_auth_token }}
+          UOS_MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
         with:
           # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
           openai-api-key: "ubq-forwarder"
@@ -2935,7 +2935,7 @@ jobs:
             ${{ steps.parse.outputs.codex_args }}
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UBQ_MARKETPLACE_GH_TOKEN","UBQ_MARKETPLACE_ORG","UBQ_TOKEN_FILE"]
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_MARKETPLACE_GH_TOKEN","UOS_MARKETPLACE_ORG","UOS_TOKEN_FILE"]
 
       - name: Run Codex (restricted)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
@@ -3129,8 +3129,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
-            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UBQ_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
+          if [ -n "${UOS_TOKEN_FILE:-}" ] && [ -f "$UOS_TOKEN_FILE" ]; then
+            refreshed_token="$(node -e 'const fs=require("fs"); const p=process.env.UOS_TOKEN_FILE || ""; try{ const j=JSON.parse(fs.readFileSync(p,"utf8")); if(j && typeof j.authToken==="string" && j.authToken.trim()) process.stdout.write(j.authToken.trim()); } catch {}')"
             if [ -n "$refreshed_token" ]; then
               export GH_TOKEN="$refreshed_token"
             fi
@@ -3285,8 +3285,8 @@ jobs:
           if [ -f "$RUNNER_TEMP/ubq_token_refresh.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_token_refresh.pid")" 2>/dev/null || true
           fi
-          if [ -n "${UBQ_TOKEN_FILE:-}" ] && [ -f "$UBQ_TOKEN_FILE" ]; then
-            rm -f "$UBQ_TOKEN_FILE" || true
+          if [ -n "${UOS_TOKEN_FILE:-}" ] && [ -f "$UOS_TOKEN_FILE" ]; then
+            rm -f "$UOS_TOKEN_FILE" || true
           fi
 
       - name: Stop ai.ubq.fi Responses forwarder

@@ -15,7 +15,6 @@ export type Options = {
   llmClient: OpenAI;
   llm: string;
   aiBaseUrl?: string;
-  aiFallbackBaseUrl?: string;
   kernelRefreshUrl?: string;
   kernelRefreshIntervalSeconds?: number;
   agent?: {
@@ -41,7 +40,6 @@ export class GitHubEventHandler {
   private readonly _llmClient: OpenAI;
   public readonly llm: string;
   public readonly aiBaseUrl: string;
-  public readonly aiFallbackBaseUrl: string;
   public readonly kernelRefreshUrl: string;
   public readonly kernelRefreshIntervalSeconds?: number;
   public readonly agent: {
@@ -59,8 +57,7 @@ export class GitHubEventHandler {
     this._webhookSecret = options.webhookSecret;
     this._llmClient = options.llmClient;
     this.llm = options.llm;
-    this.aiBaseUrl = options.aiBaseUrl ?? "https://ai.ubq.fi";
-    this.aiFallbackBaseUrl = options.aiFallbackBaseUrl ?? "https://ai-ubq-fi.deno.dev";
+    this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
     this.kernelRefreshUrl = options.kernelRefreshUrl ?? "";
     this.kernelRefreshIntervalSeconds = options.kernelRefreshIntervalSeconds;
     this.agent = {

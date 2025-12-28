@@ -437,61 +437,39 @@ export async function callUbqAiRouter(
     "X-Ubiquity-Kernel-Token": kernelToken,
   };
 
-  const primaryBase = normalizeBaseUrl(context.eventHandler.aiBaseUrl);
-  const fallbackBase = normalizeBaseUrl(context.eventHandler.aiFallbackBaseUrl);
-  const baseCandidates = [primaryBase, fallbackBase].filter(Boolean);
-  const bases = [...new Set(baseCandidates)];
+  const baseUrl = normalizeBaseUrl(context.eventHandler.aiBaseUrl);
+  const endpoint = new URL("/v1/chat/completions", baseUrl).toString();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify(payload),
+    });
 
-  const errors: string[] = [];
-  const overallDeadline = Date.now() + 25_000;
-
-  for (const baseUrl of bases) {
-    const remainingMs = overallDeadline - Date.now();
-    if (remainingMs <= 1000) break;
-
-    const endpoint = new URL("/v1/chat/completions", baseUrl).toString();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Math.min(15_000, remainingMs));
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        signal: controller.signal,
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        if (
-          baseUrl === primaryBase &&
-          fallbackBase &&
-          fallbackBase !== primaryBase &&
-          (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text))
-        ) {
-          context.logger.warn({ status: response.status }, "Router endpoint blocked; will try fallback");
-        }
-        const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
-        errors.push(`${endpoint} -> ${response.status} ${snippet}`);
-        continue;
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      if (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text)) {
+        context.logger.warn({ status: response.status }, "Router endpoint blocked");
       }
-
-      const data = (await response.json()) as ChatCompletion;
-      const content = data.choices?.[0]?.message?.content;
-      if (typeof content !== "string") {
-        errors.push(`${endpoint} -> ok but missing assistant content`);
-        continue;
-      }
-      return content;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      errors.push(`${endpoint} -> ${message}`);
-      continue;
-    } finally {
-      clearTimeout(timeout);
+      const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
+      throw new Error(`${endpoint} -> ${response.status} ${snippet}`);
     }
-  }
 
-  throw new Error(`Router error (all endpoints failed):\n- ${errors.join("\n- ")}`);
+    const data = (await response.json()) as ChatCompletion;
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== "string") {
+      throw new Error(`${endpoint} -> ok but missing assistant content`);
+    }
+    return content;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Router error: ${message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string, settingsOverrides?: Record<string, unknown>) {
@@ -563,7 +541,7 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
         "",
         `Actions workflow: ${agentWorkflowUrl}`,
         "",
-        "If you're testing a feature branch, set `UBQ_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
+        "If you're testing a feature branch, set `UOS_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
       ]
         .filter(Boolean)
         .join("\n")

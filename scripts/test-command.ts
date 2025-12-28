@@ -511,12 +511,16 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
   }
 
   const stateId = "test-state-id";
-  let ubiquityKernelToken: string | undefined;
-  if (authToken !== "mock-token" && privateKey) {
+  let signPayloadFn: ((payload: string) => Promise<string>) | null = null;
+  if (privateKey) {
     const { signPayload } = await import("@ubiquity-os/plugin-sdk/signature");
+    signPayloadFn = (payload: string) => signPayload(payload, privateKey);
+  }
+  let ubiquityKernelToken: string | undefined;
+  if (authToken !== "mock-token" && signPayloadFn) {
     const { createKernelAttestationToken } = await import("../src/github/utils/kernel-attestation");
     ubiquityKernelToken = await createKernelAttestationToken({
-      sign: (payload: string) => signPayload(payload, privateKey),
+      sign: signPayloadFn,
       owner: org,
       repo,
       installationId,
@@ -607,15 +611,23 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
           ...(installationId !== null ? { installation: { id: installationId } } : {}),
         });
 
-        const kernelPayload = {
-          command: JSON.stringify({ name: command, parameters }),
-          eventPayload: compressString(eventPayloadJson),
-          settings: JSON.stringify({}),
-          authToken,
-          ubiquityKernelToken,
+        const commandPayload = JSON.stringify({ name: command, parameters });
+        const eventPayload = compressString(eventPayloadJson);
+        const settingsPayload = JSON.stringify({});
+        const signableInputs = {
           stateId,
           eventName: "issue_comment.created",
-          ref: "main",
+          eventPayload,
+          settings: settingsPayload,
+          authToken,
+          ubiquityKernelToken,
+          ref: url,
+          command: commandPayload,
+        };
+        const signature = signPayloadFn ? await signPayloadFn(JSON.stringify(signableInputs)) : "";
+        const kernelPayload = {
+          ...signableInputs,
+          signature,
         };
 
         await dispatchToPlugin(url, kernelPayload);
@@ -716,7 +728,7 @@ async function main() {
     const reply = await waitForAgentFeedbackComment(org, repo, issueNumber, afterMs, { timeoutMs: 120_000, pollIntervalMs: 3_000 });
     if (!reply) {
       console.log("⚠️ No agent feedback comment detected yet.");
-      console.log("   If you're testing locally, ensure the kernel is running and receiving webhooks (smee).");
+      console.log("   If you're testing locally, ensure the kernel is running and your tunnel is receiving webhooks.");
       return;
     }
 

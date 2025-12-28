@@ -175,7 +175,7 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
         "",
         `Actions workflow: ${agentWorkflowUrl}`,
         "",
-        "If you're testing a feature branch, set `UBQ_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
+        "If you're testing a feature branch, set `UOS_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
       ]
         .filter(Boolean)
         .join("\n")

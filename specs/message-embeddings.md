@@ -260,7 +260,7 @@ Add env vars:
 - `VOYAGEAI_API_KEY`
 - `DENO_KV_URL` (for Deploy KV or local)
 - `MEMORY_TENANT_ID` (default: org id; fallback to installation id)
-- `UBQ_AI_BASE_URL` (reuse if ai.ubq.fi hosts `/v1/embeddings`)
+- `UOS_AI_BASE_URL` (reuse if ai.ubq.fi hosts `/v1/embeddings`)
 
 ## Implementation phases
 

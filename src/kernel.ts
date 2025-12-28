@@ -110,7 +110,8 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
 app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
-    const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UBQ_KERNEL_REFRESH_INTERVAL_SECONDS);
+    const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
+    const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
@@ -123,15 +124,14 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       llmClient,
       llm: "gpt-5.2",
-      aiBaseUrl: env.UBQ_AI_BASE_URL,
-      aiFallbackBaseUrl: env.UBQ_AI_FALLBACK_BASE_URL,
-      kernelRefreshUrl: env.UBQ_KERNEL_REFRESH_URL,
+      aiBaseUrl: env.UOS_AI_BASE_URL,
+      kernelRefreshUrl,
       kernelRefreshIntervalSeconds,
       agent: {
-        owner: env.UBQ_AGENT_OWNER,
-        repo: env.UBQ_AGENT_REPO,
-        workflowId: env.UBQ_AGENT_WORKFLOW,
-        ref: env.UBQ_AGENT_REF,
+        owner: env.UOS_AGENT_OWNER,
+        repo: env.UOS_AGENT_REPO,
+        workflowId: env.UOS_AGENT_WORKFLOW,
+        ref: env.UOS_AGENT_REF,
       },
       logger: ctx.var.logger,
     });

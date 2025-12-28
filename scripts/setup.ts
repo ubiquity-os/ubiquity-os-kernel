@@ -34,12 +34,12 @@ class GithubAppSetup {
   private _server: http.Server;
   private _spinner: Ora;
   private _url = new URL(`http://localhost:3000`);
+  private _webhookUrl = "";
   private _env = {
     ENVIRONMENT: "production",
     APP_ID: "",
     APP_PRIVATE_KEY: "",
     APP_WEBHOOK_SECRET: "",
-    WEBHOOK_PROXY_URL: `https://smee.io/ubiquityos-kernel-${this.generateRandomString(16)}`,
   };
 
   constructor() {
@@ -48,7 +48,24 @@ class GithubAppSetup {
     this._spinner = ora("Waiting for Github App creation");
   }
 
-  start() {
+  async start() {
+    this._webhookUrl = (
+      await input({
+        message: "Public webhook URL (ngrok):",
+        validate: (value) => {
+          const trimmed = value.trim();
+          if (!trimmed) return "Webhook URL is required.";
+          if (!/^https?:\/\//i.test(trimmed)) return "Webhook URL must include http(s)://";
+          try {
+            new URL(trimmed);
+            return true;
+          } catch {
+            return "Webhook URL must be a valid URL.";
+          }
+        },
+      })
+    ).trim();
+
     this._server.listen(this._url.port, () => {
       void open(this._url.toString());
       console.log(`If it doesn't open automatically, open this website and follow instructions: ${this._url}`);
@@ -101,15 +118,6 @@ class GithubAppSetup {
     }
   }
 
-  generateRandomString(length: number) {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let randomString = "";
-    for (let i = 0; i < length; i++) {
-      randomString += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return randomString;
-  }
-
   saveEnv(file: string, env: Record<string, unknown>) {
     const envContent = Object.entries(env)
       .map(([key, value]) => `${key}=${value}`)
@@ -120,7 +128,10 @@ class GithubAppSetup {
 
   async handleIndexRequest(url: URL, req: http.IncomingMessage, res: http.ServerResponse) {
     const manifest = { ...manifestTemplate };
-    manifest.hook_attributes.url = this._env.WEBHOOK_PROXY_URL;
+    if (!this._webhookUrl) {
+      return this.send500Response(res);
+    }
+    manifest.hook_attributes.url = this._webhookUrl;
 
     const htmlContent = fs.readFileSync(path.join(SCRIPT_DIR, "index.html")).toString().replace("{{ MANIFEST }}", JSON.stringify(manifest));
     this.sendHtml(res, htmlContent);
@@ -161,7 +172,7 @@ class GithubAppSetup {
 }
 
 const setup = new GithubAppSetup();
-setup.start();
+void setup.start();
 
 process.on("SIGINT", () => {
   setup.stop();

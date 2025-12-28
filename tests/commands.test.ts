@@ -63,8 +63,7 @@ const eventHandler = {
   environment: "production",
   getToken: jest.fn().mockReturnValue("1234"),
   signPayload: jest.fn().mockReturnValue("sha256=1234"),
-  aiBaseUrl: "https://ai.ubq.fi",
-  aiFallbackBaseUrl: "https://ai-ubq-fi.deno.dev",
+  aiBaseUrl: "https://ai-ubq-fi.deno.dev",
   getKernelPublicKeyPem: jest.fn().mockResolvedValue("test-kernel-key"),
   kernelRefreshUrl: "",
   agent: {
@@ -152,7 +151,7 @@ describe("Event related tests", () => {
     );
 
     server.use(
-      http.post("https://ai.ubq.fi/v1/chat/completions", async ({ request }) => {
+      http.post("https://ai-ubq-fi.deno.dev/v1/chat/completions", async ({ request }) => {
         const body = (await request.json()) as LlmRequestPayload;
         const userContent = body.messages?.find((m) => m?.role === "user")?.content;
         let comment = "";

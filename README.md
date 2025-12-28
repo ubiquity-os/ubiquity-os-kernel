@@ -7,6 +7,8 @@ The kernel is designed to:
 
 ## Environment Variables
 
+Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (plus the non-secret `APP_ID`).
+
 - **`APP_PRIVATE_KEY`**
   Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}. Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.dev.vars` file:
 
@@ -22,17 +24,7 @@ The kernel is designed to:
 - **`APP_ID`**
   Retrieve this from your GitHub App settings.
 
-- **`WEBHOOK_PROXY_URL` (only for development)**
-  Obtain a webhook URL at [smee.io](https://smee.io/) and set it in your GitHub App settings.
-
-- **`OPENROUTER_API_KEY`**
-  API key used for LLM requests.
-
-- **`OPENROUTER_MODEL`**
-  Fully qualified model identifier (default: `deepseek/deepseek-chat-v3-0324:free`).
-
-- **`OPENROUTER_BASE_URL`**
-  Base URL for the OpenRouter (or OpenAI-compatible) API (default: `https://openrouter.ai/api/v1`).
+For local development, expose the kernel with ngrok (or similar) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host.
 
 ### Quick Start
 

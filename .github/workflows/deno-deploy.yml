@@ -63,13 +63,13 @@ jobs:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'development' }}
-          UBQ_AGENT_OWNER: ${{ secrets.UBQ_AGENT_OWNER || github.repository_owner }}
-          UBQ_AGENT_REPO: ${{ secrets.UBQ_AGENT_REPO || github.event.repository.name }}
-          UBQ_AGENT_WORKFLOW: ${{ secrets.UBQ_AGENT_WORKFLOW || 'agent.yml' }}
-          UBQ_AGENT_REF: ${{ secrets.UBQ_AGENT_REF || '' }}
-          UBQ_AI_BASE_URL: ${{ secrets.UBQ_AI_BASE_URL || 'https://ai.ubq.fi' }}
-          UBQ_AI_FALLBACK_BASE_URL: ${{ secrets.UBQ_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
-          UBQ_KERNEL_REFRESH_URL: ${{ secrets.UBQ_KERNEL_REFRESH_URL || '' }}
+          UOS_AGENT_OWNER: ${{ secrets.UOS_AGENT_OWNER || github.repository_owner }}
+          UOS_AGENT_REPO: ${{ secrets.UOS_AGENT_REPO || github.event.repository.name }}
+          UOS_AGENT_WORKFLOW: ${{ secrets.UOS_AGENT_WORKFLOW || 'agent.yml' }}
+          UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
+          UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
+          UOS_AI_FALLBACK_BASE_URL: ${{ secrets.UOS_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
+          UOS_KERNEL_REFRESH_URL: ${{ secrets.UOS_KERNEL_REFRESH_URL || '' }}
           NODE_ENV: "production"
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}

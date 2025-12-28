@@ -20,7 +20,7 @@ function isManifestCacheEnabled(context: GitHubContext) {
     return false;
   }
 
-  const disableCache = typeof process !== "undefined" ? process.env.UBQ_DISABLE_MANIFEST_CACHE : undefined;
+  const disableCache = typeof process !== "undefined" ? process.env.UOS_DISABLE_MANIFEST_CACHE : undefined;
   return !disableCache || !["1", "true", "yes"].includes(disableCache.toLowerCase());
 }
 
@@ -68,29 +68,6 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
-function normalizeManifest(manifest: unknown, fallback: { name: string; short_name: string }): unknown {
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return manifest;
-  const record = manifest as Record<string, unknown>;
-  const normalized: Record<string, unknown> = { ...record };
-
-  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : fallback.name;
-  if (name) {
-    normalized.name = name;
-  }
-
-  let rawShortName = "";
-  if (typeof record.short_name === "string") {
-    rawShortName = record.short_name;
-  } else if (typeof record.shortName === "string") {
-    rawShortName = record.shortName;
-  }
-  const shortName = rawShortName.trim() || fallback.short_name || name || "unknown";
-  normalized.short_name = shortName;
-  delete normalized.shortName;
-
-  return normalized;
-}
-
 async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
@@ -111,8 +88,7 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
       if ("content" in data) {
         const content = Buffer.from(data.content, "base64").toString();
         const contentParsed = JSON.parse(content);
-        const fallbackShortName = `${owner}/${repo}${ref ? "@" + ref : ""}`;
-        const manifest = decodeManifest(context, contentParsed, { name: `${owner}/${repo}`, short_name: fallbackShortName });
+        const manifest = decodeManifest(context, contentParsed);
         if (useCache) {
           _manifestCache[manifestKey] = manifest;
         }
@@ -139,7 +115,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
     try {
       const result = await fetch(manifestUrl, { signal: controller.signal });
       const jsonData = await result.json();
-      const manifest = decodeManifest(context, jsonData, { name: url, short_name: url });
+      const manifest = decodeManifest(context, jsonData);
       if (useCache) {
         _manifestCache[url] = manifest;
       }
@@ -153,15 +129,14 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
   return null;
 }
 
-function decodeManifest(context: GitHubContext, manifest: unknown, fallback: { name: string; short_name: string }) {
-  const normalized = normalizeManifest(manifest, fallback);
-  const errors = [...Value.Errors(manifestSchema, normalized)];
+function decodeManifest(context: GitHubContext, manifest: unknown) {
+  const errors = [...Value.Errors(manifestSchema, manifest)];
   if (errors.length) {
     for (const error of errors) {
       context.logger.error({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }
-  const defaultManifest = Value.Default(manifestSchema, normalized);
+  const defaultManifest = Value.Default(manifestSchema, manifest);
   return defaultManifest as Manifest;
 }

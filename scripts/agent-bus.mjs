@@ -7,12 +7,12 @@ Usage:
   node scripts/agent-bus.mjs poll [--since <ms>] [--cursor <cursor>] [--since-file <path>] [--limit <n>] [--agent <id>] [--channel <name>] [--base-url <url>] [--out <path>]
 
 Auth env:
-  UBQ_AGENT_AUTH_TOKEN (fallback GH_TOKEN)
-  UBQ_KERNEL_TOKEN
-  UBQ_GH_OWNER
-  UBQ_GH_REPO
-  UBQ_GH_INSTALLATION_ID
-  UBQ_AGENT_BUS_URL (default base url)
+  UOS_AGENT_AUTH_TOKEN (fallback GH_TOKEN)
+  UOS_KERNEL_TOKEN
+  UOS_GH_OWNER
+  UOS_GH_REPO
+  UOS_GH_INSTALLATION_ID
+  UOS_AGENT_BUS_URL (default base url)
 `.trim();
 
 const parseArgs = (argv) => {
@@ -55,18 +55,18 @@ const parseIntSafe = (value) => {
 const envOr = (key, fallback = "") => String(process.env[key] || fallback).trim();
 
 const buildHeaders = () => {
-  const token = envOr("UBQ_AGENT_AUTH_TOKEN", envOr("GH_TOKEN"));
-  const kernelToken = envOr("UBQ_KERNEL_TOKEN");
-  const owner = envOr("UBQ_GH_OWNER");
-  const repo = envOr("UBQ_GH_REPO");
-  const installationId = envOr("UBQ_GH_INSTALLATION_ID");
+  const token = envOr("UOS_AGENT_AUTH_TOKEN", envOr("GH_TOKEN"));
+  const kernelToken = envOr("UOS_KERNEL_TOKEN");
+  const owner = envOr("UOS_GH_OWNER");
+  const repo = envOr("UOS_GH_REPO");
+  const installationId = envOr("UOS_GH_INSTALLATION_ID");
 
   const missing = [];
-  if (!token) missing.push("UBQ_AGENT_AUTH_TOKEN/GH_TOKEN");
-  if (!kernelToken) missing.push("UBQ_KERNEL_TOKEN");
-  if (!owner) missing.push("UBQ_GH_OWNER");
-  if (!repo) missing.push("UBQ_GH_REPO");
-  if (!installationId) missing.push("UBQ_GH_INSTALLATION_ID");
+  if (!token) missing.push("UOS_AGENT_AUTH_TOKEN/GH_TOKEN");
+  if (!kernelToken) missing.push("UOS_KERNEL_TOKEN");
+  if (!owner) missing.push("UOS_GH_OWNER");
+  if (!repo) missing.push("UOS_GH_REPO");
+  if (!installationId) missing.push("UOS_GH_INSTALLATION_ID");
   if (missing.length > 0) {
     throw new Error(`Missing auth env: ${missing.join(", ")}`);
   }
@@ -82,7 +82,7 @@ const buildHeaders = () => {
 };
 
 const baseUrl = (override) =>
-  String(override || envOr("UBQ_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-messages")).trim();
+  String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-messages")).trim();
 
 const handlePost = async (options) => {
   const agentId = String(options.agent || options["agent-id"] || "").trim();
