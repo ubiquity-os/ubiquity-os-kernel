@@ -6,6 +6,7 @@ import { PluginInput } from "../types/plugin";
 import { isGithubPlugin } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins";
+import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
 import issueCommentEdited from "./issue-comment-edited";
@@ -143,12 +144,14 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       if (!isGithubPluginObject) {
         await dispatchWorker(plugin, await inputs.getInputs());
       } else {
+        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
+        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => eventHandler.getKernelPublicKeyPem());
         await dispatchWorkflow(context, {
           owner: plugin.owner,
           repository: plugin.repo,
           workflowId: plugin.workflowId,
           ref,
-          inputs: await inputs.getInputs(),
+          inputs: workflowInputs,
         });
       }
       context.logger.debug({ plugin: pluginEntry.key }, "Event dispatched");
