@@ -9,7 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const PORT = 3000;
-const DEV_ENV_FILE = ".dev.vars";
+const DEV_ENV_FILE = ".env";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const manifestTemplate = {

@@ -23,7 +23,7 @@ jest.mock("../src/github/utils/workflow-dispatch", () => ({
   dispatchWorker: jest.fn(),
 }));
 
-config({ path: ".dev.vars" });
+config({ path: ".env" });
 
 const kernelRepo = "ubiquity-os-kernel";
 const name = kernelRepo;

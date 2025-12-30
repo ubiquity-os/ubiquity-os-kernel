@@ -11,7 +11,7 @@ import { join } from "path";
 import YAML from "js-yaml";
 import { getConfigPathCandidatesForEnvironment } from "../src/github/utils/config";
 
-loadEnv({ path: ".dev.vars" });
+loadEnv({ path: ".env" });
 
 interface PluginManifest {
   name: string;

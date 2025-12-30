@@ -28,7 +28,7 @@ const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
 
-config({ path: ".dev.vars" });
+config({ path: ".env" });
 
 beforeAll(() => {
   server.listen();

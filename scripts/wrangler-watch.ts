@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 const WRANGLER_BIN = process.platform === "win32" ? "node_modules/.bin/wrangler.cmd" : "node_modules/.bin/wrangler";
 const WATCH_DIRS = ["src"];
-const WATCH_FILES = ["wrangler.toml", ".dev.vars"];
+const WATCH_FILES = ["wrangler.toml", ".env"];
 const DEBOUNCE_MS = 250;
 const STOP_TIMEOUT_MS = 4000;
 

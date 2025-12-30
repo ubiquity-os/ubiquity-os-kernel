@@ -11,7 +11,7 @@ import { logger } from "../src/logger/logger";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
-config({ path: ".dev.vars" });
+config({ path: ".env" });
 
 const issueOpened = "issues.opened";
 const manifestPath = "manifest.json";
