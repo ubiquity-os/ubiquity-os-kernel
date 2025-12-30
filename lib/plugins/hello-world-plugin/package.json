@@ -10,7 +10,7 @@
     "start": "bun run server.ts"
   },
   "dependencies": {
-    "@ubiquity-os/plugin-sdk": "3.7.0",
+    "@ubiquity-os/plugin-sdk": "3.8.0",
     "@ubiquity-os/ubiquity-os-logger": "^1.4.0",
     "hono": "^4.0.0"
   },

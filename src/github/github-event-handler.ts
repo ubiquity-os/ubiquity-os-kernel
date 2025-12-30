@@ -2,11 +2,11 @@ import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 import OpenAI from "openai";
-import { logger } from "../logger/logger";
-import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa";
+import { logger } from "../logger/logger.ts";
+import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
 
-import { customOctokit } from "./github-client";
-import { GitHubContext, SimplifiedContext } from "./github-context";
+import { customOctokit } from "./github-client.ts";
+import { GitHubContext, SimplifiedContext } from "./github-context.ts";
 export type Options = {
   environment: string;
   webhookSecret: string;

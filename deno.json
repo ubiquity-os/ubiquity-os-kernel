@@ -1,0 +1,27 @@
+{
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "dev": "deno serve --allow-env --allow-net --allow-read --allow-sys --sloppy-imports --env-file=.dev.vars --port 8787 src/adapters/server.ts",
+    "build": "deno run --allow-env --allow-net --allow-read --allow-write scripts/build.ts",
+    "test": "deno test --allow-env --allow-net --allow-read",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "fmt": {
+    "lineWidth": 120,
+    "semiColons": true
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "imports": {
+    "@ubiquity-os/plugin-sdk": "./lib/plugin-sdk/src/index.ts",
+    "@ubiquity-os/plugin-sdk/signature": "./lib/plugin-sdk/src/signature.ts"
+  }
+}

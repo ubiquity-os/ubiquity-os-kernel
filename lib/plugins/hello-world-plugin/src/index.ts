@@ -60,31 +60,14 @@ export async function runPlugin(context: Context<PluginSettings, Env, Command, S
         );
 
         const content = sanitizeLlmResponse((result as ChatCompletion).choices?.[0]?.message?.content ?? "");
-        const owner = context.payload.repository.owner.login;
-        const repo = context.payload.repository.name;
-        const issue_number = context.payload.issue.number;
-
-        await context.octokit.rest.issues.createComment({
-          owner,
-          repo,
-          issue_number,
-          body: content || "(empty response)",
-        });
+        await context.commentHandler.postComment(context, logger.info(content || "(empty response)"), { raw: true });
 
         return { success: true, message: "Posted LLM response." };
       } catch (error) {
         logger.error("LLM call failed", { err: error });
 
         try {
-          const owner = context.payload.repository.owner.login;
-          const repo = context.payload.repository.name;
-          const issue_number = context.payload.issue.number;
-          await context.octokit.rest.issues.createComment({
-            owner,
-            repo,
-            issue_number,
-            body: "Failed to run `/llm` right now.",
-          });
+          await context.commentHandler.postComment(context, logger.warn("Failed to run `/llm` right now."), { raw: true });
         } catch (commentError) {
           logger.warn("Failed to post error comment", { err: commentError });
         }

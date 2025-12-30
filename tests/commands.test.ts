@@ -3,6 +3,7 @@ import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import type OpenAI from "openai";
+import { readFileSync } from "node:fs";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
@@ -35,6 +36,141 @@ const baseComment = {
     type: "User",
   },
 };
+
+const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../../../../..", "../../../../../..", "../../../../../../.."];
+const COMMIT_HASH_LEN = 7;
+const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
+
+const readTextFile = (path: string): string | null => {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+const toShortCommitHash = (value: string | undefined | null): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed || !COMMIT_HASH_RE.test(trimmed)) {
+    return null;
+  }
+  return trimmed.slice(0, COMMIT_HASH_LEN);
+};
+
+const parseGitDirFromDotGitFile = (content: string): string | null => {
+  const firstLine = (content.split(/\r?\n/, 1)[0] ?? "").trim();
+  const match = firstLine.match(/^gitdir:\s*(.+)\s*$/i);
+  return match?.[1]?.trim() ?? null;
+};
+
+const isAbsolutePath = (path: string): boolean => path.startsWith("/") || path.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(path);
+
+const readGitHeadShortRevision = (gitDir: string): string | null => {
+  const head = readTextFile(`${gitDir}/HEAD`);
+  if (!head) {
+    return null;
+  }
+  const trimmedHead = head.trim();
+  const refMatch = trimmedHead.match(/^ref:\s*(.+)\s*$/);
+  if (!refMatch) {
+    return toShortCommitHash(trimmedHead);
+  }
+
+  const refPath = refMatch[1]?.trim();
+  if (!refPath) {
+    return null;
+  }
+
+  const ref = readTextFile(`${gitDir}/${refPath}`);
+  if (ref) {
+    return toShortCommitHash(ref.trim());
+  }
+
+  const packedRefs = readTextFile(`${gitDir}/packed-refs`);
+  if (!packedRefs) {
+    return null;
+  }
+
+  for (const line of packedRefs.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("^")) {
+      continue;
+    }
+    const space = trimmed.indexOf(" ");
+    if (space === -1) {
+      continue;
+    }
+    const hash = trimmed.slice(0, space).trim();
+    const refName = trimmed.slice(space + 1).trim();
+    if (refName === refPath) {
+      return toShortCommitHash(hash);
+    }
+  }
+
+  return null;
+};
+
+const getCommitHashForTest = (): string => {
+  const envHash = toShortCommitHash(process.env.GIT_REVISION ?? process.env.GITHUB_SHA);
+  if (envHash) {
+    return envHash;
+  }
+
+  for (const root of ROOT_SEARCH_PATHS) {
+    const dotGitHead = readTextFile(`${root}/.git/HEAD`);
+    if (dotGitHead) {
+      const revision = readGitHeadShortRevision(`${root}/.git`);
+      if (revision) {
+        return revision;
+      }
+    }
+
+    const dotGitFile = readTextFile(`${root}/.git`);
+    if (!dotGitFile) {
+      continue;
+    }
+    const gitDir = parseGitDirFromDotGitFile(dotGitFile);
+    if (!gitDir) {
+      continue;
+    }
+    const resolvedGitDir = isAbsolutePath(gitDir) ? gitDir : `${root}/${gitDir}`;
+    const revision = readGitHeadShortRevision(resolvedGitDir);
+    if (revision) {
+      return revision;
+    }
+  }
+
+  return "unknown";
+};
+
+const getPackageVersionForTest = (): string => {
+  const envVersion = process.env.UOS_KERNEL_VERSION ?? process.env.npm_package_version ?? process.env.PACKAGE_VERSION;
+  if (envVersion?.trim()) {
+    return envVersion.trim();
+  }
+
+  for (const root of ROOT_SEARCH_PATHS) {
+    const content = readTextFile(`${root}/package.json`);
+    if (!content) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(content) as { version?: unknown };
+      if (typeof parsed.version === "string" && parsed.version.trim()) {
+        return parsed.version.trim();
+      }
+    } catch {
+      // ignore invalid json
+    }
+  }
+
+  return "unknown";
+};
+
+const EXPECTED_VERSION = getPackageVersionForTest();
+const EXPECTED_COMMIT_HASH = getCommitHashForTest();
+const EXPECTED_HELP_FOOTER = `\n\n###### UbiquityOS Production [v${EXPECTED_VERSION}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${EXPECTED_VERSION}) [${EXPECTED_COMMIT_HASH}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${EXPECTED_COMMIT_HASH})`;
+const EXPECTED_COMMAND_RESPONSE_MARKER = '\n\n<!-- "commentKind": "command-response" -->';
 
 let nextCommentId = 1000;
 const makeComment = (body: string) => ({
@@ -219,10 +355,21 @@ describe("Event related tests", () => {
       logger: logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(1);
+    const expectedBody =
+      [
+        "| Command | Description | Example |",
+        "|---|---|---|",
+        "| `/help` | List all available commands. | `/help` |",
+        "| `/bar` | bar command | `/bar foo` |",
+        "| `/foo` | foo command | `/foo bar` |",
+        "| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |",
+      ].join("\n") +
+      EXPECTED_HELP_FOOTER +
+      EXPECTED_COMMAND_RESPONSE_MARKER;
     expect(spy.mock.calls).toEqual([
       [
         {
-          body: "| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |\n\n###### UbiquityOS Production [v7.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v7.1.0) [159ea6e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/159ea6e)",
+          body: expectedBody,
           issue_number: 1,
           owner: "ubiquity",
           repo: name,
