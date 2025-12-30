@@ -9,6 +9,11 @@ interface WorkflowDispatchOptions {
   inputs?: { [key: string]: string };
 }
 
+interface WorkflowRunLookupOptions {
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}
+
 function getHttpStatus(error: unknown): number | null {
   if (typeof error !== "object" || error === null) return null;
   if (!("status" in error)) return null;
@@ -62,6 +67,63 @@ async function workflowFileExistsOnRef(
     if (status === 404) return false;
     throw error;
   }
+}
+
+type WorkflowRunSummary = {
+  html_url?: string | null;
+  created_at?: string | null;
+  event?: string | null;
+  head_branch?: string | null;
+  head_sha?: string | null;
+};
+
+function matchesWorkflowRef(run: WorkflowRunSummary, ref: string | undefined): boolean {
+  if (!ref) return true;
+  return run.head_branch === ref || run.head_sha === ref;
+}
+
+async function findWorkflowRunUrl(
+  context: GitHubContext,
+  options: WorkflowDispatchOptions,
+  ref: string | undefined,
+  startedAt: number,
+  lookupOptions?: WorkflowRunLookupOptions
+): Promise<string | null> {
+  const pollIntervalMs = lookupOptions?.pollIntervalMs ?? 1_500;
+  const maxWaitMs = lookupOptions?.maxWaitMs ?? 15_000;
+  const earliestCreatedAt = startedAt - 15_000;
+  const deadline = Date.now() + maxWaitMs;
+
+  const authenticatedOctokit = await getInstallationOctokitForRepo(context, options.owner, options.repository);
+
+  while (Date.now() <= deadline) {
+    try {
+      const { data } = await authenticatedOctokit.rest.actions.listWorkflowRuns({
+        owner: options.owner,
+        repo: options.repository,
+        workflow_id: options.workflowId,
+        event: "workflow_dispatch",
+        per_page: 10,
+      });
+
+      const runs = (data.workflow_runs ?? []) as WorkflowRunSummary[];
+      const match = runs.find((run) => {
+        const createdAt = run.created_at ? Date.parse(run.created_at) : 0;
+        if (!createdAt || createdAt < earliestCreatedAt) return false;
+        if (run.event && run.event !== "workflow_dispatch") return false;
+        return matchesWorkflowRef(run, ref);
+      });
+
+      if (match?.html_url) return match.html_url;
+    } catch (error) {
+      context.logger.debug({ err: error, options }, "Failed to lookup workflow run URL (non-fatal)");
+      return null;
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  return null;
 }
 
 export async function dispatchWorkflow(context: GitHubContext, options: WorkflowDispatchOptions) {
@@ -126,6 +188,27 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
       const remainingMs = maxRetryMs - elapsedMs;
       await sleep(Math.min(retryDelayMs, remainingMs));
     }
+  }
+}
+
+export async function dispatchWorkflowWithRunUrl(
+  context: GitHubContext,
+  options: WorkflowDispatchOptions,
+  lookupOptions?: WorkflowRunLookupOptions
+): Promise<string | null> {
+  await dispatchWorkflow(context, options);
+
+  try {
+    const ref = options.ref ?? (await getDefaultBranch(context, options.owner, options.repository));
+    const startedAt = Date.now();
+    const runUrl = await findWorkflowRunUrl(context, options, ref, startedAt, lookupOptions);
+    if (!runUrl) {
+      context.logger.debug({ options }, "Workflow dispatched but no run URL was found yet.");
+    }
+    return runUrl;
+  } catch (error) {
+    context.logger.debug({ err: error, options }, "Workflow dispatched but run URL lookup failed (non-fatal).");
+    return null;
   }
 }
 

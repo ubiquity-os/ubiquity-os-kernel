@@ -18,6 +18,7 @@ jest.mock("@octokit/auth-app", () => ({}));
 jest.mock("../src/github/utils/workflow-dispatch", () => ({
   getDefaultBranch: jest.fn().mockResolvedValue("main"),
   dispatchWorkflow: jest.fn(),
+  dispatchWorkflowWithRunUrl: jest.fn().mockResolvedValue("https://example.com/runs/1"),
   dispatchWorker: jest.fn(),
 }));
 
@@ -221,7 +222,7 @@ describe("Event related tests", () => {
     expect(spy.mock.calls).toEqual([
       [
         {
-          body: "| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |\n\n###### UbiquityOS Production [v7.0.0](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v7.0.0) [159ea6e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/159ea6e)",
+          body: "| Command | Description | Example |\n|---|---|---|\n| `/help` | List all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |\n\n###### UbiquityOS Production [v7.1.0](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v7.1.0) [159ea6e](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/159ea6e)",
           issue_number: 1,
           owner: "ubiquity",
           repo: name,
@@ -231,7 +232,7 @@ describe("Event related tests", () => {
   });
 
   it("Should call appropriate plugin", async () => {
-    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
+    const { dispatchWorkflowWithRunUrl } = await import("../src/github/utils/workflow-dispatch");
 
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
@@ -261,8 +262,8 @@ describe("Event related tests", () => {
       logger,
     } as unknown as GitHubContext);
     expect(spy).toBeCalledTimes(0);
-    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
-    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls[0][1]).toMatchObject({
       owner: UBIQUITY_OS_OWNER,
       repository: "plugin-b",
       ref: "main",
@@ -274,7 +275,7 @@ describe("Event related tests", () => {
   });
 
   it("Should route when @ubiquityos is mentioned mid-comment", async () => {
-    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
+    const { dispatchWorkflowWithRunUrl } = await import("../src/github/utils/workflow-dispatch");
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -301,8 +302,8 @@ describe("Event related tests", () => {
       logger,
     } as unknown as GitHubContext);
 
-    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
-    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls[0][1]).toMatchObject({
       owner: UBIQUITY_OS_OWNER,
       repository: "plugin-b",
       workflowId: "compute.yml",
@@ -310,7 +311,7 @@ describe("Event related tests", () => {
   });
 
   it("Should dispatch the agent workflow for complex requests", async () => {
-    const { dispatchWorkflow } = await import("../src/github/utils/workflow-dispatch");
+    const { dispatchWorkflowWithRunUrl } = await import("../src/github/utils/workflow-dispatch");
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
     await issueCommentCreated({
@@ -337,14 +338,14 @@ describe("Event related tests", () => {
       logger,
     } as unknown as GitHubContext);
 
-    expect((dispatchWorkflow as jest.Mock).mock.calls.length).toEqual(1);
-    expect((dispatchWorkflow as jest.Mock).mock.calls[0][1]).toMatchObject({
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls.length).toEqual(1);
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls[0][1]).toMatchObject({
       owner: UBIQUITY_OS_OWNER,
       repository: "ubiquity-os-kernel",
       workflowId: "agent.yml",
     });
 
-    const inputs = (dispatchWorkflow as jest.Mock).mock.calls[0][1].inputs as Record<string, string>;
+    const inputs = (dispatchWorkflowWithRunUrl as jest.Mock).mock.calls[0][1].inputs as Record<string, string>;
     const command = JSON.parse(inputs.command);
     expect(command).toMatchObject({ name: "agent", parameters: { task: "rewrite spec based on the thread and set the best time label" } });
   });

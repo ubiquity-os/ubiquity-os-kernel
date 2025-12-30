@@ -8,6 +8,10 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 - For UbiquityOS research, rely on local code, tests, and docs in this repository (use `rg` and read source).
 - If the question is about non-UbiquityOS dependencies or general tooling, external research is allowed; otherwise stay local.
 
+## Secrets & Env Naming
+
+- Never use `UBQ_` in secret/property/key names; use `UOS_` instead.
+
 ## 🧭 Routing & Prompting Policy
 
 - **Never** implement AI behavior based on keyword/regex triggers (e.g., `if (text.includes("install")) …`) to pick tools/plugins. If the model is making a decision, that decision must be prompt-driven.

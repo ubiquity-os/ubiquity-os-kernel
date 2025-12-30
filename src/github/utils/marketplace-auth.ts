@@ -36,7 +36,7 @@ async function getInstallationIdForUser(eventHandler: GitHubEventHandler, userna
   return readFiniteNumber((data as { id?: unknown })?.id);
 }
 
-export async function tryGetInstallationTokenForOwner(eventHandler: GitHubEventHandler, owner: string): Promise<string | null> {
+export async function tryGetInstallationIdForOwner(eventHandler: GitHubEventHandler, owner: string): Promise<number | null> {
   const normalizedOwner = normalizeOwner(owner);
   if (!normalizedOwner) return null;
 
@@ -59,6 +59,11 @@ export async function tryGetInstallationTokenForOwner(eventHandler: GitHubEventH
   }
 
   if (installationId === null) return null;
-  return await eventHandler.getToken(installationId);
+  return installationId;
 }
 
+export async function tryGetInstallationTokenForOwner(eventHandler: GitHubEventHandler, owner: string): Promise<string | null> {
+  const installationId = await tryGetInstallationIdForOwner(eventHandler, owner);
+  if (installationId === null) return null;
+  return await eventHandler.getToken(installationId);
+}

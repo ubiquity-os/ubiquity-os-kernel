@@ -10,9 +10,10 @@ import { createKernelAttestationToken } from "../utils/kernel-attestation";
 import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
 import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
 import { postHelpCommand } from "./help-command";
 import { callPersonalAgent } from "./personal-agent";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
 
 type SlashCommandInvocation = {
   name: string;
@@ -299,13 +300,14 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     } else {
       const baseInputs = (await inputs.getInputs()) as Record<string, string>;
       const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-      await dispatchWorkflow(context, {
+      const runUrl = await dispatchWorkflowWithRunUrl(context, {
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
         ref: ref,
         inputs: workflowInputs,
       });
+      await updateRequestCommentRunUrl(context, runUrl);
     }
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
@@ -523,13 +525,14 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
       parameters: { task },
     });
 
-    await dispatchWorkflow(context, {
+    const runUrl = await dispatchWorkflowWithRunUrl(context, {
       owner: agentOwner,
       repository: agentRepo,
       workflowId: agentWorkflowId,
       ref,
       inputs: await inputs.getInputs(),
     });
+    await updateRequestCommentRunUrl(context, runUrl);
   } catch (error) {
     context.logger.error({ err: error }, "Failed to dispatch internal agent workflow");
     const message = error instanceof Error ? error.message : String(error);
@@ -802,13 +805,14 @@ ${JSON.stringify(commands)}
     } else {
       const baseInputs = (await inputs.getInputs()) as Record<string, string>;
       const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-      await dispatchWorkflow(context, {
+      const runUrl = await dispatchWorkflowWithRunUrl(context, {
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
         ref,
         inputs: workflowInputs,
       });
+      await updateRequestCommentRunUrl(context, runUrl);
     }
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");

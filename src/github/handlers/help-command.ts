@@ -30,7 +30,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   const commitHash = await getCommitHash();
   const environment = context.eventHandler.environment;
 
-  const comments = ["| Command | Description | Example |", "|---|---|---|", "| `/help` | List all available commands. | `/help` |"];
+  const comments = ["| Command | Description | Example |", "|---|---|---|"];
   const commandRows = new Map<string, string>();
   const configuration = await getConfig(context);
   for (const [pluginKey] of Object.entries(configuration.plugins)) {
@@ -48,7 +48,16 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   if (!commandRows.size) {
     context.logger.warn("No commands found, will not post the help command message.");
   } else {
-    const commands = [...commandRows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
+    if (!commandRows.has("help")) {
+      commandRows.set("help", "| `/help` | List all available commands. | `/help` |");
+    }
+    const commands = [...commandRows.entries()]
+      .sort(([a], [b]) => {
+        if (a === "help") return -1;
+        if (b === "help") return 1;
+        return a.localeCompare(b);
+      })
+      .map(([, row]) => row);
     const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [v${version}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${version}) [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
     await context.octokit.rest.issues.createComment({
       body: comments.concat(commands).join("\n") + footer,

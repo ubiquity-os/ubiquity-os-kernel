@@ -64,6 +64,7 @@ export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;
 
 export const configSchema = T.Object(
   {
+    imports: T.Optional(T.Array(T.String(), { default: [] })),
     plugins: T.Record(T.String(), pluginSettingsSchema, { default: {} }),
   },
   {

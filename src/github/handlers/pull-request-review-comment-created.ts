@@ -8,7 +8,7 @@ import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/confi
 import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
 import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
+import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
   callUbqAiRouter,
   describeCommands,
@@ -17,6 +17,7 @@ import {
   truncateForRouter,
   tryParseRouterDecision,
 } from "./issue-comment-created";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
 
 async function addReactionEyes(context: GitHubContext<"pull_request_review_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -129,9 +130,13 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
     });
+    const kernelRefreshUrl = context.eventHandler.kernelRefreshUrl.trim();
+    const kernelRefreshIntervalSeconds = context.eventHandler.kernelRefreshIntervalSeconds;
     const baseSettings: Record<string, unknown> = {
       ...(agentMemory ? { agentMemory } : {}),
       environment: context.eventHandler.environment,
+      ...(kernelRefreshUrl ? { kernelRefreshUrl } : {}),
+      ...(Number.isFinite(kernelRefreshIntervalSeconds) ? { kernelRefreshIntervalSeconds } : {}),
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
       ...(settingsOverrides ?? {}),
     };
@@ -157,13 +162,14 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
       parameters: { task },
     });
 
-    await dispatchWorkflow(context, {
+    const runUrl = await dispatchWorkflowWithRunUrl(context, {
       owner: agentOwner,
       repository: agentRepo,
       workflowId: agentWorkflowId,
       ref,
       inputs: await inputs.getInputs(),
     });
+    await updateRequestCommentRunUrl(context, runUrl);
   } catch (error) {
     context.logger.error({ err: error }, "Failed to dispatch internal agent workflow");
     const message = error instanceof Error ? error.message : String(error);
@@ -379,13 +385,14 @@ ${JSON.stringify(commands)}
       } else {
         const baseInputs = (await inputs.getInputs()) as Record<string, string>;
         const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-        await dispatchWorkflow(context, {
+        const runUrl = await dispatchWorkflowWithRunUrl(context, {
           owner: plugin.owner,
           repository: plugin.repo,
           workflowId: plugin.workflowId,
           ref,
           inputs: workflowInputs,
         });
+        await updateRequestCommentRunUrl(context, runUrl);
       }
     } catch (error) {
       context.logger.error({ plugin, err: error }, "An error occurred while processing plugin; skipping plugin");

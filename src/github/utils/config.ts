@@ -3,6 +3,7 @@ import YAML from "js-yaml";
 import { YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin, PluginConfiguration, PluginSettings, configSchema, configSchemaValidator, parsePluginIdentifier } from "../types/plugin-configuration";
+import { tryGetInstallationIdForOwner } from "./marketplace-auth";
 import { getManifest } from "./plugins";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
@@ -14,6 +15,14 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 };
 
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
+const MAX_IMPORT_DEPTH = 6;
+
+type ConfigLocation = { owner: string; repo: string };
+type ImportState = {
+  cache: Map<string, PluginConfiguration | null>;
+  inFlight: Set<string>;
+  octokitByOwner: Map<string, GitHubContext["octokit"] | null>;
+};
 
 function normalizeEnvironmentName(environment: string | null | undefined): string {
   return String(environment ?? "")
@@ -54,25 +63,59 @@ export function getConfigPathCandidatesForEnvironment(environment: string | null
   return primary === CONFIG_FULL_PATH ? [CONFIG_FULL_PATH] : [primary, CONFIG_FULL_PATH];
 }
 
-export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
-  const rawData = await download({
-    context,
-    repository,
-    owner,
-  });
+function normalizeImportKey(location: ConfigLocation): string {
+  return `${location.owner}`.trim().toLowerCase() + "/" + `${location.repo}`.trim().toLowerCase();
+}
 
-  if (!rawData) {
-    context.logger.debug({ owner, repository }, "No configuration data");
-    return { config: null, errors: null, rawData: null };
+function parseImportSpec(value: string): ConfigLocation | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split("/");
+  if (parts.length !== 2) return null;
+  const [owner, repo] = parts;
+  if (!owner || !repo) return null;
+  return { owner, repo };
+}
+
+function readImports(context: GitHubContext, value: unknown, source: ConfigLocation): ConfigLocation[] {
+  if (!value) return [];
+  if (!Array.isArray(value)) {
+    context.logger.warn({ source }, "Invalid imports; expected a list of strings.");
+    return [];
   }
-  context.logger.debug({ owner, repository }, "Downloaded configuration file");
+  const seen = new Set<string>();
+  const imports: ConfigLocation[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      context.logger.warn({ source, entry }, "Ignoring invalid import entry; expected string.");
+      continue;
+    }
+    const parsed = parseImportSpec(entry);
+    if (!parsed) {
+      context.logger.warn({ source, entry }, "Ignoring invalid import entry; expected owner/repo.");
+      continue;
+    }
+    const key = normalizeImportKey(parsed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    imports.push(parsed);
+  }
+  return imports;
+}
 
-  const { yaml, errors } = parseYaml(context, rawData);
+function normalizeConfiguration(context: GitHubContext, source: ConfigLocation, yaml: unknown) {
+  if (!yaml || typeof yaml !== "object" || Array.isArray(yaml)) {
+    return { config: yaml as PluginConfiguration | null, imports: [] as ConfigLocation[] };
+  }
   let targetRepoConfiguration: PluginConfiguration | null = yaml as PluginConfiguration;
+  const imports = readImports(context, (yaml as { imports?: unknown }).imports, source);
+  if ("imports" in (yaml as { imports?: unknown })) {
+    delete (yaml as { imports?: unknown }).imports;
+  }
 
   // Handle new array format: convert to old object format
   if (targetRepoConfiguration && Array.isArray(targetRepoConfiguration.plugins)) {
-    context.logger.debug({ owner, repository }, "Converting array-format plugins to object format");
+    context.logger.debug({ source }, "Converting array-format plugins to object format");
     const convertedPlugins: Record<string, PluginSettings> = {};
     for (let i = 0; i < targetRepoConfiguration.plugins.length; i++) {
       const pluginItem = targetRepoConfiguration.plugins[i];
@@ -96,25 +139,205 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
     };
   }
 
-  context.logger.debug({ owner, repository }, "Decoding configuration");
-  if (targetRepoConfiguration) {
-    try {
-      const configSchemaWithDefaults = Value.Default(configSchema, targetRepoConfiguration) as Readonly<unknown>;
-      const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
-      if (errors !== null) {
-        for (const error of errors) {
-          context.logger.error({ err: error }, "Configuration validation error");
-        }
-      }
-      const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
-      return { config: decodedConfig, errors, rawData };
-    } catch (error) {
-      context.logger.error({ err: error, owner, repository }, "Error decoding configuration; Will ignore.");
-      return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[], rawData };
-    }
+  return { config: targetRepoConfiguration, imports };
+}
+
+function stripImports(config: PluginConfiguration): PluginConfiguration {
+  if (!config || typeof config !== "object") return config;
+  const { imports: _imports, ...rest } = config as PluginConfiguration & { imports?: unknown };
+  return rest as PluginConfiguration;
+}
+
+function mergeImportedConfigs(imported: PluginConfiguration[], base: PluginConfiguration | null): PluginConfiguration | null {
+  if (!imported.length) {
+    return base;
   }
-  context.logger.error({ owner, repository, errors }, "YAML could not be decoded");
-  return { config: null, errors, rawData };
+  let merged = imported[0];
+  for (let i = 1; i < imported.length; i++) {
+    merged = mergeConfigurations(merged, imported[i]);
+  }
+  return base ? mergeConfigurations(merged, base) : merged;
+}
+
+function createImportState(): ImportState {
+  return {
+    cache: new Map(),
+    inFlight: new Set(),
+    octokitByOwner: new Map(),
+  };
+}
+
+async function getOctokitForOwner(context: GitHubContext, owner: string, state: ImportState): Promise<GitHubContext["octokit"] | null> {
+  const key = owner.trim().toLowerCase();
+  if (state.octokitByOwner.has(key)) {
+    return state.octokitByOwner.get(key) ?? null;
+  }
+  const repoOwner =
+    typeof context.payload === "object" &&
+    context.payload !== null &&
+    "repository" in context.payload &&
+    context.payload.repository &&
+    typeof context.payload.repository === "object" &&
+    "owner" in context.payload.repository &&
+    context.payload.repository.owner &&
+    typeof context.payload.repository.owner === "object" &&
+    "login" in context.payload.repository.owner
+      ? context.payload.repository.owner.login
+      : null;
+  if (repoOwner && repoOwner.toLowerCase() === key) {
+    state.octokitByOwner.set(key, context.octokit);
+    return context.octokit;
+  }
+
+  if (typeof context.eventHandler.getAuthenticatedOctokit !== "function") {
+    context.logger.debug({ owner }, "No authenticated Octokit resolver available for imports.");
+    state.octokitByOwner.set(key, null);
+    return null;
+  }
+
+  const installationId = await tryGetInstallationIdForOwner(context.eventHandler, owner);
+  if (installationId === null) {
+    context.logger.debug({ owner }, "No installation found for import owner.");
+    state.octokitByOwner.set(key, null);
+    return null;
+  }
+
+  const octokit = context.eventHandler.getAuthenticatedOctokit(installationId);
+  state.octokitByOwner.set(key, octokit);
+  return octokit;
+}
+
+async function loadConfigSource(
+  context: GitHubContext,
+  location: ConfigLocation,
+  octokit: GitHubContext["octokit"]
+): Promise<{ config: PluginConfiguration | null; imports: ConfigLocation[]; errors: YAMLError[] | null; rawData: string | null }> {
+  const rawData = await download({
+    context,
+    repository: location.repo,
+    owner: location.owner,
+    octokit,
+  });
+
+  if (!rawData) {
+    context.logger.debug({ owner: location.owner, repository: location.repo }, "No configuration data");
+    return { config: null, imports: [], errors: null, rawData: null };
+  }
+  context.logger.debug({ owner: location.owner, repository: location.repo }, "Downloaded configuration file");
+
+  const { yaml, errors } = parseYaml(context, rawData);
+  const { config, imports } = normalizeConfiguration(context, location, yaml);
+  return { config, imports, errors, rawData };
+}
+
+function decodeConfiguration(
+  context: GitHubContext,
+  location: ConfigLocation,
+  config: PluginConfiguration
+): { config: PluginConfiguration | null; errors: ValueError[] | null } {
+  context.logger.debug({ owner: location.owner, repository: location.repo }, "Decoding configuration");
+  try {
+    const configSchemaWithDefaults = Value.Default(configSchema, config) as Readonly<unknown>;
+    const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
+    if (errors !== null) {
+      for (const error of errors) {
+        context.logger.error({ err: error }, "Configuration validation error");
+      }
+    }
+    const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
+    return { config: stripImports(decodedConfig), errors };
+  } catch (error) {
+    context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
+    return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };
+  }
+}
+
+async function resolveImportedConfiguration(
+  context: GitHubContext,
+  location: ConfigLocation,
+  state: ImportState,
+  depth: number
+): Promise<PluginConfiguration | null> {
+  const key = normalizeImportKey(location);
+  if (state.cache.has(key)) {
+    return state.cache.get(key) ?? null;
+  }
+  if (state.inFlight.has(key)) {
+    context.logger.warn({ location }, "Skipping import due to circular reference.");
+    return null;
+  }
+  if (depth > MAX_IMPORT_DEPTH) {
+    context.logger.warn({ location, depth }, "Skipping import; maximum depth exceeded.");
+    return null;
+  }
+  state.inFlight.add(key);
+
+  let resolved: PluginConfiguration | null = null;
+  try {
+    const octokit = await getOctokitForOwner(context, location.owner, state);
+    if (!octokit) {
+      context.logger.warn({ location }, "Skipping import; no authorized Octokit for owner.");
+      return null;
+    }
+    const { config, imports, errors } = await loadConfigSource(context, location, octokit);
+    if (errors && errors.length) {
+      context.logger.warn({ location, errors }, "Skipping import due to YAML parsing errors.");
+      return null;
+    }
+    if (!config) {
+      return null;
+    }
+    const importedConfigs: PluginConfiguration[] = [];
+    for (const next of imports) {
+      const nested = await resolveImportedConfiguration(context, next, state, depth + 1);
+      if (nested) importedConfigs.push(nested);
+    }
+    const mergedConfig = mergeImportedConfigs(importedConfigs, config);
+    if (!mergedConfig) return null;
+    const decoded = decodeConfiguration(context, location, mergedConfig);
+    resolved = decoded.config;
+  } finally {
+    state.inFlight.delete(key);
+    state.cache.set(key, resolved);
+  }
+
+  return resolved;
+}
+
+export async function getConfigurationFromRepo(context: GitHubContext, repository: string, owner: string) {
+  const location = { owner, repo: repository };
+  const state = createImportState();
+  const octokit = await getOctokitForOwner(context, owner, state);
+  if (!octokit) {
+    context.logger.debug({ owner, repository }, "No authorized Octokit for configuration load.");
+    return { config: null, errors: null, rawData: null };
+  }
+
+  const { config, imports, errors, rawData } = await loadConfigSource(context, location, octokit);
+  if (!rawData) {
+    return { config: null, errors: null, rawData: null };
+  }
+  if (errors && errors.length) {
+    context.logger.error({ owner, repository, errors }, "YAML could not be decoded");
+    return { config: null, errors, rawData };
+  }
+  if (!config) {
+    context.logger.error({ owner, repository }, "YAML could not be decoded");
+    return { config: null, errors, rawData };
+  }
+
+  const importedConfigs: PluginConfiguration[] = [];
+  for (const next of imports) {
+    const resolved = await resolveImportedConfiguration(context, next, state, 1);
+    if (resolved) importedConfigs.push(resolved);
+  }
+  const mergedConfig = mergeImportedConfigs(importedConfigs, config);
+  if (!mergedConfig) {
+    return { config: null, errors: null, rawData };
+  }
+
+  const decoded = decodeConfiguration(context, location, mergedConfig);
+  return { config: decoded.config, errors: decoded.errors, rawData };
 }
 
 /**
@@ -122,8 +345,8 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
  */
 function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
   const mergedPlugins = {
-    ...configuration1.plugins,
-    ...configuration2.plugins,
+    ...(configuration1.plugins ?? {}),
+    ...(configuration2.plugins ?? {}),
   };
   return {
     ...configuration1,
@@ -134,7 +357,7 @@ function mergeConfigurations(configuration1: PluginConfiguration, configuration2
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
-  const defaultConfiguration = Value.Decode(configSchema, Value.Default(configSchema, {}));
+  const defaultConfiguration = stripImports(Value.Decode(configSchema, Value.Default(configSchema, {})));
   if (!("repository" in payload) || !payload.repository) {
     context.logger.warn("Repository is not defined");
     return defaultConfiguration;
@@ -209,7 +432,17 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   };
 }
 
-async function download({ context, repository, owner }: { context: GitHubContext; repository: string; owner: string }): Promise<string | null> {
+async function download({
+  context,
+  repository,
+  owner,
+  octokit,
+}: {
+  context: GitHubContext;
+  repository: string;
+  owner: string;
+  octokit: GitHubContext["octokit"];
+}): Promise<string | null> {
   if (!repository || !owner) {
     context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
@@ -221,7 +454,7 @@ async function download({ context, repository, owner }: { context: GitHubContext
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
       try {
-        const { data, headers } = await context.octokit.rest.repos.getContent({
+        const { data, headers } = await octokit.rest.repos.getContent({
           owner,
           repo: repository,
           path: filePath,

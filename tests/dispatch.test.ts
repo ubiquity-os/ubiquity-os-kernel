@@ -166,6 +166,7 @@ describe("handleEvent", () => {
     const payloadString = JSON.stringify(payload);
     const signature = calculateSignature(payloadString, secret);
 
+    const originalEnv = { ...process.env };
     process.env = {
       ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: secret,
@@ -193,5 +194,6 @@ describe("handleEvent", () => {
     expect(dispatchWorker).toHaveBeenCalledTimes(1);
 
     dispatchWorker.mockReset();
+    process.env = originalEnv;
   });
 });

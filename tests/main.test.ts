@@ -22,6 +22,7 @@ jest.mock("@octokit/core", () => ({
 }));
 
 const issueOpened = "issues.opened";
+const conversationRewardsRepo = "conversation-rewards";
 
 const eventHandler = {
   environment: "production",
@@ -62,6 +63,7 @@ describe("Worker tests", () => {
   });
   it("Should fail on missing env variables", async () => {
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
+    const originalEnv = { ...process.env };
     process.env = {
       ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "",
@@ -76,7 +78,8 @@ describe("Worker tests", () => {
     });
     expect(res.status).toEqual(500);
     expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
-    consoleSpy.mockReset();
+    process.env = originalEnv;
+    consoleSpy.mockRestore();
   });
 
   describe("Configuration tests", () => {
@@ -212,7 +215,7 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "conversation-rewards",
+            name: conversationRewardsRepo,
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
@@ -255,6 +258,90 @@ describe("Worker tests", () => {
           },
         },
       });
+    });
+    it("Should resolve imports before merging repo configuration", async () => {
+      const orgYaml = `
+      imports:
+        - ubiquity/shared-config
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org"
+      `;
+      const orgImportYaml = `
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org-import"
+        https://plugin-b.internal:
+          with:
+            enabled: true
+      `;
+      const repoYaml = `
+      imports:
+        - ubiquity/repo-shared
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "repo"
+      `;
+      const repoImportYaml = `
+      plugins:
+        https://plugin-c.internal:
+          with:
+            level: 2
+      `;
+
+      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+        let data: string;
+        if (args.repo === ".ubiquity-os") {
+          data = orgYaml;
+        } else if (args.repo === conversationRewardsRepo) {
+          data = repoYaml;
+        } else if (args.repo === "shared-config") {
+          data = orgImportYaml;
+        } else if (args.repo === "repo-shared") {
+          data = repoImportYaml;
+        } else {
+          throw new Error("Not Found");
+        }
+
+        if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+          return {
+            data: {
+              content: Buffer.from(data).toString("base64"),
+            },
+          };
+        }
+        if (args.mediaType?.format === "raw") {
+          return { data };
+        }
+      }
+
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: conversationRewardsRepo,
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent,
+            },
+          },
+        },
+        eventHandler: eventHandler,
+        logger,
+      } as unknown as GitHubContext);
+
+      expect(cfg.plugins["https://plugin-a.internal"]?.with).toEqual({ source: "repo" });
+      expect(cfg.plugins["https://plugin-b.internal"]?.with).toEqual({ enabled: true });
+      expect(cfg.plugins["https://plugin-c.internal"]?.with).toEqual({ level: 2 });
     });
   });
 });
