@@ -1,11 +1,17 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
+import { Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { Manifest, manifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
+import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 
 const _manifestCache: Record<string, Manifest> = {};
+const kernelManifestSchema = T.Object({
+  ...sdkManifestSchema.properties,
+  // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
+  "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
+});
 
 export type ResolvedPlugin = {
   key: string;
@@ -130,13 +136,13 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
 }
 
 function decodeManifest(context: GitHubContext, manifest: unknown) {
-  const errors = [...Value.Errors(manifestSchema, manifest)];
+  const errors = [...Value.Errors(kernelManifestSchema, manifest)];
   if (errors.length) {
     for (const error of errors) {
       context.logger.error({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }
-  const defaultManifest = Value.Default(manifestSchema, manifest);
+  const defaultManifest = Value.Default(kernelManifestSchema, manifest);
   return defaultManifest as Manifest;
 }
