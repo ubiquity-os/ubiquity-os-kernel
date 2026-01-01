@@ -51,7 +51,7 @@ class GithubAppSetup {
   async start() {
     this._webhookUrl = (
       await input({
-        message: "Public webhook URL (ngrok):",
+        message: "Public webhook URL (tunnel):",
         validate: (value) => {
           const trimmed = value.trim();
           if (!trimmed) return "Webhook URL is required.";

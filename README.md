@@ -24,7 +24,7 @@ Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (p
 - **`APP_ID`**
   Retrieve this from your GitHub App settings.
 
-For local development, expose the kernel with ngrok (or similar) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host.
+For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host.
 
 ### Quick Start
 

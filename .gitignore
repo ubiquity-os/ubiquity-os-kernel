@@ -98,8 +98,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.\*
-# wrangler project
+# env files
 .dev.vars
+.env
 .wrangler/
 # yarn v4
 .pnp.*
