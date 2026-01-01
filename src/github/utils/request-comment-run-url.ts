@@ -1,15 +1,38 @@
 import { GitHubContext } from "../github-context";
 
 const RUN_LOGS_LABEL = "Run logs:";
-const RUN_LOGS_REGEX = /^\s*Run logs:\s*.*$/im;
+const RUN_LOGS_LINE_REGEX = /^\s*Run logs:\s*.*(?:\r?\n)?/gim;
+const AGENT_BLOCK_REGEX = /<!--\s*ubiquityos-agent[\s\S]*?-->/u;
 
-function upsertRunLogsLine(body: string, runUrl: string): string {
-  if (RUN_LOGS_REGEX.test(body)) {
-    return body.replace(RUN_LOGS_REGEX, `${RUN_LOGS_LABEL} ${runUrl}`);
+function stripVisibleRunLogsLines(body: string): string {
+  return body.replace(RUN_LOGS_LINE_REGEX, "");
+}
+
+function upsertRunLogsInAgentBlock(block: string, runUrl: string): string {
+  const cleaned = block.replace(/^<!--\s*ubiquityos-agent\s*/u, "").replace(/-->\s*$/u, "");
+  const lines = cleaned.split(/\r?\n/u);
+  const nextLines: string[] = [];
+  let didWrite = false;
+
+  for (const line of lines) {
+    if (line.trim().startsWith(RUN_LOGS_LABEL)) {
+      if (!didWrite) {
+        nextLines.push(`${RUN_LOGS_LABEL} ${runUrl}`);
+        didWrite = true;
+      }
+      continue;
+    }
+    nextLines.push(line);
   }
 
-  const separator = body.endsWith("\n") ? "\n" : "\n\n";
-  return `${body}${separator}${RUN_LOGS_LABEL} ${runUrl}`;
+  if (!didWrite) {
+    const summaryIndex = nextLines.findIndex((line) => line.trim() === "Agent summary:");
+    const insertAt = summaryIndex >= 0 ? summaryIndex : nextLines.length;
+    nextLines.splice(insertAt, 0, `${RUN_LOGS_LABEL} ${runUrl}`);
+  }
+
+  const content = nextLines.join("\n").trimEnd();
+  return `<!-- ubiquityos-agent\n${content}\n-->`;
 }
 
 export async function updateRequestCommentRunUrl(
@@ -22,7 +45,17 @@ export async function updateRequestCommentRunUrl(
   const comment = context.payload.comment;
   if (!comment?.body || !comment.id) return;
 
-  const updatedBody = upsertRunLogsLine(comment.body, trimmedUrl);
+  const match = AGENT_BLOCK_REGEX.exec(comment.body);
+  let updatedBody = comment.body;
+  if (match) {
+    const block = match[0];
+    const before = comment.body.slice(0, match.index);
+    const after = comment.body.slice(match.index + block.length);
+    const updatedBlock = upsertRunLogsInAgentBlock(block, trimmedUrl);
+    updatedBody = `${stripVisibleRunLogsLines(before)}${updatedBlock}${stripVisibleRunLogsLines(after)}`;
+  } else {
+    updatedBody = stripVisibleRunLogsLines(comment.body);
+  }
   if (updatedBody === comment.body) return;
 
   const owner = context.payload.repository.owner.login;

@@ -129,6 +129,7 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
     const agentMemory = await getAgentMemorySnippet({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
+      logger: context.logger,
     });
     const kernelRefreshUrl = context.eventHandler.kernelRefreshUrl.trim();
     const kernelRefreshIntervalSeconds = context.eventHandler.kernelRefreshIntervalSeconds;
@@ -252,6 +253,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     repo: context.payload.repository.name,
     limit: 6,
     maxChars: 1200,
+    logger: context.logger,
   });
 
   const prompt = `

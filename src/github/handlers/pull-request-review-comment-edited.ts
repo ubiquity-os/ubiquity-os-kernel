@@ -109,5 +109,6 @@ export default async function pullRequestReviewCommentEdited(context: GitHubCont
       prUrl: parsed.prUrl,
       summary: parsed.summary,
     },
+    logger: context.logger,
   });
 }

@@ -2,11 +2,15 @@ import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals
 
 type KvEntry = { key: unknown[]; value: unknown };
 
-const keyStartsWith = (key: unknown[], prefix: unknown[]): boolean => prefix.length <= key.length && prefix.every((value, index) => key[index] === value);
+function keyStartsWith(key: unknown[], prefix: unknown[]): boolean {
+  return prefix.length <= key.length && prefix.every((value, index) => key[index] === value);
+}
 
-const normalizeKeyPart = (value: unknown): string | number => (typeof value === "number" ? value : String(value));
+function normalizeKeyPart(value: unknown): string | number {
+  return typeof value === "number" ? value : String(value);
+}
 
-const compareKvKey = (left: unknown[], right: unknown[]): number => {
+function compareKvKey(left: unknown[], right: unknown[]): number {
   const max = Math.max(left.length, right.length);
   for (let i = 0; i < max; i += 1) {
     const leftValue = normalizeKeyPart(left[i]);
@@ -15,7 +19,7 @@ const compareKvKey = (left: unknown[], right: unknown[]): number => {
     if (leftValue > rightValue) return 1;
   }
   return 0;
-};
+}
 
 class InMemoryKv {
   private _entries: KvEntry[] = [];
@@ -36,11 +40,11 @@ class InMemoryKv {
 
   list(selector: { prefix: unknown[] }, options: { limit?: number; start?: unknown[]; cursor?: string } = {}) {
     const sorted = this._entries.filter((entry) => keyStartsWith(entry.key, selector.prefix)).sort((a, b) => compareKvKey(a.key, b.key));
-    const parseCursor = (raw: string) => {
+    function parseCursor(raw: string) {
       if (!raw.startsWith("idx:")) return 0;
       const parsed = Number.parseInt(raw.slice(4), 10);
       return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-    };
+    }
 
     let startIndex = 0;
     if (options.cursor) {
@@ -106,7 +110,7 @@ const githubAuth = {
   token: "ghs_mock",
   method: { kind: "github_token", owner: "ubiquity-os", repo: "ubiquity-os-kernel", state_id: "state-123" },
 };
-const agentMessagesUrl = "http://localhost/v1/agent-messages";
+const agentBusUrl = "http://localhost/v1/agent-bus";
 
 beforeAll(async () => {
   const agentModule = await import("../lib/ai.ubq.fi/src/agent_messages.ts");
@@ -128,12 +132,12 @@ describe("agent message bus", () => {
       return now;
     });
 
-    const first = new Request(agentMessagesUrl, {
+    const first = new Request(agentBusUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ agent_id: "agent-a", channel: "claims", kind: "claim", body: "first" }),
     });
-    const second = new Request(agentMessagesUrl, {
+    const second = new Request(agentBusUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ agent_id: "agent-a", channel: "claims", kind: "claim", body: "second" }),
@@ -144,7 +148,7 @@ describe("agent message bus", () => {
     expect(postOne.status).toBe(200);
     expect(postTwo.status).toBe(200);
 
-    const listOne = await handleAgentMessagesList(new Request(`${agentMessagesUrl}?limit=1`));
+    const listOne = await handleAgentMessagesList(new Request(`${agentBusUrl}?limit=1`));
     const listOneBody = await listOne.json();
     expect(listOneBody.messages).toHaveLength(1);
     expect(listOneBody.messages[0].body).toBe("first");
@@ -152,7 +156,7 @@ describe("agent message bus", () => {
     expect(typeof listOneBody.next_cursor).toBe("string");
 
     const cursor = listOneBody.next_cursor;
-    const listTwo = await handleAgentMessagesList(new Request(`${agentMessagesUrl}?limit=1&cursor=${encodeURIComponent(cursor)}`));
+    const listTwo = await handleAgentMessagesList(new Request(`${agentBusUrl}?limit=1&cursor=${encodeURIComponent(cursor)}`));
     const listTwoBody = await listTwo.json();
     expect(listTwoBody.messages).toHaveLength(1);
     expect(listTwoBody.messages[0].body).toBe("second");
@@ -167,7 +171,7 @@ describe("agent message bus", () => {
       method: { kind: "kv_api_key", key_id: "key-1" },
     });
 
-    const res = await handleAgentMessagesList(new Request(agentMessagesUrl));
+    const res = await handleAgentMessagesList(new Request(agentBusUrl));
     expect(res.status).toBe(403);
   });
 });

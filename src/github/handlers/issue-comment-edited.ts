@@ -109,5 +109,6 @@ export default async function issueCommentEdited(context: GitHubContext<"issue_c
       prUrl: parsed.prUrl,
       summary: parsed.summary,
     },
+    logger: context.logger,
   });
 }

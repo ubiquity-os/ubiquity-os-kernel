@@ -492,6 +492,7 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
     const agentMemory = await getAgentMemorySnippet({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
+      logger: context.logger,
     });
     const kernelRefreshUrl = context.eventHandler.kernelRefreshUrl.trim();
     const kernelRefreshIntervalSeconds = context.eventHandler.kernelRefreshIntervalSeconds;
@@ -659,6 +660,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     repo: context.payload.repository.name,
     limit: 6,
     maxChars: 1200,
+    logger: context.logger,
   });
 
   const prompt = `

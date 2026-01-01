@@ -82,7 +82,7 @@ const buildHeaders = () => {
 };
 
 const baseUrl = (override) =>
-  String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-messages")).trim();
+  String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-bus")).trim();
 
 const handlePost = async (options) => {
   const agentId = String(options.agent || options["agent-id"] || "").trim();
