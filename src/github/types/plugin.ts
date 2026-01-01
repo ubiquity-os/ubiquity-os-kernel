@@ -74,7 +74,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
       installationId,
       authToken: this.authToken,
       stateId: this.stateId,
-      ttlSeconds: 10 * 60,
+      ttlSeconds: 60 * 60,
     });
 
     const signableInputs = {

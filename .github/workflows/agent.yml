@@ -186,7 +186,7 @@ jobs:
               const parsed = Number(raw);
               if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
             }
-            return 300;
+            return 3000;
           })();
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
@@ -807,7 +807,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "3000", 10) || 3000);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1431,7 +1431,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "3000", 10) || 3000);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -2163,7 +2163,7 @@ jobs:
               const parsed = Number(raw);
               if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
             }
-            return 300;
+            return 3000;
           })();
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
@@ -2317,7 +2317,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "3000", 10) || 3000);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

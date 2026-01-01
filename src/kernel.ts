@@ -94,7 +94,7 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
       installationId,
       authToken: refreshed.token,
       stateId: verification.payload.state_id,
-      ttlSeconds: 10 * 60,
+      ttlSeconds: 60 * 60,
     });
 
     return ctx.json({
