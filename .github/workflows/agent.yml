@@ -186,7 +186,7 @@ jobs:
               const parsed = Number(raw);
               if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
             }
-            return 2700;
+            return 300;
           })();
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
@@ -807,7 +807,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -894,12 +894,26 @@ jobs:
           NODE
 
           node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          const writeTokens = (nextAuthToken, nextKernelToken, expiresAt) => {
+            const payload = {
+              authToken: nextAuthToken,
+              kernelToken: nextKernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
 
           if (!refreshUrl) {
             console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
@@ -921,8 +935,17 @@ jobs:
               "X-GitHub-Installation-Id": installationId,
             },
           })
-            .then((res) => {
-              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            .then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                throw new Error(`Token refresh warmup failed: ${res.status} ${text}`);
+              }
+              const body = await res.json().catch(() => null);
+              if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+                throw new Error("Token refresh warmup failed: missing tokens.");
+              }
+              writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+              process.stdout.write("Token refresh warmup: updated.\n");
             })
             .catch((err) => {
               process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
@@ -1408,7 +1431,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1495,12 +1518,26 @@ jobs:
           NODE
 
           node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          const writeTokens = (nextAuthToken, nextKernelToken, expiresAt) => {
+            const payload = {
+              authToken: nextAuthToken,
+              kernelToken: nextKernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
 
           if (!refreshUrl) {
             console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
@@ -1522,8 +1559,17 @@ jobs:
               "X-GitHub-Installation-Id": installationId,
             },
           })
-            .then((res) => {
-              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            .then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                throw new Error(`Token refresh warmup failed: ${res.status} ${text}`);
+              }
+              const body = await res.json().catch(() => null);
+              if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+                throw new Error("Token refresh warmup failed: missing tokens.");
+              }
+              writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+              process.stdout.write("Token refresh warmup: updated.\n");
             })
             .catch((err) => {
               process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
@@ -2117,7 +2163,7 @@ jobs:
               const parsed = Number(raw);
               if (Number.isFinite(parsed)) return Math.max(300, Math.trunc(parsed));
             }
-            return 2700;
+            return 300;
           })();
           const configPathCandidates = Array.isArray(settings.configPathCandidates)
             ? settings.configPathCandidates.filter((p) => typeof p === "string")
@@ -2271,7 +2317,7 @@ jobs:
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
-          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "2700", 10) || 2700);
+          const intervalSeconds = Math.max(300, Number.parseInt(process.env.REFRESH_INTERVAL_SECONDS || "300", 10) || 300);
           const retrySeconds = 60;
 
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -2358,12 +2404,26 @@ jobs:
           NODE
 
           node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const tokenFile = process.env.UOS_TOKEN_FILE || path.join(process.env.RUNNER_TEMP || "/tmp", "ubq_tokens.json");
           const refreshUrl = String(process.env.KERNEL_REFRESH_URL || "").trim();
           const authToken = String(process.env.AUTH_TOKEN || "").trim();
           const kernelToken = String(process.env.KERNEL_TOKEN || "").trim();
           const owner = String(process.env.GH_OWNER || "").trim();
           const repo = String(process.env.GH_REPO || "").trim();
           const installationId = String(process.env.GH_INSTALLATION_ID || "").trim();
+
+          const writeTokens = (nextAuthToken, nextKernelToken, expiresAt) => {
+            const payload = {
+              authToken: nextAuthToken,
+              kernelToken: nextKernelToken,
+              refreshedAt: new Date().toISOString(),
+              expiresAt: expiresAt || null,
+            };
+            fs.writeFileSync(tokenFile, JSON.stringify(payload, null, 2), "utf8");
+          };
 
           if (!refreshUrl) {
             console.error("Token refresh warmup skipped: missing KERNEL_REFRESH_URL.");
@@ -2385,8 +2445,17 @@ jobs:
               "X-GitHub-Installation-Id": installationId,
             },
           })
-            .then((res) => {
-              process.stdout.write(`Token refresh warmup: status=${res.status}\n`);
+            .then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                throw new Error(`Token refresh warmup failed: ${res.status} ${text}`);
+              }
+              const body = await res.json().catch(() => null);
+              if (!body || typeof body.authToken !== "string" || typeof body.ubiquityKernelToken !== "string") {
+                throw new Error("Token refresh warmup failed: missing tokens.");
+              }
+              writeTokens(body.authToken, body.ubiquityKernelToken, body.expiresAt);
+              process.stdout.write("Token refresh warmup: updated.\n");
             })
             .catch((err) => {
               process.stderr.write(`Token refresh warmup failed: ${String(err?.message || err)}\n`);
