@@ -1,4 +1,4 @@
-import { EmitterWebhookEvent } from "@octokit/webhooks";
+import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger";
 import { GitHubEventHandler } from "../github-event-handler";
 import { GitHubContext } from "../github-context";
@@ -14,13 +14,11 @@ import pullRequestReviewCommentCreated from "./pull-request-review-comment-creat
 import pullRequestReviewCommentEdited from "./pull-request-review-comment-edited";
 import handlePushEvent from "./push-event";
 
+const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
+const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
+
 function isWorkflowLoopProtectedEvent(key: string): boolean {
-  return (
-    key.startsWith("workflow_") ||
-    key.startsWith("check_") ||
-    key.startsWith("check_run.") ||
-    key.startsWith("check_suite.")
-  );
+  return key.startsWith("workflow_") || key.startsWith("check_") || key.startsWith("check_run.") || key.startsWith("check_suite.");
 }
 
 function isDaemonHotfixPlugin(plugin: ResolvedPlugin): boolean {
@@ -156,9 +154,7 @@ function buildKernelPluginErrorPayload({
   const isWorkflow = isGithubPlugin(pluginTarget);
 
   const pluginType = isWorkflow ? "workflow" : "http";
-  const pluginId = isWorkflow
-    ? `${pluginTarget.owner}/${pluginTarget.repo}:${pluginTarget.workflowId}@${ref}`
-    : String(pluginTarget);
+  const pluginId = isWorkflow ? `${pluginTarget.owner}/${pluginTarget.repo}:${pluginTarget.workflowId}@${ref}` : String(pluginTarget);
 
   const payloadRepo = authContextRepo
     ? {
@@ -173,7 +169,7 @@ function buildKernelPluginErrorPayload({
       };
 
   return {
-    event: "kernel.plugin_error",
+    event: KERNEL_PLUGIN_ERROR_EVENT,
     timestamp: new Date().toISOString(),
     stateId,
     environment: context.eventHandler.environment,
@@ -229,10 +225,10 @@ async function emitKernelPluginErrorEvent({
   triggeringInstallationId: number;
   triggeringAuthToken: string;
 }) {
-  if (context.key === ("kernel.plugin_error" as unknown as typeof context.key)) return;
+  if (context.key === KERNEL_PLUGIN_ERROR_EVENT_NAME) return;
   if (isDaemonHotfixPlugin(failingPluginEntry)) return;
 
-  const subscribers = await getPluginsForEvent(context, config.plugins, "kernel.plugin_error" as any);
+  const subscribers = await getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
   if (!subscribers.length) return;
 
   let targetRepo: { owner: string; repo: string } | null = null;
@@ -275,10 +271,11 @@ async function emitKernelPluginErrorEvent({
     const isGithub = isGithubPlugin(plugin);
     const stateId = crypto.randomUUID();
     const ref = isGithub ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : String(plugin);
-    const inputs = new PluginInput(context.eventHandler, stateId, "kernel.plugin_error" as any, payload as any, settings?.with, authToken, ref, null);
+    const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
+    const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT_NAME, eventPayload, settings?.with, authToken, ref, null);
 
     try {
-      context.logger.debug({ plugin: pluginEntry.key }, "Dispatching kernel.plugin_error");
+      context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       if (!isGithub) {
         await dispatchWorker(String(plugin), await inputs.getInputs());
       } else {
@@ -293,7 +290,7 @@ async function emitKernelPluginErrorEvent({
         });
       }
     } catch (dispatchError) {
-      context.logger.error({ plugin: pluginEntry.key, err: dispatchError }, "Error dispatching kernel.plugin_error; skipping");
+      context.logger.error({ plugin: pluginEntry.key, err: dispatchError }, `Error dispatching ${KERNEL_PLUGIN_ERROR_EVENT}; skipping`);
     }
   }
 }
@@ -359,7 +356,7 @@ async function filterPluginsForSlashCommandEvent(context: GitHubContext, plugins
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
   const context = eventHandler.transformEvent(event);
 
-  if (context.key === "deployment_status.created" || context.key === "repository_dispatch.return-data-to-ubiquity-os-kernel") {
+  if (context.key === "deployment_status.created" || String(context.key) === "repository_dispatch.return-data-to-ubiquity-os-kernel") {
     context.logger.debug({ event: context.key }, "Skipping plugin processing for internal event");
     return;
   }
@@ -387,8 +384,9 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     resolvedPlugins.push(...allowed);
   }
 
-  if (context.key === "issue_comment.created" && "comment" in context.payload) {
-    const commandName = extractSlashCommandNameFromCommentBody(String(context.payload.comment?.body ?? ""));
+  if (context.key === "issue_comment.created") {
+    const issueContext = context as GitHubContext<"issue_comment.created">;
+    const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
     if (commandName) {
       const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
       resolvedPlugins.length = 0;
@@ -396,8 +394,9 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     }
   }
 
-  if (context.key === "pull_request_review_comment.created" && "comment" in context.payload) {
-    const commandName = extractSlashCommandNameFromCommentBody(String(context.payload.comment?.body ?? ""));
+  if (context.key === "pull_request_review_comment.created") {
+    const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
+    const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
     if (commandName) {
       const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
       resolvedPlugins.length = 0;

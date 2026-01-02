@@ -5,6 +5,7 @@ import sonarjs from "eslint-plugin-sonarjs";
 import checkFile from "eslint-plugin-check-file";
 
 export default tsEslint.config({
+  files: ["**/*.ts", "**/*.tsx"],
   plugins: {
     "@typescript-eslint": tsEslint.plugin,
     "check-file": checkFile,

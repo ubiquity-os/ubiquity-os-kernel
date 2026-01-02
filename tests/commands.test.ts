@@ -8,6 +8,7 @@ import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
+import { KERNEL_VERSION } from "../src/version";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -148,23 +149,7 @@ const getPackageVersionForTest = (): string => {
   if (envVersion?.trim()) {
     return envVersion.trim();
   }
-
-  for (const root of ROOT_SEARCH_PATHS) {
-    const content = readTextFile(`${root}/package.json`);
-    if (!content) {
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(content) as { version?: unknown };
-      if (typeof parsed.version === "string" && parsed.version.trim()) {
-        return parsed.version.trim();
-      }
-    } catch {
-      // ignore invalid json
-    }
-  }
-
-  return "unknown";
+  return KERNEL_VERSION;
 };
 
 const EXPECTED_VERSION = getPackageVersionForTest();

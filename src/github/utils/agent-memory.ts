@@ -55,6 +55,12 @@ const warned = new Set<string>();
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+function toBufferSource(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function warnOnce(logger: LoggerLike | undefined, key: string, message: string, err?: unknown) {
   if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
   warned.add(key);
@@ -156,7 +162,7 @@ async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null
       return null;
     }
     try {
-      return await crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+      return await crypto.subtle.importKey("raw", toBufferSource(bytes), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     } catch (error) {
       warnOnce(logger, "agent-memory-key-import", "Failed to import UOS_AGENT_MEMORY_KEY.", error);
       return null;
@@ -172,7 +178,7 @@ async function compressBytes(payload: Uint8Array): Promise<Uint8Array> {
   }
   const stream = new ctor("gzip");
   const writer = stream.writable.getWriter();
-  await writer.write(payload);
+  await writer.write(toBufferSource(payload));
   await writer.close();
   const buffer = await new Response(stream.readable).arrayBuffer();
   return new Uint8Array(buffer);
@@ -185,7 +191,7 @@ async function decompressBytes(payload: Uint8Array): Promise<Uint8Array> {
   }
   const stream = new ctor("gzip");
   const writer = stream.writable.getWriter();
-  await writer.write(payload);
+  await writer.write(toBufferSource(payload));
   await writer.close();
   const buffer = await new Response(stream.readable).arrayBuffer();
   return new Uint8Array(buffer);
@@ -201,7 +207,8 @@ async function encodeEntry(entry: AgentRunMemoryEntry, logger?: LoggerLike): Pro
   if (!key) return null;
   const compressed = await compressBytes(textEncoder.encode(JSON.stringify(entry)));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, compressed);
+  const ivSource = toBufferSource(iv);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: ivSource }, key, toBufferSource(compressed));
   return {
     v: 1,
     alg: "A256GCM",
@@ -223,7 +230,8 @@ async function decodeEntry(value: unknown, logger?: LoggerLike): Promise<AgentRu
       return null;
     }
     try {
-      const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+      const ivSource = toBufferSource(iv);
+      const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ivSource }, key, toBufferSource(data));
       const decompressed = await decompressBytes(new Uint8Array(plaintext));
       const parsed = JSON.parse(textDecoder.decode(decompressed));
       return parseEntryRecord(parsed);

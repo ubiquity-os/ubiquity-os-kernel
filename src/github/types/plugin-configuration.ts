@@ -38,13 +38,11 @@ function createErrorsIterable(errors: Iterable<ValueError>): Iterable<ValueError
 
         if (error.path !== customErrorPath) {
           adjustErrorMessage(error);
+          const schemaRecord = error.schema as unknown as Record<PropertyKey, unknown>;
           if (error.message !== standardMessage) {
             customErrorPath = error.path;
             yield error;
-          } else if (
-            error.message !== TYPEBOX_REQUIRED_ERROR_MESSAGE ||
-            UNKNOWN_TYPE_NAMES.has((error.schema as Record<PropertyKey, unknown>)[Kind] as string)
-          ) {
+          } else if (error.message !== TYPEBOX_REQUIRED_ERROR_MESSAGE || UNKNOWN_TYPE_NAMES.has(schemaRecord[Kind] as string)) {
             yield error;
           }
         }

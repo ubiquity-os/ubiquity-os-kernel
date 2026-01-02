@@ -7,7 +7,7 @@ import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { createAppAuth } from "@octokit/auth-app";
 import OpenAI from "openai";
-import packageJson from "../package.json" with { type: "json" };
+import { KERNEL_VERSION } from "./version.ts";
 import { GitHubEventHandler } from "./github/github-event-handler.ts";
 import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
@@ -27,7 +27,7 @@ app.use(async (c: Context, next) => {
 });
 
 app.get("/", (c) => {
-  return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
+  return c.text(`Welcome to UbiquityOS kernel version ${KERNEL_VERSION}`);
 });
 
 app.get("/x25519_public_key", async (ctx: Context) => {

@@ -1,1 +1,1 @@
-deno run --allow-env --allow-read --allow-run --allow-write lint-staged
+deno task lint-staged

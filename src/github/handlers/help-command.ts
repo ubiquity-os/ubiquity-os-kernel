@@ -2,6 +2,7 @@ import { GitHubContext } from "../github-context";
 import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
+import { KERNEL_VERSION } from "../../version.ts";
 
 // Deno won't necessarily be here, which is why we forward declare it
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -10,6 +11,12 @@ declare const Deno: {
     get(key: string): string | undefined;
   };
   readTextFile(path: string): Promise<string>;
+  Command: new (
+    command: string,
+    options: { args: string[]; stdout?: "piped"; stderr?: "piped" }
+  ) => {
+    output(): Promise<{ code: number; stdout: Uint8Array; stderr: Uint8Array }>;
+  };
 };
 
 type CommandRow = {
@@ -149,7 +156,7 @@ function hasCommandResponseMarker(body: string | null | undefined): boolean {
 function getIssueLocator(context: GitHubContext<"issue_comment.created">): { owner: string; repo: string; issueNumber: number } | null {
   const owner = context.payload.repository?.owner?.login;
   const repo = context.payload.repository?.name;
-  const issueNumber = context.payload.issue?.number ?? context.payload.pull_request?.number;
+  const issueNumber = context.payload.issue?.number;
   if (!owner || !repo || !issueNumber) return null;
   return { owner, repo, issueNumber };
 }
@@ -237,30 +244,14 @@ async function applyCommandResponsePolicy(context: GitHubContext<"issue_comment.
 }
 
 /**
- * Get the package version
+ * Get the kernel version
  */
 async function getPackageVersion(): Promise<string> {
   const envVersion = getEnvValue("UOS_KERNEL_VERSION") ?? getEnvValue("npm_package_version") ?? getEnvValue("PACKAGE_VERSION");
   if (envVersion) {
     return envVersion.trim();
   }
-
-  for (const root of ROOT_SEARCH_PATHS) {
-    const content = await readTextFile(`${root}/package.json`);
-    if (!content) {
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(content) as { version?: unknown };
-      if (typeof parsed.version === "string" && parsed.version.trim()) {
-        return parsed.version.trim();
-      }
-    } catch {
-      // ignore invalid json
-    }
-  }
-
-  return "unknown";
+  return KERNEL_VERSION;
 }
 
 /**

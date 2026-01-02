@@ -117,20 +117,18 @@ function normalizeConfiguration(context: GitHubContext, source: ConfigLocation, 
   if (targetRepoConfiguration && Array.isArray(targetRepoConfiguration.plugins)) {
     context.logger.debug({ source }, "Converting array-format plugins to object format");
     const convertedPlugins: Record<string, PluginSettings> = {};
+    type LegacyPluginUse = { plugin?: string } & Record<string, unknown>;
+    type LegacyPluginItem = { uses?: LegacyPluginUse[] };
     for (let i = 0; i < targetRepoConfiguration.plugins.length; i++) {
-      const pluginItem = targetRepoConfiguration.plugins[i];
-      if (pluginItem && typeof pluginItem === "object" && "uses" in pluginItem && Array.isArray(pluginItem.uses)) {
-        for (const use of pluginItem.uses) {
-          if (use && typeof use === "object" && "plugin" in use) {
-            const pluginKey = use.plugin;
-            const pluginConfig = {
-              ...use,
-              plugin: undefined, // remove the plugin key from with
-            };
-            delete pluginConfig.plugin;
-            convertedPlugins[pluginKey] = pluginConfig;
-          }
-        }
+      const pluginItem = targetRepoConfiguration.plugins[i] as LegacyPluginItem | null;
+      if (!pluginItem?.uses || !Array.isArray(pluginItem.uses)) continue;
+      for (const use of pluginItem.uses) {
+        if (!use || typeof use !== "object") continue;
+        const pluginKey = typeof use.plugin === "string" ? use.plugin : null;
+        if (!pluginKey) continue;
+        const pluginConfig = { ...use } as LegacyPluginUse;
+        delete pluginConfig.plugin;
+        convertedPlugins[pluginKey] = pluginConfig as PluginSettings;
       }
     }
     targetRepoConfiguration = {
@@ -239,13 +237,14 @@ function decodeConfiguration(
   try {
     const configSchemaWithDefaults = Value.Default(configSchema, config) as Readonly<unknown>;
     const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
-    if (errors !== null) {
-      for (const error of errors) {
+    const errorList = errors ? [...errors] : null;
+    if (errorList !== null) {
+      for (const error of errorList) {
         context.logger.error({ err: error }, "Configuration validation error");
       }
     }
     const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
-    return { config: stripImports(decodedConfig), errors };
+    return { config: stripImports(decodedConfig), errors: errorList };
   } catch (error) {
     context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
     return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };

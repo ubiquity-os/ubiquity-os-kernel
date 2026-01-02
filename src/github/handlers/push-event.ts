@@ -61,7 +61,8 @@ function constructErrorBody(
       if (error instanceof YAMLError) {
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.linePos?.[0].line || 0}`);
       } else if (error instanceof YAMLException) {
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.mark.line || 0}`);
+        const mark = (error as YAMLException & { mark?: { line?: number } }).mark;
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${mark?.line ?? 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });

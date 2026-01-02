@@ -176,7 +176,7 @@ export async function verifyKernelAttestationToken(
   const signingInput = `${parts[0]}.${parts[1]}`;
   const dataArray = new TextEncoder().encode(signingInput);
   const publicKey = await importRsaPublicKey(params.publicKeyPem);
-  const isSignatureValid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signatureBytes, dataArray);
+  const isSignatureValid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signatureBytes as BufferSource, dataArray);
   if (!isSignatureValid) return { ok: false, error: "Kernel attestation signature invalid" };
 
   return { ok: true, payload };
