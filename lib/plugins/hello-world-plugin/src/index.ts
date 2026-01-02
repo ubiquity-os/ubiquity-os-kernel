@@ -60,16 +60,16 @@ export async function runPlugin(context: Context<PluginSettings, Env, Command, S
         );
 
         const content = sanitizeLlmResponse((result as ChatCompletion).choices?.[0]?.message?.content ?? "");
-        await context.commentHandler.postComment(context, logger.info(content || "(empty response)"), { raw: true });
+        await context.commentHandler.postComment(context, logger.ok(content || "(empty response)"), { raw: true });
 
         return { success: true, message: "Posted LLM response." };
       } catch (error) {
         logger.error("LLM call failed", { err: error });
 
         try {
-          await context.commentHandler.postComment(context, logger.warn("Failed to run `/llm` right now."), { raw: true });
+          await context.commentHandler.postComment(context, logger.error("Failed to run `/llm` right now."), { raw: true });
         } catch (commentError) {
-          logger.warn("Failed to post error comment", { err: commentError });
+          logger.error("Failed to post error comment", { err: commentError });
         }
 
         return {
