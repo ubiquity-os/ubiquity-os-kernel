@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.3.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.2.0...v7.3.0) (2026-01-02)
+
+
+### Features
+
+* implement personal agent handler ([8347ef1](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/8347ef13d5f83b2fcb707e438c0147faae2225ae))
+* updated plugin configuration to simplify handling and validation ([0b7cb5f](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/0b7cb5feed6d1cfaee3edce46a09dc84ad1503d2))
+
+
+### Bug Fixes
+
+* remove KV store implementation and repository dispatch handling, clean up related references ([617754d](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/617754d3adddaf1b975d59eff806c287ca8fee9f))
+* tests ([47c2a61](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/47c2a61b877f91e9e575fdb4173b803fdd31721a))
+
 ## [7.2.0](https://github.com/ubiquity-os/ubiquity-os-kernel/compare/v7.1.0...v7.2.0) (2025-09-18)
 
 ### Features
