@@ -43,7 +43,7 @@ jobs:
 
           echo "project_name=$project" >> "$GITHUB_OUTPUT"
           echo "Computed project_name=$project"
-      
+
       - name: Validate required secrets
         run: |
           set -euo pipefail

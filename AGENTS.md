@@ -240,18 +240,20 @@ The LLM functionality is integrated into `@ubiquity-os/plugin-sdk` as `callLlm()
 #### Usage Examples
 
 **HTTP Plugin**:
+
 ```typescript
-import { PluginInput, createPlugin, callLlm } from '@ubiquity-os/plugin-sdk';
+import { PluginInput, createPlugin, callLlm } from "@ubiquity-os/plugin-sdk";
 
 export default createPlugin({
   async onCommand(input: PluginInput) {
-    const result = await callLlm({ messages: [{ role: 'user', content: 'Hello!' }] }, input);
+    const result = await callLlm({ messages: [{ role: "user", content: "Hello!" }] }, input);
     // result: ChatCompletion or AsyncIterable<ChatCompletionChunk>
-  }
+  },
 });
 ```
 
 **GitHub Actions Plugin**:
+
 ```yaml
 - uses: ubiquity-os/ubiquity-os-kernel/.github/actions/llm-call@main
   with:
@@ -274,17 +276,18 @@ Plugins inherit `authToken` (GitHub app installation token) from kernel dispatch
 
 ```typescript
 // In requireClientAuth()
-if (token.startsWith('gh') && req.headers.has('X-GitHub-Owner') && req.headers.has('X-GitHub-Repo')) {
-  const owner = req.headers.get('X-GitHub-Owner')!;
-  const repo = req.headers.get('X-GitHub-Repo')!;
+if (token.startsWith("gh") && req.headers.has("X-GitHub-Owner") && req.headers.has("X-GitHub-Repo")) {
+  const owner = req.headers.get("X-GitHub-Owner")!;
+  const repo = req.headers.get("X-GitHub-Repo")!;
   const cacheKey = await sha256Base64Url(token + owner + repo);
   if (cached) return null; // Allow
 
   const octokit = new Octokit({ auth: token });
-  let page = 1, hasAccess = false;
+  let page = 1,
+    hasAccess = false;
   while (!hasAccess) {
     const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({ per_page: 100, page });
-    hasAccess = repos.some(r => r.owner.login === owner && r.name === repo);
+    hasAccess = repos.some((r) => r.owner.login === owner && r.name === repo);
     if (hasAccess || repos.length < 100) break;
     page++; // Paginate
   }
@@ -292,7 +295,7 @@ if (token.startsWith('gh') && req.headers.has('X-GitHub-Owner') && req.headers.h
     cache.set(cacheKey, Date.now() + 5 * 60_000);
     return null; // Allow
   }
-  return openaiError(401, 'Invalid GitHub token for repo', 'invalid_auth_for_repo');
+  return openaiError(401, "Invalid GitHub token for repo", "invalid_auth_for_repo");
 }
 ```
 

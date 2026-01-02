@@ -13,6 +13,7 @@ jest.mock("@octokit/auth-app", () => ({
 }));
 
 const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
+const PLUGIN_ERROR_EVENT = "kernel.plugin_error";
 
 jest.mock(PLUGIN_INPUT_MODULE, () => {
   const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>(PLUGIN_INPUT_MODULE);
@@ -53,16 +54,16 @@ afterAll(() => {
   server.close();
 });
 
-describe("kernel.plugin_error", () => {
-  beforeEach(() => {
-    const yamlContent = [
-      "plugins:",
-      "  https://failing-plugin.internal: {}",
-      "  https://daemon-hotfix.internal: {}",
-      "",
-    ].join("\n");
+describe(PLUGIN_ERROR_EVENT, () => {
+  const failingPluginUrl = "https://failing-plugin.internal";
+  const hotfixPluginUrl = "https://daemon-hotfix.internal";
+  const orgConfigUrl = "https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml";
+  const repoConfigUrl = "https://api.github.com/repos/test-user/test-repo/contents/.github%2F.ubiquity-os.config.yml";
 
-    const respondWithYaml = (req: { request: Request }) => {
+  beforeEach(() => {
+    const yamlContent = ["plugins:", `  ${failingPluginUrl}: {}`, `  ${hotfixPluginUrl}: {}`, ""].join("\n");
+
+    function respondWithYaml(req: { request: Request }) {
       const acceptHeader = req.request.headers.get("accept");
       if (acceptHeader === "application/vnd.github.v3.raw") {
         return HttpResponse.text(yamlContent);
@@ -75,15 +76,15 @@ describe("kernel.plugin_error", () => {
         path: ".github/.ubiquity-os.config.yml",
         content: Buffer.from(yamlContent).toString("base64"),
         sha: "mock",
-        url: "https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml",
+        url: orgConfigUrl,
         git_url: "",
         html_url: "",
         download_url: "",
       });
-    };
+    }
 
     server.use(
-      http.get("https://failing-plugin.internal/manifest.json", () =>
+      http.get(`${failingPluginUrl}/manifest.json`, () =>
         HttpResponse.json({
           name: "failing-plugin",
           short_name: "failing-plugin",
@@ -91,20 +92,20 @@ describe("kernel.plugin_error", () => {
           skipBotEvents: false,
         })
       ),
-      http.get("https://daemon-hotfix.internal/manifest.json", () =>
+      http.get(`${hotfixPluginUrl}/manifest.json`, () =>
         HttpResponse.json({
           name: "daemon-hotfix",
           short_name: "daemon-hotfix",
-          "ubiquity:listeners": ["kernel.plugin_error"],
+          "ubiquity:listeners": [PLUGIN_ERROR_EVENT],
           skipBotEvents: false,
         })
       ),
-      http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", respondWithYaml),
-      http.get("https://api.github.com/repos/test-user/test-repo/contents/.github%2F.ubiquity-os.config.yml", respondWithYaml)
+      http.get(orgConfigUrl, respondWithYaml),
+      http.get(repoConfigUrl, respondWithYaml)
     );
   });
 
-  it("dispatches kernel.plugin_error to subscribed plugins when a plugin dispatch fails", async () => {
+  it(`dispatches ${PLUGIN_ERROR_EVENT} to subscribed plugins when a plugin dispatch fails`, async () => {
     jest.mock("../src/github/github-client", () => {
       return {
         customOctokit: jest.fn().mockReturnValue(new Octokit()),
@@ -178,15 +179,14 @@ describe("kernel.plugin_error", () => {
     expect(dispatchWorker).toHaveBeenCalledTimes(2);
 
     const [, hotfixInputs] = dispatchWorker.mock.calls[1];
-    expect(hotfixInputs.eventName).toBe("kernel.plugin_error");
+    expect(hotfixInputs.eventName).toBe(PLUGIN_ERROR_EVENT);
     const pluginError = JSON.parse(String(hotfixInputs.eventPayload));
-    expect(pluginError.event).toBe("kernel.plugin_error");
+    expect(pluginError.event).toBe(PLUGIN_ERROR_EVENT);
     expect(pluginError.plugin.type).toBe("http");
-    expect(pluginError.plugin.id).toBe("https://failing-plugin.internal");
+    expect(pluginError.plugin.id).toBe(failingPluginUrl);
     expect(pluginError.trigger.githubEvent).toBe("issues.opened");
     expect(pluginError.trigger.repo).toBe("test-user/test-repo");
 
     process.env = originalEnv;
   });
 });
-

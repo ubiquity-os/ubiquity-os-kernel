@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 
-const usage = () => `
+const usage = () =>
+  `
 Usage:
   node scripts/agent-bus.mjs post --agent <id> --body <text> [--channel <name>] [--kind <name>] [--metadata <json>] [--body-file <path>] [--base-url <url>]
   node scripts/agent-bus.mjs poll [--since <ms>] [--cursor <cursor>] [--since-file <path>] [--limit <n>] [--agent <id>] [--channel <name>] [--base-url <url>] [--out <path>]
@@ -72,7 +73,7 @@ const buildHeaders = () => {
   }
 
   return {
-    "Authorization": `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     "X-GitHub-Owner": owner,
     "X-GitHub-Repo": repo,
@@ -81,8 +82,7 @@ const buildHeaders = () => {
   };
 };
 
-const baseUrl = (override) =>
-  String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-bus")).trim();
+const baseUrl = (override) => String(override || envOr("UOS_AGENT_BUS_URL", "https://ai-ubq-fi.deno.dev/v1/agent-bus")).trim();
 
 const handlePost = async (options) => {
   const agentId = String(options.agent || options["agent-id"] || "").trim();
@@ -151,8 +151,8 @@ const handlePoll = async (options) => {
       const data = JSON.parse(text);
       const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
       const nextState = {
-        since: hasOwn(data, "next_since") ? data.next_since : state?.since ?? null,
-        cursor: hasOwn(data, "next_cursor") ? data.next_cursor : state?.cursor ?? null,
+        since: hasOwn(data, "next_since") ? data.next_since : (state?.since ?? null),
+        cursor: hasOwn(data, "next_cursor") ? data.next_cursor : (state?.cursor ?? null),
       };
       writeJsonFile(stateFile, nextState);
     } catch {
