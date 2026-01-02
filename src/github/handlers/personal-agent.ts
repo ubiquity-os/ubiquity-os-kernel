@@ -8,6 +8,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
 
   const owner = payload.repository.owner.login;
   const body = payload.comment.body.trim();
+  const installationId = "installation" in payload ? payload.installation?.id : undefined;
 
   if (!body.startsWith("@")) {
     logger.debug(`Ignoring irrelevant comment: ${body}`);
@@ -25,9 +26,13 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
   logger.debug({ owner, personalAgentOwner, comment: body }, `Comment received`);
 
   try {
+    if (!installationId) {
+      logger.warn("No installation found, cannot dispatch personal agent");
+      return;
+    }
     const defaultBranch = await getDefaultBranch(context, personalAgentOwner, personalAgentRepo);
-
-    const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, "dummy-token", defaultBranch, null);
+    const token = await context.eventHandler.getToken(installationId);
+    const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, token, defaultBranch, null);
 
     const runUrl = await dispatchWorkflowWithRunUrl(context, {
       owner: personalAgentOwner,
