@@ -585,7 +585,7 @@ jobs:
           });
           NODE
 
-          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
 
           for _ in {1..30}; do
@@ -764,6 +764,10 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.log" ]; then
+            echo "Forwarder log:"
+            tail -n 200 "$RUNNER_TEMP/ubq_responses_forwarder.log"
           fi
 
   agent_matrix:
@@ -1269,7 +1273,7 @@ jobs:
           });
           NODE
 
-          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
 
           for _ in {1..30}; do
@@ -1422,6 +1426,10 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.log" ]; then
+            echo "Forwarder log:"
+            tail -n 200 "$RUNNER_TEMP/ubq_responses_forwarder.log"
           fi
 
       - name: Stop token refresher
@@ -2017,7 +2025,7 @@ jobs:
           });
           NODE
 
-          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
 
           for _ in {1..30}; do
@@ -2196,6 +2204,10 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.log" ]; then
+            echo "Forwarder log:"
+            tail -n 200 "$RUNNER_TEMP/ubq_responses_forwarder.log"
           fi
 
       - name: Stop token refresher
@@ -3136,7 +3148,7 @@ jobs:
           });
           NODE
 
-          node "$RUNNER_TEMP/ubq-responses-forwarder.js" &
+          node "$RUNNER_TEMP/ubq-responses-forwarder.js" > "$RUNNER_TEMP/ubq_responses_forwarder.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/ubq_responses_forwarder.pid"
 
           for _ in {1..30}; do
@@ -3534,4 +3546,8 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/ubq_responses_forwarder.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/ubq_responses_forwarder.log" ]; then
+            echo "Forwarder log:"
+            tail -n 200 "$RUNNER_TEMP/ubq_responses_forwarder.log"
           fi
