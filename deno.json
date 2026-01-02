@@ -1,8 +1,8 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
-    "dev": "deno run --allow-run predev.ts && deno task dev:serve",
-    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-sys --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts",
+    "dev": "deno run --allow-run --allow-env predev.ts && deno task dev:serve",
+    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts",
     "build": "deno run --allow-env --allow-net --allow-read --allow-write scripts/build.ts",
     "test": "deno test --allow-env --allow-net --allow-read",
     "check": "deno check --sloppy-imports src/adapters/server.ts src/index.ts src/functions/http-trigger.ts",
@@ -16,10 +16,14 @@
     "lint-staged": "deno run --allow-env --allow-read --allow-run --allow-write npm:lint-staged@15.2.7",
     "lint": "deno run --allow-read --allow-run --allow-env --allow-sys --allow-write npm:eslint@9.7.0 src tests scripts predev.ts",
     "deps:unused": "deno run --allow-read --allow-run scripts/unused-files.ts",
-    "deps:unused:strict": "deno run --allow-read --allow-run scripts/unused-files.ts --fail"
+    "deps:unused:strict": "deno run --allow-read --allow-run scripts/unused-files.ts --fail",
+    "dev:easy": "deno run -A predev.ts && deno task dev:serve:easy",
+    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts"
   },
   "compilerOptions": {
-    "lib": ["deno.window"],
+    "lib": [
+      "deno.window"
+    ],
     "strict": true
   },
   "imports": {
