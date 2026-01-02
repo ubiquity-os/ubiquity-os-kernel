@@ -21,32 +21,8 @@ const SUMMARY_MAX_CHARS = 1_200;
 const IN_MEMORY_MAX_ENTRIES = 250;
 const LIST_PAGE_SIZE = 200;
 
-type KvKey = ReadonlyArray<unknown>;
-
-type KvGetResult = Readonly<{ value: unknown }>;
-
-type KvSetOptions = Readonly<{ expireIn?: number }>;
-
-type KvListEntry = Readonly<{ key: KvKey; value: unknown }>;
-
-type KvListOptions = Readonly<{ reverse?: boolean; limit?: number; cursor?: string }>;
-
-type KvListSelector = Readonly<{ prefix: KvKey }>;
-
-type KvListIterator = AsyncIterable<KvListEntry> & { cursor?: string };
-
-type KvLike = Readonly<{
-  get: (key: KvKey) => Promise<KvGetResult>;
-  set: (key: KvKey, value: unknown, options?: KvSetOptions) => Promise<unknown>;
-  list: (selector: KvListSelector, options?: KvListOptions) => KvListIterator;
-  supportsReverse?: boolean;
-}>;
-
-type LoggerLike = Readonly<{
-  warn?: (obj: unknown, msg?: string) => void;
-  debug?: (obj: unknown, msg?: string) => void;
-  error?: (obj: unknown, msg?: string) => void;
-}>;
+import type { KvKey, KvLike, LoggerLike } from "./kv-client";
+import { getKvClient } from "./kv-client";
 
 const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
@@ -83,7 +59,7 @@ function clampText(value: string, maxChars: number): string {
   const text = value.trim();
   if (!text) return "";
   if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}…`;
+  return `${text.slice(0, maxChars)}...`;
 }
 
 function getEnvValue(key: string): string | undefined {
@@ -134,14 +110,6 @@ function encodeBase64Bytes(bytes: Uint8Array): string {
     binary += String.fromCharCode(...chunk);
   }
   return btoaFn(binary);
-}
-
-function resolveMemoryUrl(): string | null {
-  const raw = getEnvValue("UOS_AGENT_MEMORY_URL");
-  if (!raw) return null;
-  const trimmed = raw.trim().replace(/\/+$/, "");
-  if (!trimmed) return null;
-  return trimmed.endsWith("/kv") ? trimmed : `${trimmed}/kv`;
 }
 
 async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null> {
@@ -243,115 +211,34 @@ async function decodeEntry(value: unknown, logger?: LoggerLike): Promise<AgentRu
   return parseEntryRecord(value);
 }
 
-function buildKvKey(owner: string, repo: string): KvKey {
+function normalizeScopeKey(scopeKey?: string): string {
+  return typeof scopeKey === "string" ? scopeKey.trim() : "";
+}
+
+function buildKvKey(owner: string, repo: string, scopeKey?: string): KvKey {
+  const scope = normalizeScopeKey(scopeKey);
+  if (scope) return ["ubiquityos", "agent", "memory", "scope", scope, "events"];
   return ["ubiquityos", "agent", "memory", owner, repo, "events"];
 }
 
-function buildMapKey(owner: string, repo: string): string {
+function buildMapKey(owner: string, repo: string, scopeKey?: string): string {
+  const scope = normalizeScopeKey(scopeKey);
+  if (scope) return `scope:${scope}`;
   return `${owner}/${repo}`;
 }
 
-function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: string): KvKey {
-  return [...buildKvKey(owner, repo), updatedAt, stateId];
-}
-
-function looksLikeKvLike(value: unknown): value is KvLike {
-  if (!isRecord(value)) return false;
-  return typeof value.get === "function" && typeof value.set === "function" && typeof value.list === "function";
-}
-
-function encodeKeyPart(part: unknown): string {
-  if (typeof part === "string") return part;
-  if (typeof part === "number" || typeof part === "bigint") return String(part);
-  if (typeof part === "boolean") return part ? "true" : "false";
-  return String(part);
-}
-
-function buildKeyPath(key: KvKey): string {
-  return key.map((part) => encodeURIComponent(encodeKeyPart(part))).join("/");
-}
-
-function createPiKvClient(baseUrl: string): KvLike {
-  const base = baseUrl.replace(/\/+$/, "");
-
-  async function fetchJson<T>(url: string, init: RequestInit): Promise<T> {
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        "content-type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Pi KV request failed (${res.status}): ${text}`);
-    }
-    return (await res.json()) as T;
-  }
-
-  return {
-    supportsReverse: false,
-    async get(key: KvKey) {
-      const url = `${base}/${buildKeyPath(key)}`;
-      const response = await fetchJson<{ value?: unknown }>(url, { method: "GET" });
-      return { value: response.value ?? null };
-    },
-    async set(key: KvKey, value: unknown, options?: KvSetOptions) {
-      const url = `${base}/${buildKeyPath(key)}`;
-      const payload: { value: unknown; expireIn?: number } = { value };
-      if (options?.expireIn !== undefined) payload.expireIn = options.expireIn;
-      await fetchJson(url, { method: "POST", body: JSON.stringify(payload) });
-      return null;
-    },
-    list(selector: KvListSelector, options: KvListOptions = {}) {
-      const payload = {
-        prefix: selector.prefix,
-        limit: options.limit,
-        cursor: options.cursor,
-      };
-      const url = `${base}/list`;
-      const iterator: KvListIterator = {
-        cursor: "",
-        async *[Symbol.asyncIterator]() {
-          const response = await fetchJson<{ entries?: KvListEntry[]; cursor?: string | null }>(url, {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-          iterator.cursor = response.cursor ?? "";
-          for (const entry of response.entries ?? []) {
-            yield { key: entry.key, value: entry.value };
-          }
-        },
-      };
-      return iterator;
-    },
-  };
+function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: string, scopeKey?: string): KvKey {
+  return [...buildKvKey(owner, repo, scopeKey), updatedAt, stateId];
 }
 
 async function getKv(logger?: LoggerLike): Promise<KvLike | null> {
   if (kvPromise) return kvPromise;
   kvPromise = (async () => {
-    const memoryUrl = resolveMemoryUrl();
-    if (memoryUrl) {
-      const key = await getMemoryCryptoKey(logger);
-      if (!key) return null;
-      return createPiKvClient(memoryUrl);
-    }
-
-    const deno = (globalThis as unknown as { Deno?: { openKv?: () => Promise<unknown> } }).Deno;
-    if (!deno || typeof deno.openKv !== "function") return null;
-    try {
-      const kv = await deno.openKv();
-      if (!looksLikeKvLike(kv)) return null;
-      return {
-        get: kv.get.bind(kv),
-        set: kv.set.bind(kv),
-        list: kv.list.bind(kv),
-        supportsReverse: true,
-      };
-    } catch {
-      return null;
-    }
+    const kv = await getKvClient(logger);
+    if (!kv) return null;
+    const key = await getMemoryCryptoKey(logger);
+    if (!key) return null;
+    return kv;
   })();
   return kvPromise;
 }
@@ -379,9 +266,16 @@ function sanitizeEntry(value: AgentRunMemoryEntry): AgentRunMemoryEntry | null {
   return parseEntryRecord(value);
 }
 
-async function readEntriesFromKv(kv: KvLike, owner: string, repo: string, limit: number, logger?: LoggerLike): Promise<AgentRunMemoryEntry[]> {
+async function readEntriesFromKv(
+  kv: KvLike,
+  owner: string,
+  repo: string,
+  limit: number,
+  logger?: LoggerLike,
+  scopeKey?: string
+): Promise<AgentRunMemoryEntry[]> {
   const scanLimit = Math.max(limit * 12, limit);
-  const prefix = buildKvKey(owner, repo);
+  const prefix = buildKvKey(owner, repo, scopeKey);
   const entries: AgentRunMemoryEntry[] = [];
 
   if (kv.supportsReverse !== false) {
@@ -419,12 +313,13 @@ async function readEntriesFromKv(kv: KvLike, owner: string, repo: string, limit:
   return buffer;
 }
 
-export async function upsertAgentRunMemory(
+async function upsertAgentRunMemoryScope(
   params: Readonly<{
     owner: string;
     repo: string;
     entry: AgentRunMemoryEntry;
     logger?: LoggerLike;
+    scopeKey?: string;
   }>
 ): Promise<void> {
   const owner = params.owner.trim();
@@ -438,7 +333,7 @@ export async function upsertAgentRunMemory(
     try {
       const encoded = await encodeEntry(entry, params.logger);
       if (encoded) {
-        await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId), encoded);
+        await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId, params.scopeKey), encoded);
         return;
       }
     } catch (error) {
@@ -446,11 +341,27 @@ export async function upsertAgentRunMemory(
     }
   }
 
-  const key = buildMapKey(owner, repo);
+  const key = buildMapKey(owner, repo, params.scopeKey);
   const entries = inMemory.get(key) ?? [];
   entries.push(entry);
   while (entries.length > IN_MEMORY_MAX_ENTRIES) entries.shift();
   inMemory.set(key, entries);
+}
+
+export async function upsertAgentRunMemory(
+  params: Readonly<{
+    owner: string;
+    repo: string;
+    entry: AgentRunMemoryEntry;
+    logger?: LoggerLike;
+    scopeKey?: string;
+  }>
+): Promise<void> {
+  await upsertAgentRunMemoryScope(params);
+  const scope = normalizeScopeKey(params.scopeKey);
+  if (scope) {
+    await upsertAgentRunMemoryScope({ ...params, scopeKey: undefined });
+  }
 }
 
 export async function getAgentMemorySnippet(
@@ -460,6 +371,7 @@ export async function getAgentMemorySnippet(
     limit?: number;
     maxChars?: number;
     logger?: LoggerLike;
+    scopeKey?: string;
   }>
 ): Promise<string> {
   const owner = params.owner.trim();
@@ -470,15 +382,27 @@ export async function getAgentMemorySnippet(
 
   const kv = await getKv(params.logger);
   const entries: AgentRunMemoryEntry[] = [];
+  const scope = normalizeScopeKey(params.scopeKey);
 
   if (kv) {
-    entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
+    entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
   }
 
-  const key = buildMapKey(owner, repo);
+  const key = buildMapKey(owner, repo, scope || undefined);
   const localEntries = inMemory.get(key) ?? [];
   if (localEntries.length > 0) {
     entries.push(...localEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+  }
+
+  if (entries.length === 0 && scope) {
+    if (kv) {
+      entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
+    }
+    const repoKey = buildMapKey(owner, repo);
+    const repoEntries = inMemory.get(repoKey) ?? [];
+    if (repoEntries.length > 0) {
+      entries.push(...repoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
+    }
   }
 
   if (entries.length === 0) return "";

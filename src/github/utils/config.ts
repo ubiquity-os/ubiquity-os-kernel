@@ -1,6 +1,7 @@
 import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
+import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context";
 import { GithubPlugin, PluginConfiguration, PluginSettings, configSchema, configSchemaValidator, parsePluginIdentifier } from "../types/plugin-configuration";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth";
@@ -18,6 +19,7 @@ const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 const MAX_IMPORT_DEPTH = 6;
 
 type ConfigLocation = { owner: string; repo: string };
+export type ConfigSource = { owner: string; repo: string; path: string; sha?: string | null };
 type ImportState = {
   cache: Map<string, PluginConfiguration | null>;
   inFlight: Set<string>;
@@ -209,23 +211,24 @@ async function loadConfigSource(
   context: GitHubContext,
   location: ConfigLocation,
   octokit: GitHubContext["octokit"]
-): Promise<{ config: PluginConfiguration | null; imports: ConfigLocation[]; errors: YAMLError[] | null; rawData: string | null }> {
-  const rawData = await download({
+): Promise<{ config: PluginConfiguration | null; imports: ConfigLocation[]; errors: YAMLError[] | null; rawData: string | null; source: ConfigSource | null }> {
+  const downloaded = await download({
     context,
     repository: location.repo,
     owner: location.owner,
     octokit,
   });
 
-  if (!rawData) {
+  if (!downloaded) {
     context.logger.debug({ owner: location.owner, repository: location.repo }, "No configuration data");
-    return { config: null, imports: [], errors: null, rawData: null };
+    return { config: null, imports: [], errors: null, rawData: null, source: null };
   }
+  const { data: rawData, source } = downloaded;
   context.logger.debug({ owner: location.owner, repository: location.repo }, "Downloaded configuration file");
 
   const { yaml, errors } = parseYaml(context, rawData);
   const { config, imports } = normalizeConfiguration(context, location, yaml);
-  return { config, imports, errors, rawData };
+  return { config, imports, errors, rawData, source };
 }
 
 function decodeConfiguration(
@@ -309,20 +312,20 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   const octokit = await getOctokitForOwner(context, owner, state);
   if (!octokit) {
     context.logger.debug({ owner, repository }, "No authorized Octokit for configuration load.");
-    return { config: null, errors: null, rawData: null };
+    return { config: null, errors: null, rawData: null, source: null };
   }
 
-  const { config, imports, errors, rawData } = await loadConfigSource(context, location, octokit);
+  const { config, imports, errors, rawData, source } = await loadConfigSource(context, location, octokit);
   if (!rawData) {
-    return { config: null, errors: null, rawData: null };
+    return { config: null, errors: null, rawData: null, source: null };
   }
   if (errors && errors.length) {
     context.logger.error({ owner, repository, errors }, "YAML could not be decoded");
-    return { config: null, errors, rawData };
+    return { config: null, errors, rawData, source };
   }
   if (!config) {
     context.logger.error({ owner, repository }, "YAML could not be decoded");
-    return { config: null, errors, rawData };
+    return { config: null, errors, rawData, source };
   }
 
   const importedConfigs: PluginConfiguration[] = [];
@@ -336,7 +339,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   }
 
   const decoded = decodeConfiguration(context, location, mergedConfig);
-  return { config: decoded.config, errors: decoded.errors, rawData };
+  return { config: decoded.config, errors: decoded.errors, rawData, source };
 }
 
 /**
@@ -377,6 +380,9 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   );
   const orgConfig = await getConfigurationFromRepo(context, CONFIG_ORG_REPO, payload.repository.owner.login);
   const repoConfig = await getConfigurationFromRepo(context, payload.repository.name, payload.repository.owner.login);
+  const configSources: ConfigSource[] = [];
+  if (orgConfig.source) configSources.push(orgConfig.source);
+  if (repoConfig.source) configSources.push(repoConfig.source);
 
   context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Fetched configurations; Will merge them.");
 
@@ -425,10 +431,14 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
     };
   }
 
-  return {
+  const resolved = {
     ...mergedConfiguration,
     plugins: resolvedPlugins,
-  };
+  } as PluginConfiguration & { __sources?: ConfigSource[] };
+  if (configSources.length) {
+    resolved.__sources = configSources;
+  }
+  return resolved;
 }
 
 async function download({
@@ -441,7 +451,7 @@ async function download({
   repository: string;
   owner: string;
   octokit: GitHubContext["octokit"];
-}): Promise<string | null> {
+}): Promise<{ data: string; source: ConfigSource } | null> {
   if (!repository || !owner) {
     context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
@@ -457,11 +467,25 @@ async function download({
           owner,
           repo: repository,
           path: filePath,
-          mediaType: { format: "raw" },
           request: { signal: controller.signal },
         });
-        context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], data }, "Configuration file found");
-        return data as unknown as string; // this will be a string if media format is raw
+        if (typeof data === "string") {
+          context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"] }, "Configuration file found");
+          return { data, source: { owner, repo: repository, path: filePath, sha: null } };
+        }
+        if (!data || Array.isArray(data) || typeof data !== "object") {
+          context.logger.warn({ owner, repository, filePath }, "Unexpected configuration payload type");
+          return null;
+        }
+        if ("content" in data && typeof data.content === "string") {
+          const encoding = "encoding" in data && typeof data.encoding === "string" ? data.encoding : "base64";
+          const decoded = encoding.toLowerCase() === "base64" ? Buffer.from(data.content, "base64").toString("utf8") : data.content;
+          const sha = "sha" in data && typeof data.sha === "string" ? data.sha : null;
+          context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], sha }, "Configuration file found");
+          return { data: decoded, source: { owner, repo: repository, path: filePath, sha } };
+        }
+        context.logger.warn({ owner, repository, filePath }, "Configuration content missing or invalid");
+        return null;
       } finally {
         clearTimeout(timeout);
       }

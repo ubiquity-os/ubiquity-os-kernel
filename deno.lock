@@ -27,6 +27,7 @@
     "npm:eslint-plugin-check-file@2.8.0": "2.8.0_eslint@9.7.0",
     "npm:eslint-plugin-sonarjs@1.0.3": "1.0.3_eslint@9.7.0",
     "npm:eslint@9.7.0": "9.7.0",
+    "npm:graphology@0.26.0": "0.26.0_graphology-types@0.24.8",
     "npm:hono@4.9.1": "4.9.1",
     "npm:js-yaml@4.1.0": "4.1.0",
     "npm:libsodium-wrappers@0.7.15": "0.7.15",
@@ -1850,6 +1851,16 @@
     "gopd@1.2.0": {
       "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
     },
+    "graphology-types@0.24.8": {
+      "integrity": "sha512-hDRKYXa8TsoZHjgEaysSRyPdT6uB78Ci8WnjgbStlQysz7xR52PInxNsmnB7IBOM1BhikxkNyCVEFgmPKnpx3Q=="
+    },
+    "graphology@0.26.0_graphology-types@0.24.8": {
+      "integrity": "sha512-8SSImzgUUYC89Z042s+0r/vMibY7GX/Emz4LDO5e7jYXhuoWfHISPFJYjpRLUSJGq6UQ6xlenvX1p/hJdfXuXg==",
+      "dependencies": [
+        "events",
+        "graphology-types"
+      ]
+    },
     "has-flag@4.0.0": {
       "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ=="
     },
@@ -2812,6 +2823,7 @@
       "npm:eslint-plugin-check-file@2.8.0",
       "npm:eslint-plugin-sonarjs@1.0.3",
       "npm:eslint@9.7.0",
+      "npm:graphology@0.26.0",
       "npm:hono@4.9.1",
       "npm:js-yaml@4.1.0",
       "npm:libsodium-wrappers@0.7.15",

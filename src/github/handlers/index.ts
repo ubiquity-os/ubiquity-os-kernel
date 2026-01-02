@@ -1,10 +1,12 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger";
+import { getRequestLogTrail, readRequestIdFromLogger } from "../../logger/request-log-store";
 import { GitHubEventHandler } from "../github-event-handler";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
-import { isGithubPlugin } from "../types/plugin-configuration";
-import { getConfig, getConfigFullPathForEnvironment } from "../utils/config";
+import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration";
+import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config";
+import { getKernelCommit, getKernelVersion } from "../utils/kernel-metadata";
 import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins";
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
@@ -128,6 +130,13 @@ async function tryGetRepoInstallationId(eventHandler: GitHubEventHandler, owner:
   }
 }
 
+type KernelMetadata = {
+  version: string;
+  commit: string;
+};
+
+type ConfigWithSources = PluginConfiguration & { __sources?: ConfigSource[] };
+
 function buildKernelPluginErrorPayload({
   stateId,
   context,
@@ -137,6 +146,10 @@ function buildKernelPluginErrorPayload({
   authContextRepo,
   authInstallationId,
   safePluginWith,
+  kernel,
+  configSources,
+  requestId,
+  logTrail,
 }: {
   stateId: string;
   context: GitHubContext;
@@ -146,6 +159,10 @@ function buildKernelPluginErrorPayload({
   authContextRepo: { owner: string; repo: string } | null;
   authInstallationId: number | null;
   safePluginWith: Record<string, unknown>;
+  kernel: KernelMetadata;
+  configSources: ConfigSource[];
+  requestId: string | null;
+  logTrail: ReturnType<typeof getRequestLogTrail> | null;
 }) {
   const triggerRepo = extractRepositoryFullName(context.payload);
   const issueOrPr = extractTriggerIssueOrPrNumber(context.payload);
@@ -174,12 +191,18 @@ function buildKernelPluginErrorPayload({
     stateId,
     environment: context.eventHandler.environment,
     configPath: getConfigFullPathForEnvironment(context.eventHandler.environment),
+    config: {
+      path: getConfigFullPathForEnvironment(context.eventHandler.environment),
+      sources: configSources,
+    },
+    kernel,
     source: {
       kernelRepo: "ubiquity-os/ubiquity-os-kernel",
       environment: context.eventHandler.environment,
     },
     trigger: {
       githubEvent: context.key,
+      deliveryId: context.id,
       repo: triggerRepo,
       issueOrPr,
       actor,
@@ -200,7 +223,9 @@ function buildKernelPluginErrorPayload({
     },
     context: {
       retryCount: 0,
+      requestId,
     },
+    logTrail: logTrail ?? undefined,
     repository: payloadRepo,
     installation: authInstallationId ? { id: authInstallationId } : undefined,
   };
@@ -254,6 +279,14 @@ async function emitKernelPluginErrorEvent({
   const authContextRepo = targetInstallationId && targetRepo ? targetRepo : parseOwnerRepo(extractRepositoryFullName(context.payload));
   const authToken = targetInstallationId ? await context.eventHandler.getToken(targetInstallationId) : triggeringAuthToken;
 
+  const kernelMeta = {
+    version: await getKernelVersion(),
+    commit: await getKernelCommit(),
+  };
+  const requestId = readRequestIdFromLogger(context.logger);
+  const logTrail = requestId ? getRequestLogTrail(requestId) : null;
+  const configSources = (config as ConfigWithSources).__sources ?? [];
+
   const payload = buildKernelPluginErrorPayload({
     stateId: failingStateId,
     context,
@@ -263,6 +296,10 @@ async function emitKernelPluginErrorEvent({
     authContextRepo,
     authInstallationId,
     safePluginWith,
+    kernel: kernelMeta,
+    configSources,
+    requestId,
+    logTrail,
   });
 
   for (const pluginEntry of subscribers) {

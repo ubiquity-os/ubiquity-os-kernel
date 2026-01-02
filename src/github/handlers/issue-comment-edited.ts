@@ -1,5 +1,6 @@
 import { GitHubContext } from "../github-context";
 import { upsertAgentRunMemory } from "../utils/agent-memory";
+import { resolveConversationKeyForContext } from "../utils/conversation-graph";
 
 const botLoginCache = new Map<number, string>();
 
@@ -95,10 +96,12 @@ export default async function issueCommentEdited(context: GitHubContext<"issue_c
   const owner = context.payload.repository.owner.login;
   const repo = context.payload.repository.name;
   const issueNumber = context.payload.issue.number;
+  const conversation = await resolveConversationKeyForContext(context, context.logger);
 
   await upsertAgentRunMemory({
     owner,
     repo,
+    scopeKey: conversation?.key,
     entry: {
       kind: "agent_run",
       stateId: parsed.stateId,

@@ -18,6 +18,15 @@ export const envSchema = T.Object({
   UOS_AGENT_MEMORY_URL: T.Optional(T.String({ minLength: 1 })),
   // Base64-encoded 32-byte key for AES-256-GCM at-rest encryption.
   UOS_AGENT_MEMORY_KEY: T.Optional(T.String({ minLength: 1 })),
+  // Optional Supabase REST endpoint for conversation embeddings retrieval.
+  UOS_VECTOR_DB_URL: T.Optional(T.String({ minLength: 1 })),
+  // Optional Supabase service key for embeddings retrieval.
+  UOS_VECTOR_DB_KEY: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_URL: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_KEY: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_SERVICE_ROLE_KEY: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_ANON_KEY: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_PROJECT_ID: T.Optional(T.String({ minLength: 1 })),
   UOS_KERNEL_REFRESH_INTERVAL_SECONDS: T.Optional(T.String({ minLength: 1 })),
 });
 
@@ -37,6 +46,13 @@ declare global {
       UOS_AI_BASE_URL?: string;
       UOS_AGENT_MEMORY_URL?: string;
       UOS_AGENT_MEMORY_KEY?: string;
+      UOS_VECTOR_DB_URL?: string;
+      UOS_VECTOR_DB_KEY?: string;
+      SUPABASE_URL?: string;
+      SUPABASE_KEY?: string;
+      SUPABASE_SERVICE_ROLE_KEY?: string;
+      SUPABASE_ANON_KEY?: string;
+      SUPABASE_PROJECT_ID?: string;
       UOS_KERNEL_REFRESH_INTERVAL_SECONDS?: string;
     }
   }

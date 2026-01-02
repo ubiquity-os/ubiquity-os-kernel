@@ -21,6 +21,8 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 
 ## 🚀 Quick Start
 
+This is a Deno-based project; the runtime server is Deno, and Bun is only used as a task runner for scripts/tests.
+
 ```bash
 bun install
 
