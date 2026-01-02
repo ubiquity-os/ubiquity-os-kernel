@@ -33,14 +33,13 @@ export async function dispatchWorkflow(context: GitHubContext, options: Workflow
 }
 
 export async function dispatchWorker(targetUrl: string, payload?: Record<string, unknown>) {
-  const result = await fetch(targetUrl, {
+  return await fetch(targetUrl, {
     body: JSON.stringify(payload),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
   });
-  return result.json();
 }
 
 export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {

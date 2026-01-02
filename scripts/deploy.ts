@@ -1,32 +1,17 @@
 import { confirm, input, select } from "@inquirer/prompts";
-import { exec, execSync, spawn } from "child_process";
+import { exec, spawn } from "child_process";
+import { parse } from "dotenv";
 import { readFileSync, unlinkSync, writeFileSync } from "fs";
 import ora from "ora";
 import path from "path";
-import { parse } from "dotenv";
 import toml from "toml";
-// @ts-expect-error No typings exist for this package
-import * as tomlify from "tomlify-j0.4";
 
 interface WranglerConfiguration {
-  name: string;
-  env: {
-    [env: string]: {
-      kv_namespaces?: {
-        id: string;
-        binding: string;
-      }[];
-    };
-  };
-  kv_namespaces: {
-    id: string;
-    binding: string;
-  }[];
+  env?: Record<string, unknown>;
 }
 
 const WRANGLER_PATH = path.resolve(__dirname, "..", "node_modules/.bin/wrangler");
 const WRANGLER_TOML_PATH = path.resolve(__dirname, "..", "wrangler.toml");
-const BINDING_NAME = "PLUGIN_CHAIN_STATE";
 
 function checkIfWranglerInstalled() {
   return new Promise((resolve) => {
@@ -101,23 +86,6 @@ function wranglerDeploy(env: string | null) {
   });
 }
 
-function wranglerKvNamespace(projectName: string, namespace: string) {
-  const kvList = JSON.parse(execSync(`${WRANGLER_PATH} kv namespace list`).toString()) as { id: string; title: string }[];
-  const existingNamespace = kvList.find((o) => o.title === namespace || o.title === `${projectName}-${namespace}`);
-  if (existingNamespace) {
-    return existingNamespace.id;
-  }
-
-  const res = execSync(`${WRANGLER_PATH} kv namespace create ${namespace}`).toString();
-
-  const newId = res.match(/id = \s*"([^"]+)"/)?.[1];
-  if (!newId) {
-    console.log(res);
-    throw new Error(`The new ID could not be found.`);
-  }
-  return newId;
-}
-
 void (async () => {
   const spinner = ora("Checking if Wrangler is installed").start();
   const wranglerInstalled = await checkIfWranglerInstalled();
@@ -183,40 +151,6 @@ void (async () => {
       spinner.fail(`Error setting secrets: ${err}`);
       process.exit(1);
     }
-  }
-
-  spinner.start("Setting up KV namespace");
-  try {
-    const kvNamespace = selectedEnv ? `${selectedEnv}-plugin-chain-state` : `plugin-chain-state`;
-    const namespaceId = wranglerKvNamespace(wranglerToml.name, kvNamespace);
-    if (selectedEnv) {
-      const existingBinding = wranglerToml.env[selectedEnv]?.kv_namespaces?.find((o) => o.binding === BINDING_NAME);
-      if (!existingBinding) {
-        wranglerToml.env[selectedEnv] = wranglerToml.env[selectedEnv] ?? {};
-        wranglerToml.env[selectedEnv].kv_namespaces = wranglerToml.env[selectedEnv].kv_namespaces ?? [];
-        wranglerToml.env[selectedEnv].kv_namespaces?.push({
-          id: namespaceId,
-          binding: BINDING_NAME,
-        });
-      } else {
-        existingBinding.id = namespaceId;
-      }
-    } else {
-      const existingBinding = wranglerToml.kv_namespaces.find((o) => o.binding === BINDING_NAME);
-      if (!existingBinding) {
-        wranglerToml.kv_namespaces.push({
-          id: namespaceId,
-          binding: BINDING_NAME,
-        });
-      } else {
-        existingBinding.id = namespaceId;
-      }
-    }
-    writeFileSync(WRANGLER_TOML_PATH, tomlify.toToml(wranglerToml));
-    spinner.succeed(`Using KV namespace ${kvNamespace} with ID: ${namespaceId}`);
-  } catch (err) {
-    spinner.fail(`Error setting up KV namespace: ${err}`);
-    process.exit(1);
   }
 
   spinner.start("Deploying to Cloudflare Workers").stopAndPersist();

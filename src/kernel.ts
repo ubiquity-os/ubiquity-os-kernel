@@ -10,7 +10,6 @@ import packageJson from "../package.json";
 import { GitHubEventHandler } from "./github/github-event-handler";
 import { bindHandlers } from "./github/handlers/index";
 import { Env, envSchema } from "./github/types/env";
-import { EmptyStore } from "./github/utils/kv-store";
 import { logger } from "./logger/logger";
 
 export const app = new Hono();
@@ -53,7 +52,6 @@ app.post("/", async (ctx: Context) => {
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      pluginChainState: new EmptyStore(ctx.var.logger),
       llmClient,
       llm: env.OPENROUTER_MODEL,
       logger: ctx.var.logger,

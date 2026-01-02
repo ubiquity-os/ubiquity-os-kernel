@@ -12,17 +12,6 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/utils/kv-store", () => ({
-  CloudflareKv: jest.fn().mockImplementation(() => ({
-    get: jest.fn(),
-    put: jest.fn(),
-  })),
-  EmptyStore: jest.fn().mockImplementation(() => ({
-    get: jest.fn(),
-    put: jest.fn(),
-  })),
-}));
-
 jest.mock("../src/github/types/plugin", () => {
   const originalModule: typeof import("../src/github/types/plugin") = jest.requireActual("../src/github/types/plugin");
 
@@ -49,6 +38,8 @@ function calculateSignature(payload: string, secret: string) {
   return `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
 }
 
+const issueCommentCreatedEvent = "issue_comment.created";
+
 beforeAll(() => {
   server.listen();
 });
@@ -62,25 +53,55 @@ afterAll(() => {
 describe("handleEvent", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
-          "ubiquity:listeners": ["issue_comment.created"],
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              short_name: "plugin-a",
+              homepage_url: "https://plugin-a.internal",
+              "ubiquity:listeners": [issueCommentCreatedEvent],
+              commands: {
+                foo: {
+                  description: "foo command",
+                  "ubiquity:example": "/foo bar",
+                },
+                bar: {
+                  description: "bar command",
+                  "ubiquity:example": "/bar foo",
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
+        })
+      ),
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-b/contents/manifest.json", () =>
+        HttpResponse.json({
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              short_name: "plugin-b",
+              homepage_url: "https://plugin-b.internal",
+              "ubiquity:listeners": [issueCommentCreatedEvent],
+              commands: {
+                foo: {
+                  description: "foo command",
+                  "ubiquity:example": "/foo bar",
+                },
+                bar: {
+                  description: "bar command",
+                  "ubiquity:example": "/bar foo",
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
         })
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
         const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  - uses:\n    - plugin: "https://plugin-a.internal"\n  - uses:\n    - plugin: "https://plugin-a.internal"`;
+        const yamlContent = `plugins:\n  ubiquity-os/plugin-a: {}\n  ubiquity-os/plugin-b: {}`;
         if (acceptHeader === "application/vnd.github.v3.raw") {
           return HttpResponse.text(yamlContent);
         } else {
@@ -102,7 +123,7 @@ describe("handleEvent", () => {
     );
   });
 
-  it("should not stop the plugin chain if dispatch throws an error", async () => {
+  it("should continue dispatching plugins if dispatch throws an error", async () => {
     jest.mock("../src/github/github-client", () => {
       return {
         customOctokit: jest.fn().mockReturnValue(new Octokit()),
@@ -127,6 +148,12 @@ describe("handleEvent", () => {
       },
       comment: {
         body: "/foo",
+      },
+      issue: {
+        user: {
+          login: "test-user",
+        },
+        number: 1,
       },
       repository: {
         id: 123456,
@@ -156,7 +183,7 @@ describe("handleEvent", () => {
     const res = await app.request("http://localhost:8080", {
       method: "POST",
       headers: {
-        "x-github-event": "issue_comment.created",
+        "x-github-event": issueCommentCreatedEvent,
         "x-hub-signature-256": signature,
         "x-github-delivery": "mocked_delivery_id",
         "content-type": "application/json",

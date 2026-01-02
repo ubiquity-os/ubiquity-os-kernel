@@ -9,6 +9,7 @@ import { app } from "../src/kernel";
 import { logger } from "../src/logger/logger"; // has to be imported after the mocks
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -22,6 +23,10 @@ jest.mock("@octokit/core", () => ({
 }));
 
 const issueOpened = "issues.opened";
+const fooDescription = "foo command";
+const barDescription = "bar command";
+const fooExample = "/foo bar";
+const barExample = "/bar foo";
 
 const eventHandler = {
   environment: "production",
@@ -42,19 +47,25 @@ afterAll(() => {
 describe("Worker tests", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
+      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
         HttpResponse.json({
-          name: "plugin",
-          commands: {
-            foo: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
+          content: Buffer.from(
+            JSON.stringify({
+              name: "plugin",
+              homepage_url: "https://plugin-a.internal",
+              commands: {
+                foo: {
+                  description: fooDescription,
+                  "ubiquity:example": fooExample,
+                },
+                bar: {
+                  description: barDescription,
+                  "ubiquity:example": barExample,
+                },
+              },
+            })
+          ).toString("base64"),
+          encoding: "base64",
         })
       )
     );
@@ -94,6 +105,7 @@ describe("Worker tests", () => {
       expect(cfg).toBeTruthy();
     });
     it("Should generate a default configuration when the target repo does not contain one", async () => {
+      const configurationHandler = createConfigurationHandler({ configuration: { plugins: {} } });
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -114,11 +126,30 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
+        configurationHandler,
         logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
     it("Should fill the config with defaults", async () => {
+      const configurationHandler = createConfigurationHandler({
+        configuration: {
+          plugins: {
+            "ubiquity-os/plugin-a": { with: {}, skipBotEvents: true, runsOn: [] },
+          },
+        },
+        manifests: {
+          "plugin-a": {
+            name: "plugin",
+            commands: {
+              foo: {
+                description: fooDescription,
+                "ubiquity:example": "/foo",
+              },
+            },
+          },
+        },
+      });
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -132,14 +163,28 @@ describe("Worker tests", () => {
         octokit: {
           rest: {
             repos: {
-              getContent() {
+              getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+                if (params?.path === "manifest.json") {
+                  return {
+                    data: {
+                      content: Buffer.from(
+                        JSON.stringify({
+                          name: "plugin",
+                          commands: {
+                            foo: {
+                              description: fooDescription,
+                              "ubiquity:example": "/foo",
+                            },
+                          },
+                        })
+                      ).toString("base64"),
+                    },
+                  };
+                }
                 return {
                   data: `
                   plugins:
-                    - name: "Run on comment created"
-                      uses:
-                        - id: plugin-A
-                          plugin: https://plugin-a.internal
+                    ubiquity-os/plugin-a: {}
                   `,
                 };
               },
@@ -147,71 +192,82 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
+        configurationHandler,
         logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
-      const pluginChain = cfg.plugins;
-      expect(pluginChain.length).toBe(1);
-      expect(pluginChain[0].uses.length).toBe(1);
-      expect(pluginChain[0].uses[0].skipBotEvents).toBeTruthy();
-      expect(pluginChain[0].uses[0].id).toBe("plugin-A");
-      expect(pluginChain[0].uses[0].plugin).toBe("https://plugin-a.internal");
-      expect(pluginChain[0].uses[0].with).toEqual({});
+      expect(cfg.plugins).toEqual({
+        "ubiquity-os/plugin-a": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {},
+        },
+      });
     });
     it("Should merge organization and repository configuration", async () => {
-      const workflowId = "compute.yml";
-      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-        let data: string;
-        if (args.path === "manifest.json") {
-          data = `
-          {
-            "name": "plugin",
-            "commands": {
-              "command": {
-                "description": "description",
-                "ubiquity:example": "/command"
-              }
-            }
-          }
-          `;
-        } else if (args.repo !== ".ubiquity-os") {
-          data = `
-          plugins:
-            - uses:
-              - plugin: repo-3/plugin-3
-                with:
-                  setting1: false
-            - uses:
-              - plugin: repo-1/plugin-1
-                with:
-                  setting2: true`;
-        } else {
-          data = `
-          plugins:
-            - uses:
-              - plugin: uses-1/plugin-1
-                with:
-                  settings1: 'enabled'
-            - uses:
-              - plugin: repo-1/plugin-1
-                with:
-                  setting1: false
-            - uses:
-              - plugin: repo-2/plugin-2
-                with:
-                  setting2: true`;
-        }
-
-        if (args.mediaType === undefined || args.mediaType?.format === "base64") {
-          return {
-            data: {
-              content: Buffer.from(data).toString("base64"),
+      const configurationHandler = createConfigurationHandler({
+        configuration: {
+          plugins: {
+            "repo-3/plugin-3": {
+              with: {
+                setting1: false,
+              },
+              runsOn: [],
+              skipBotEvents: true,
             },
-          };
-        } else if (args.mediaType?.format === "raw") {
-          return { data };
-        }
-      }
+            "repo-1/plugin-1": {
+              with: {
+                setting2: true,
+              },
+              runsOn: [],
+              skipBotEvents: true,
+            },
+            "uses-1/plugin-1": {
+              with: {
+                settings1: "enabled",
+              },
+              runsOn: [],
+              skipBotEvents: true,
+            },
+            "repo-2/plugin-2": {
+              with: {
+                setting2: true,
+              },
+              runsOn: [],
+              skipBotEvents: true,
+            },
+          },
+        },
+        manifests: {
+          "plugin-3": {
+            name: "plugin",
+            commands: {
+              command: {
+                description: "description",
+                "ubiquity:example": "/command",
+              },
+            },
+          },
+          "plugin-1": {
+            name: "plugin",
+            commands: {
+              command: {
+                description: "description",
+                "ubiquity:example": "/command",
+              },
+            },
+          },
+          "plugin-2": {
+            name: "plugin",
+            commands: {
+              command: {
+                description: "description",
+                "ubiquity:example": "/command",
+              },
+            },
+          },
+        },
+      });
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -225,49 +281,44 @@ describe("Worker tests", () => {
         octokit: {
           rest: {
             repos: {
-              getContent,
+              getContent: jest.fn(),
             },
           },
         },
         eventHandler: eventHandler,
+        configurationHandler,
         logger,
       } as unknown as GitHubContext);
-      expect(cfg.plugins[0]).toEqual({
-        uses: [
-          {
-            plugin: {
-              owner: "repo-3",
-              repo: "plugin-3",
-              ref: undefined,
-              workflowId,
-            },
-            runsOn: [],
-            skipBotEvents: true,
-            with: {
-              setting1: false,
-            },
+      expect(cfg.plugins).toMatchObject({
+        "repo-3/plugin-3": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting1: false,
           },
-        ],
-      });
-      expect(cfg.plugins.slice(1)).toEqual([
-        {
-          uses: [
-            {
-              plugin: {
-                owner: "repo-1",
-                repo: "plugin-1",
-                ref: undefined,
-                workflowId: "compute.yml",
-              },
-              skipBotEvents: true,
-              runsOn: [],
-              with: {
-                setting2: true,
-              },
-            },
-          ],
         },
-      ]);
+        "repo-1/plugin-1": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting2: true,
+          },
+        },
+        "uses-1/plugin-1": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            settings1: "enabled",
+          },
+        },
+        "repo-2/plugin-2": {
+          runsOn: [],
+          skipBotEvents: true,
+          with: {
+            setting2: true,
+          },
+        },
+      });
     });
   });
 });

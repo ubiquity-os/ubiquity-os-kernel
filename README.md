@@ -66,11 +66,7 @@ bun dev
    - If not done already, create a Cloudflare account.
    - Run `npx wrangler login` to log in.
 
-4. **Create a KV Namespace:**
-   - Generate a KV namespace using `npx wrangler kv:namespace create PLUGIN_CHAIN_STATE`.
-   - Copy the generated ID and paste it under `[env.dev]` in `wrangler.toml`.
-
-5. **Manage Secrets:**
+4. **Manage Secrets:**
    - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
    - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
 
@@ -78,10 +74,10 @@ bun dev
      echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM) | npx wrangler secret put APP_PRIVATE_KEY --env dev
      ```
 
-6. **Deploy the Kernel:**
+5. **Deploy the Kernel:**
    - Execute `bun run deploy-dev` to deploy the kernel.
 
-7. **Setup database (optional)**
+6. **Setup database (optional)**
    - You can set up your local database by going through [this repository](https://github.com/ubiquity-os/database) and following the instructions.
 
 ### Plugin-Kernel Input/Output Interface
@@ -92,7 +88,7 @@ Inputs are received within the workflow, triggered by the `workflow_dispatch` ev
 
 ```typescript
 interface PluginInput {
-  stateId: string; // An identifier used to track the state of plugin chain execution in Cloudflare KV
+  stateId: string; // Identifier used to trace a plugin invocation
   eventName: string; // The complete name of the event (e.g., `issue_comment.created`)
   eventPayload: any; // The payload associated with the event
   settings: string; // A string containing JSON with settings specific to your plugin
@@ -116,28 +112,6 @@ const input: PluginInput = {
 };
 ```
 
-#### Output
-
-Data is returned using the `repository_dispatch` event on the plugin's repository, and the output is structured within the `client_payload`.
-
-The `event_type` must be set to `return-data-to-ubiquity-os-kernel`.
-
-```typescript
-interface PluginOutput {
-  state_id: string; // The state ID passed in the inputs must be included here
-  output: string; // A string containing JSON with custom output, defined by the plugin itself
-}
-```
-
-Example usage:
-
-```typescript
-const output: PluginOutput = {
-  state_id: "abc123",
-  output: '{ "result": "success", "message": "Plugin executed successfully" }',
-};
-```
-
 ## Plugin Quick Start
 
 The kernel supports 2 types of plugins:
@@ -150,18 +124,15 @@ How to run a "hello-world" plugin the Cloudflare way:
 1. Run `bun dev` to spin up the kernel
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
-
-```yml
-plugins:
-  - skipBotEvents: true
-    uses:
-    	# hello-world-plugin
-      - plugin: http://127.0.0.1:9090
-        runsOn: [ "issue_comment.created" ]
-        with:
-          response: world
-```
-
+	```yml
+	plugins:
+    http://127.0.0.1:9090:
+      skipBotEvents: true
+      runsOn:
+        - issue_comment.created
+      with:
+        response: world
+	```
 4. Post a `/hello` comment in any issue
 5. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
 
