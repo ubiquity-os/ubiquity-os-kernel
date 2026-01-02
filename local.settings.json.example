@@ -3,10 +3,10 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "node",
-		"APP_WEBHOOK_SECRET": "xxxxxx",
-		"APP_ID": "123456",
-		"APP_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----",
-		"ENVIRONMENT": "development | production",
-		"OPENROUTER_API_KEY": "123456"
+    "APP_WEBHOOK_SECRET": "xxxxxx",
+    "APP_ID": "123456",
+    "APP_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----",
+    "ENVIRONMENT": "development | production",
+    "OPENROUTER_API_KEY": "123456"
   }
 }
