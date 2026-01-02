@@ -18,7 +18,7 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 const MAX_IMPORT_DEPTH = 6;
 
-type ConfigLocation = { owner: string; repo: string };
+type ConfigLocation = { owner: string; repo: string; environment?: string | null };
 export type ConfigSource = { owner: string; repo: string; path: string; sha?: string | null };
 type ImportState = {
   cache: Map<string, PluginConfiguration | null>;
@@ -66,17 +66,23 @@ export function getConfigPathCandidatesForEnvironment(environment: string | null
 }
 
 function normalizeImportKey(location: ConfigLocation): string {
-  return `${location.owner}`.trim().toLowerCase() + "/" + `${location.repo}`.trim().toLowerCase();
+  const env = normalizeEnvironmentName(location.environment ?? "") || "default";
+  return `${location.owner}`.trim().toLowerCase() + "/" + `${location.repo}`.trim().toLowerCase() + "@" + env;
 }
 
 function parseImportSpec(value: string): ConfigLocation | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const parts = trimmed.split("/");
+  const [repoSpec, envSpecRaw] = trimmed.split("@");
+  const parts = repoSpec.split("/");
   if (parts.length !== 2) return null;
   const [owner, repo] = parts;
   if (!owner || !repo) return null;
-  return { owner, repo };
+  const envSpec = envSpecRaw?.trim();
+  if (envSpec && !VALID_CONFIG_SUFFIX.test(envSpec)) {
+    return null;
+  }
+  return { owner, repo, environment: envSpec || undefined };
 }
 
 function readImports(context: GitHubContext, value: unknown, source: ConfigLocation): ConfigLocation[] {
@@ -212,11 +218,13 @@ async function loadConfigSource(
   location: ConfigLocation,
   octokit: GitHubContext["octokit"]
 ): Promise<{ config: PluginConfiguration | null; imports: ConfigLocation[]; errors: YAMLError[] | null; rawData: string | null; source: ConfigSource | null }> {
+  const environment = location.environment ?? context.eventHandler.environment;
   const downloaded = await download({
     context,
     repository: location.repo,
     owner: location.owner,
     octokit,
+    environment,
   });
 
   if (!downloaded) {
@@ -446,17 +454,19 @@ async function download({
   repository,
   owner,
   octokit,
+  environment,
 }: {
   context: GitHubContext;
   repository: string;
   owner: string;
   octokit: GitHubContext["octokit"];
+  environment?: string | null;
 }): Promise<{ data: string; source: ConfigSource } | null> {
   if (!repository || !owner) {
     context.logger.error("Repo or owner is not defined, cannot download the requested file");
     return null;
   }
-  const candidates = getConfigPathCandidatesForEnvironment(context.eventHandler.environment);
+  const candidates = getConfigPathCandidatesForEnvironment(environment ?? context.eventHandler.environment);
   for (const filePath of candidates) {
     try {
       context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
