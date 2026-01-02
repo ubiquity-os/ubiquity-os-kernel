@@ -1,7 +1,8 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
-    "dev": "deno serve --allow-env --allow-net --allow-read --allow-sys --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts",
+    "dev": "deno run --allow-run predev.ts && deno task dev:serve",
+    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-sys --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts",
     "build": "deno run --allow-env --allow-net --allow-read --allow-write scripts/build.ts",
     "test": "deno test --allow-env --allow-net --allow-read",
     "fmt": "deno fmt",

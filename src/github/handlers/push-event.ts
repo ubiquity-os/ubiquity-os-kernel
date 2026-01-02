@@ -1,7 +1,7 @@
 import { Validator } from "@cfworker/json-schema";
 import { ValueErrorType } from "@sinclair/typebox/value";
+import type { ValueError } from "@sinclair/typebox/value";
 import { YAMLException } from "js-yaml";
-import { ValueError } from "typebox-validators";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";

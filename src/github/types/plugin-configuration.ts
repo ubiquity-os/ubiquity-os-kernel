@@ -1,6 +1,7 @@
 import { emitterEventNames } from "@octokit/webhooks";
-import { StaticDecode, Type as T, TLiteral, Union } from "@sinclair/typebox";
-import { StandardValidator } from "typebox-validators";
+import { Kind, StaticDecode, Type as T, TLiteral, Union, type TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+import type { ValueError } from "@sinclair/typebox/value";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)*))?$");
 
@@ -12,6 +13,58 @@ export type GithubPlugin = {
 };
 
 const urlRegex = /^https?:\/\/\S+?$/;
+
+const TYPEBOX_REQUIRED_ERROR_MESSAGE = "Expected required property";
+const UNKNOWN_TYPE_NAMES = new Set(["Any", "Unknown"]);
+
+function adjustErrorMessage(error: ValueError) {
+  const schema = error.schema as TSchema & { errorMessage?: string };
+  if (schema.errorMessage !== undefined) {
+    error.message = schema.errorMessage;
+  }
+  return error;
+}
+
+function createErrorsIterable(errors: Iterable<ValueError>): Iterable<ValueError> {
+  return {
+    [Symbol.iterator]: function* () {
+      const iterator = errors[Symbol.iterator]();
+      let result = iterator.next();
+      let customErrorPath = "???";
+
+      while (!result.done) {
+        const error = result.value;
+        const standardMessage = error.message;
+
+        if (error.path !== customErrorPath) {
+          adjustErrorMessage(error);
+          if (error.message !== standardMessage) {
+            customErrorPath = error.path;
+            yield error;
+          } else if (
+            error.message !== TYPEBOX_REQUIRED_ERROR_MESSAGE ||
+            UNKNOWN_TYPE_NAMES.has((error.schema as Record<PropertyKey, unknown>)[Kind] as string)
+          ) {
+            yield error;
+          }
+        }
+
+        result = iterator.next();
+      }
+    },
+  };
+}
+
+function createSchemaValidator(schema: TSchema) {
+  return {
+    testReturningErrors(value: Readonly<unknown>): Iterable<ValueError> | null {
+      if (Value.Check(schema, value)) {
+        return null;
+      }
+      return createErrorsIterable(Value.Errors(schema, value));
+    },
+  };
+}
 
 export function isGithubPlugin(plugin: string | GithubPlugin): plugin is GithubPlugin {
   return typeof plugin !== "string";
@@ -72,6 +125,6 @@ export const configSchema = T.Object(
   }
 );
 
-export const configSchemaValidator = new StandardValidator(configSchema);
+export const configSchemaValidator = createSchemaValidator(configSchema);
 
 export type PluginConfiguration = StaticDecode<typeof configSchema>;

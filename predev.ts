@@ -1,28 +1,70 @@
-import { exec } from "child_process";
+const PORT = 8787;
+const isWindows = Deno.build.os === "windows";
 
-const port = "8787";
+type CommandResult = {
+  stdout: string;
+  success: boolean;
+};
 
-const isWindows = process.platform === "win32";
+async function runCommand(command: string, args: string[]): Promise<CommandResult> {
+  try {
+    const output = await new Deno.Command(command, {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
 
-const command = isWindows ? `netstat -ano | findstr LISTENING | findstr :${port}` : `lsof -i tcp:${port} | grep LISTEN | awk '{print $2}'`;
+    return {
+      stdout: new TextDecoder().decode(output.stdout),
+      success: output.success,
+    };
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      console.warn(`Command not found: ${command}`);
+      return { stdout: "", success: false };
+    }
+    console.warn(`Failed to run ${command}: ${error}`);
+    return { stdout: "", success: false };
+  }
+}
 
-exec(command, (error, stdout) => {
-  if (error) {
-    // The command will also fail on Windows if the process doesn't exist which is expected
-    console.error(`Error executing command: ${error.message}`);
-    return;
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+async function getPidsForPort(port: number): Promise<string[]> {
+  if (isWindows) {
+    const { stdout } = await runCommand("netstat", ["-ano"]);
+    if (!stdout) return [];
+    const lines = stdout.split(/\r?\n/).map((line) => line.trim());
+    const pids = lines
+      .filter((line) => line.includes("LISTENING") && line.includes(`:${port}`))
+      .map((line) => line.split(/\s+/).pop())
+      .filter((pid): pid is string => Boolean(pid));
+    return unique(pids);
   }
 
-  const pid = isWindows ? stdout.trim().split(/\s+/)[4] : stdout.trim();
+  const { stdout } = await runCommand("lsof", ["-ti", `tcp:${port}`]);
+  if (!stdout) return [];
+  return unique(stdout.split(/\s+/).filter(Boolean));
+}
 
-  if (pid) {
-    const killCommand = isWindows ? `taskkill /F /PID ${pid}` : `kill -9 ${pid}`;
-    exec(killCommand, (error) => {
-      if (error) {
-        console.error(`Error killing process: ${error.message}`);
-        return;
-      }
-      console.log(`Process ${pid} killed successfully.`);
-    });
+async function killPid(pid: string): Promise<void> {
+  if (isWindows) {
+    await runCommand("taskkill", ["/F", "/PID", pid]);
+  } else {
+    await runCommand("kill", ["-9", pid]);
   }
-});
+}
+
+const pids = await getPidsForPort(PORT);
+
+if (!pids.length) {
+  console.log(`No process listening on port ${PORT}.`);
+  Deno.exit(0);
+}
+
+for (const pid of pids) {
+  await killPid(pid);
+  console.log(`Process ${pid} killed successfully.`);
+}

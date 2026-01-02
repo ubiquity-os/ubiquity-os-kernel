@@ -31,16 +31,16 @@ For local development, expose the kernel with a public HTTPS tunnel (ngrok or a 
 ```bash
 git clone --recurse-submodules https://github.com/ubiquity-os/ubiquity-os-kernel
 cd ubiquity-os-kernel
-bun install
-bun run setup:plugins
-bun dev
+deno task dev
 ```
+
+`deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
 
 ### Deploying to Cloudflare Workers
 
-1. **Install Dependencies:**
+1. **Install Dependencies (for deploy tooling):**
 
-   - Execute `bun install` to install the required dependencies.
+   - Execute `npm install` (or your preferred Node package manager).
 
 2. **Create a GitHub App:**
 
@@ -75,7 +75,7 @@ bun dev
 
 5. **Deploy the Kernel:**
 
-   - Execute `bun run deploy-dev` to deploy the kernel.
+   - Execute `npm run deploy-dev` to deploy the kernel.
 
 6. **Setup database (optional)**
    - You can set up your local database by going through [this repository](https://github.com/ubiquity-os/database) and following the instructions.
@@ -121,8 +121,8 @@ The kernel supports 2 types of plugins:
 
 How to run a "hello-world" plugin the Cloudflare way:
 
-1. Run `bun dev` to spin up the kernel
-2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
+1. Run `deno task dev` to spin up the kernel
+2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
    ```yml
    plugins:

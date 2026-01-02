@@ -3,7 +3,7 @@
   "specifiers": {
     "npm:@azure/functions@^4.6.0": "4.10.0",
     "npm:@cfworker/json-schema@2.0.1": "2.0.1",
-    "npm:@cloudflare/workers-types@4.20240117.0": "4.20240117.0",
+    "npm:@cloudflare/workers-types@4.20251210.0": "4.20251210.0",
     "npm:@commitlint/cli@19.3.0": "19.3.0_typescript@5.6.3_@types+node@20.14.10",
     "npm:@commitlint/config-conventional@19.2.2": "19.2.2",
     "npm:@cspell/dict-node@5.0.1": "5.0.1",
@@ -21,7 +21,7 @@
     "npm:@octokit/plugin-request-log@^5.3.1": "5.3.1_@octokit+core@7.0.6",
     "npm:@octokit/plugin-rest-endpoint-methods@^13.3.1": "13.5.0_@octokit+core@7.0.6",
     "npm:@octokit/plugin-retry@^7.1.4": "7.2.1_@octokit+core@7.0.6",
-    "npm:@octokit/plugin-throttling@^9.4.0": "9.6.1_@octokit+core@7.0.6",
+    "npm:@octokit/plugin-throttling@^11.0.3": "11.0.3_@octokit+core@7.0.6",
     "npm:@octokit/rest@22": "22.0.1_@octokit+core@7.0.6",
     "npm:@octokit/types@^14.1.0": "14.1.0",
     "npm:@octokit/webhooks-types@^7.6.1": "7.6.1",
@@ -34,7 +34,7 @@
     "npm:@types/libsodium-wrappers@~0.7.14": "0.7.14",
     "npm:@types/node-rsa@^1.1.4": "1.1.4",
     "npm:@types/node@20.14.10": "20.14.10",
-    "npm:@ubiquity-os/plugin-sdk@3.7.0": "3.7.0_@octokit+core@6.1.6_@sinclair+typebox@0.33.22",
+    "npm:@ubiquity-os/plugin-sdk@3.8.0": "3.8.0_@octokit+core@6.1.6_@sinclair+typebox@0.33.22",
     "npm:cspell@8.9.0": "8.9.0",
     "npm:dotenv@16.4.5": "16.4.5",
     "npm:esbuild@0.23.0": "0.23.0",
@@ -63,10 +63,9 @@
     "npm:toml@3.0.0": "3.0.0",
     "npm:ts-node@^10.9.2": "10.9.2_@swc+core@1.6.5_@types+node@20.14.10_typescript@5.6.3",
     "npm:tsup@^8.3.5": "8.5.1_@swc+core@1.6.5_typescript@5.6.3_esbuild@0.27.2_yaml@2.8.2",
-    "npm:typebox-validators@0.3.5": "0.3.5_@sinclair+typebox@0.34.45",
     "npm:typescript-eslint@^8.49.0": "8.51.0_eslint@9.7.0_typescript@5.6.3_@typescript-eslint+parser@8.51.0__eslint@9.7.0__typescript@5.6.3",
     "npm:typescript@5.6.3": "5.6.3",
-    "npm:wrangler@^4.54.0": "4.54.0_@cloudflare+workers-types@4.20240117.0_unenv@2.0.0-rc.24_workerd@1.20251210.0",
+    "npm:wrangler@^4.54.0": "4.54.0_@cloudflare+workers-types@4.20251210.0_unenv@2.0.0-rc.24_workerd@1.20251210.0",
     "npm:yaml@^2.7.0": "2.8.2"
   },
   "npm": {
@@ -374,8 +373,8 @@
       "os": ["win32"],
       "cpu": ["x64"]
     },
-    "@cloudflare/workers-types@4.20240117.0": {
-      "integrity": "sha512-HQU8lJhaJVh8gQXFtVA7lZwd0hK1ckIFjRuxOXkVN2Z9t7DtzNbA2YTwBry5thKNgF5EwjN4THjHg5NUZzj05A=="
+    "@cloudflare/workers-types@4.20251210.0": {
+      "integrity": "sha512-EGf2lWqeVO48LjDYFl1peSbi/AvQFDJ1vj+etwRAGqLjGWgq+R1fwFfLCjXr7tMsX8aHykE17XpCAVuroKpZoQ=="
     },
     "@commitlint/cli@19.3.0_typescript@5.6.3_@types+node@20.14.10": {
       "integrity": "sha512-LgYWOwuDR7BSTQ9OLZ12m7F/qhNY+NpAyPBgo4YNMkACE7lGuUnuQq1yi9hz1KA4+3VqpOYl8H1rY/LYK43v7g==",
@@ -2077,18 +2076,18 @@
         "bottleneck"
       ]
     },
+    "@octokit/plugin-throttling@11.0.3_@octokit+core@7.0.6": {
+      "integrity": "sha512-34eE0RkFCKycLl2D2kq7W+LovheM/ex3AwZCYN8udpi6bxsyjZidb2McXs69hZhLmJlDqTSP8cH+jSRpiaijBg==",
+      "dependencies": [
+        "@octokit/core@7.0.6",
+        "@octokit/types@16.0.0",
+        "bottleneck"
+      ]
+    },
     "@octokit/plugin-throttling@9.6.1_@octokit+core@6.1.6": {
       "integrity": "sha512-bt3EBUkeKUzDQXRCcFrR9SWVqlLFRRqcCrr6uAorWt6NXTyjMKqcGrFmXqJy9NCbnKgiIZ2OXWq04theFc76Jg==",
       "dependencies": [
         "@octokit/core@6.1.6",
-        "@octokit/types@13.10.0",
-        "bottleneck"
-      ]
-    },
-    "@octokit/plugin-throttling@9.6.1_@octokit+core@7.0.6": {
-      "integrity": "sha512-bt3EBUkeKUzDQXRCcFrR9SWVqlLFRRqcCrr6uAorWt6NXTyjMKqcGrFmXqJy9NCbnKgiIZ2OXWq04theFc76Jg==",
-      "dependencies": [
-        "@octokit/core@7.0.6",
         "@octokit/types@13.10.0",
         "bottleneck"
       ]
@@ -2690,8 +2689,8 @@
         "eslint-visitor-keys@4.2.1"
       ]
     },
-    "@ubiquity-os/plugin-sdk@3.7.0_@octokit+core@6.1.6_@sinclair+typebox@0.33.22": {
-      "integrity": "sha512-OcvfPsZUuxauKjIUuQPddg3IPHrKceE2+NaG4Fpc4gXQCoJ1siJsaG+Oo/OboPo8g9tg3nlEeBPOuJgbawPX+A==",
+    "@ubiquity-os/plugin-sdk@3.8.0_@octokit+core@6.1.6_@sinclair+typebox@0.33.22": {
+      "integrity": "sha512-M+uCoOidEa7Q2U6fMJNzm9gGun5SbGuDDAu7kCrI7MMymcj8T2FmgBRhuCeN+Ee5N8iRV86//qeROb8Mad0xPA==",
       "dependencies": [
         "@octokit/auth-app@7.2.2",
         "@octokit/core@6.1.6",
@@ -2708,7 +2707,7 @@
         "libsodium-wrappers",
         "openai",
         "pino",
-        "typebox-validators@0.3.5_@sinclair+typebox@0.33.22",
+        "typebox-validators",
         "yaml@2.8.2"
       ]
     },
@@ -6814,12 +6813,6 @@
         "@sinclair/typebox@0.33.22"
       ]
     },
-    "typebox-validators@0.3.5_@sinclair+typebox@0.34.45": {
-      "integrity": "sha512-FXrmSUAN6bSGxDANResNCZQ8VRRLr5bSyy73/HyqSXGdiVuogppGAoRocy7NTVZY4Wc2sWUofmWwwIXE6OxS6Q==",
-      "dependencies": [
-        "@sinclair/typebox@0.34.45"
-      ]
-    },
     "typed-array-buffer@1.0.3": {
       "integrity": "sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==",
       "dependencies": [
@@ -7073,7 +7066,7 @@
       "scripts": true,
       "bin": true
     },
-    "wrangler@4.54.0_@cloudflare+workers-types@4.20240117.0_unenv@2.0.0-rc.24_workerd@1.20251210.0": {
+    "wrangler@4.54.0_@cloudflare+workers-types@4.20251210.0_unenv@2.0.0-rc.24_workerd@1.20251210.0": {
       "integrity": "sha512-bANFsjDwJLbprYoBK+hUDZsVbUv2SqJd8QvArLIcZk+fPq4h/Ohtj5vkKXD3k0s2bD1DXLk08D+hYmeNH+xC6A==",
       "dependencies": [
         "@cloudflare/kv-asset-handler",
@@ -7219,7 +7212,7 @@
       "dependencies": [
         "npm:@azure/functions@^4.6.0",
         "npm:@cfworker/json-schema@2.0.1",
-        "npm:@cloudflare/workers-types@4.20240117.0",
+        "npm:@cloudflare/workers-types@4.20251210.0",
         "npm:@commitlint/cli@19.3.0",
         "npm:@commitlint/config-conventional@19.2.2",
         "npm:@cspell/dict-node@5.0.1",
@@ -7237,7 +7230,7 @@
         "npm:@octokit/plugin-request-log@^5.3.1",
         "npm:@octokit/plugin-rest-endpoint-methods@^13.3.1",
         "npm:@octokit/plugin-retry@^7.1.4",
-        "npm:@octokit/plugin-throttling@^9.4.0",
+        "npm:@octokit/plugin-throttling@^11.0.3",
         "npm:@octokit/rest@22",
         "npm:@octokit/types@^14.1.0",
         "npm:@octokit/webhooks-types@^7.6.1",
@@ -7250,7 +7243,7 @@
         "npm:@types/libsodium-wrappers@~0.7.14",
         "npm:@types/node-rsa@^1.1.4",
         "npm:@types/node@20.14.10",
-        "npm:@ubiquity-os/plugin-sdk@3.7.0",
+        "npm:@ubiquity-os/plugin-sdk@3.8.0",
         "npm:cspell@8.9.0",
         "npm:dotenv@16.4.5",
         "npm:esbuild@0.23.0",
@@ -7279,7 +7272,6 @@
         "npm:toml@3.0.0",
         "npm:ts-node@^10.9.2",
         "npm:tsup@^8.3.5",
-        "npm:typebox-validators@0.3.5",
         "npm:typescript-eslint@^8.49.0",
         "npm:typescript@5.6.3",
         "npm:wrangler@^4.54.0",
