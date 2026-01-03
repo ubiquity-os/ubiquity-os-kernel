@@ -171,7 +171,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 }
 
 export function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
-  const match = /^\s*\/([A-Za-z-_]+)\b(.*)$/s.exec(text);
+  const match = /^\s*\/([\w-]+)\b(.*)$/s.exec(text);
   if (!match) return null;
   return {
     name: match[1],
