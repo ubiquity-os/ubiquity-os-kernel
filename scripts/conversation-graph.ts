@@ -29,13 +29,15 @@ Usage:
   deno run -A --sloppy-imports scripts/conversation-graph.ts <github-url> [options]
 
 Options:
-  --context         Include conversationContext summary in output
-  --semantic        Include semantic threads when --context is set
+  --no-context      Hide conversationContext summary
+  --no-semantic     Hide semantic threads (context still shown)
   --max-nodes=N     Limit number of KV nodes shown (default: ${DEFAULT_MAX_NODES})
   --verbose         Print debug warnings from graph resolution
   --color           Force ANSI color output
   --no-color        Disable ANSI color output
   --no-notes        Hide the "Notes" section
+  --context         (default) Include conversationContext summary
+  --semantic        (default) Include semantic threads in the context
   -h, --help        Show this help
 `.trim();
 
@@ -100,8 +102,8 @@ function renderNodeList(
 
 function parseArgs(args: string[]): { url: string | null; options: Options } {
   let url: string | null = null;
-  let showContext = false;
-  let includeSemantic = false;
+  let showContext = true;
+  let includeSemantic = true;
   let maxNodes = DEFAULT_MAX_NODES;
   let isVerbose = false;
   let colorMode: Options["colorMode"] = "auto";
@@ -117,8 +119,16 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
       showContext = true;
       continue;
     }
+    if (arg === "--no-context") {
+      showContext = false;
+      continue;
+    }
     if (arg === "--semantic") {
       includeSemantic = true;
+      continue;
+    }
+    if (arg === "--no-semantic") {
+      includeSemantic = false;
       continue;
     }
     if (arg === "--verbose") {
