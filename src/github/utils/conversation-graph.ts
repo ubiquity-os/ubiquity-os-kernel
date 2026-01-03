@@ -3,6 +3,14 @@ import { GitHubContext } from "../github-context";
 import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "./kv-client";
 
 type ConversationNodeType = "Issue" | "PullRequest";
+type ReferenceKind = ConversationNodeType | "Unknown";
+
+type OutboundReference = Readonly<{
+  owner: string;
+  repo: string;
+  number: number;
+  kind: ReferenceKind;
+}>;
 
 export type ConversationNode = Readonly<{
   id: string;
@@ -35,6 +43,8 @@ const LIST_PAGE_SIZE = 200;
 const MAX_ALIAS_DEPTH = 6;
 const TIMELINE_PAGE_SIZE = 100;
 const CLOSING_PAGE_SIZE = 50;
+const OUTBOUND_COMMENT_LIMIT = 30;
+const OUTBOUND_REFERENCE_LIMIT = 25;
 
 const aliasCache = new Map<string, string>();
 
@@ -142,6 +152,58 @@ function parseOwnerRepoFromUrl(url: string): { owner: string; repo: string } {
   return { owner: "", repo: "" };
 }
 
+function extractReferencesFromText(text: string, defaultOwner: string, defaultRepo: string): OutboundReference[] {
+  const out: OutboundReference[] = [];
+  const trimmed = text.trim();
+  if (!trimmed) return out;
+
+  const urlRegex = /https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(issues|pull|pulls)\/(\d+)/gi;
+  for (const match of trimmed.matchAll(urlRegex)) {
+    const owner = normalizeString(match[1]);
+    const repo = normalizeString(match[2]);
+    const number = normalizeNumber(Number(match[4]));
+    if (!owner || !repo || number === undefined) continue;
+    const segment = normalizeString(match[3]).toLowerCase();
+    const kind: ReferenceKind = segment === "pull" || segment === "pulls" ? "PullRequest" : "Issue";
+    out.push({ owner, repo, number, kind });
+  }
+
+  const repoRegex = /\b([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)#(\d+)\b/g;
+  for (const match of trimmed.matchAll(repoRegex)) {
+    const owner = normalizeString(match[1]);
+    const repo = normalizeString(match[2]);
+    const number = normalizeNumber(Number(match[3]));
+    if (!owner || !repo || number === undefined) continue;
+    out.push({ owner, repo, number, kind: "Unknown" });
+  }
+
+  const localRegex = /(^|[^A-Za-z0-9_/])#(\d+)\b/g;
+  for (const match of trimmed.matchAll(localRegex)) {
+    const number = normalizeNumber(Number(match[2]));
+    if (!defaultOwner || !defaultRepo || number === undefined) continue;
+    out.push({ owner: defaultOwner, repo: defaultRepo, number, kind: "Unknown" });
+  }
+
+  return out;
+}
+
+function dedupeReferences(references: OutboundReference[]): OutboundReference[] {
+  const map = new Map<string, OutboundReference>();
+  for (const ref of references) {
+    const key = `${ref.owner.toLowerCase()}/${ref.repo.toLowerCase()}#${ref.number}`;
+    const current = map.get(key);
+    if (!current || (current.kind === "Unknown" && ref.kind !== "Unknown")) {
+      map.set(key, ref);
+    }
+  }
+  return [...map.values()];
+}
+
+function isSameReference(root: ConversationNode, ref: OutboundReference): boolean {
+  if (root.number === undefined) return false;
+  return root.owner.toLowerCase() === ref.owner.toLowerCase() && root.repo.toLowerCase() === ref.repo.toLowerCase() && root.number === ref.number;
+}
+
 function getGraphqlClient(context: GitHubContext): GraphqlRequest | null {
   const octokit = context.octokit as {
     graphql?: GraphqlRequest;
@@ -160,9 +222,132 @@ function getGraphqlClient(context: GitHubContext): GraphqlRequest | null {
   };
 }
 
+async function fetchIssueNode(context: GitHubContext, owner: string, repo: string, number: number): Promise<ConversationNode | null> {
+  const { data } = await context.octokit.rest.issues.get({ owner, repo, issue_number: number });
+  if (data.pull_request) {
+    return fetchPullRequestNode(context, owner, repo, number);
+  }
+  return parseConversationNode({
+    __typename: "Issue",
+    id: data.node_id,
+    number: data.number,
+    title: data.title,
+    url: data.html_url ?? data.url,
+    createdAt: data.created_at,
+    repository: { name: repo, owner: { login: owner } },
+  });
+}
+
+async function fetchPullRequestNode(context: GitHubContext, owner: string, repo: string, number: number): Promise<ConversationNode | null> {
+  const { data } = await context.octokit.rest.pulls.get({ owner, repo, pull_number: number });
+  return parseConversationNode({
+    __typename: "PullRequest",
+    id: data.node_id,
+    number: data.number,
+    title: data.title,
+    url: data.html_url ?? data.url,
+    createdAt: data.created_at,
+    repository: { name: repo, owner: { login: owner } },
+  });
+}
+
+async function fetchReferenceNode(context: GitHubContext, reference: OutboundReference): Promise<ConversationNode | null> {
+  const owner = normalizeString(reference.owner);
+  const repo = normalizeString(reference.repo);
+  if (!owner || !repo || !Number.isFinite(reference.number)) return null;
+  const number = Math.trunc(reference.number);
+  try {
+    if (reference.kind === "PullRequest") {
+      return await fetchPullRequestNode(context, owner, repo, number);
+    }
+    if (reference.kind === "Issue") {
+      return await fetchIssueNode(context, owner, repo, number);
+    }
+    return await fetchIssueNode(context, owner, repo, number);
+  } catch (error) {
+    context.logger.debug({ err: error, owner, repo, number }, "Failed to resolve outbound reference (non-fatal)");
+    return null;
+  }
+}
+
+async function fetchOutboundReferences(context: GitHubContext, root: ConversationNode): Promise<ConversationNode[]> {
+  const owner = normalizeString(root.owner);
+  const repo = normalizeString(root.repo);
+  const issueNumber = root.number;
+  if (!owner || !repo || issueNumber === undefined) return [];
+
+  let body = "";
+  try {
+    const { data } = await context.octokit.rest.issues.get({ owner, repo, issue_number: issueNumber });
+    body = typeof data.body === "string" ? data.body : "";
+  } catch (error) {
+    context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue body for outbound references (non-fatal)");
+    return [];
+  }
+
+  const rawReferences = extractReferencesFromText(body, owner, repo);
+
+  try {
+    const { data: comments } = await context.octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      per_page: OUTBOUND_COMMENT_LIMIT,
+      sort: "created",
+      direction: "desc",
+    });
+    for (const comment of comments ?? []) {
+      const text = typeof comment?.body === "string" ? comment.body : "";
+      if (!text) continue;
+      rawReferences.push(...extractReferencesFromText(text, owner, repo));
+    }
+  } catch (error) {
+    context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue comments for outbound references (non-fatal)");
+  }
+
+  const references = dedupeReferences(rawReferences)
+    .filter((ref) => !isSameReference(root, ref))
+    .slice(0, OUTBOUND_REFERENCE_LIMIT);
+  const nodes: ConversationNode[] = [];
+  for (const ref of references) {
+    const node = await fetchReferenceNode(context, ref);
+    if (node && node.id !== root.id) nodes.push(node);
+  }
+  return nodes;
+}
+
 async function fetchConversationSnapshot(context: GitHubContext, nodeId: string): Promise<ConversationSnapshot | null> {
   const graphql = getGraphqlClient(context);
   if (!graphql) return null;
+  const issueOrPullFields = `
+                __typename
+                ... on Issue {
+                  id
+                  number
+                  title
+                  url
+                  createdAt
+                  repository {
+                    name
+                    owner {
+                      login
+                    }
+                  }
+                }
+                ... on PullRequest {
+                  id
+                  number
+                  title
+                  url
+                  createdAt
+                  repository {
+                    name
+                    owner {
+                      login
+                    }
+                  }
+                }
+              `;
   try {
     const data = (await graphql(
       `
@@ -184,64 +369,12 @@ async function fetchConversationSnapshot(context: GitHubContext, nodeId: string)
               timelineItems(first: $timelineCount, itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT]) {
                 nodes {
                   ... on CrossReferencedEvent {
-                    source {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
-                    subject {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
+                    source {${issueOrPullFields}}
+                    target {${issueOrPullFields}}
                   }
                   ... on ConnectedEvent {
-                    source {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
-                    subject {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
+                    source {${issueOrPullFields}}
+                    subject {${issueOrPullFields}}
                   }
                 }
               }
@@ -277,64 +410,12 @@ async function fetchConversationSnapshot(context: GitHubContext, nodeId: string)
               timelineItems(first: $timelineCount, itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT]) {
                 nodes {
                   ... on CrossReferencedEvent {
-                    source {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
-                    subject {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
+                    source {${issueOrPullFields}}
+                    target {${issueOrPullFields}}
                   }
                   ... on ConnectedEvent {
-                    source {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
-                    subject {
-                      __typename
-                      id
-                      number
-                      title
-                      url
-                      createdAt
-                      repository {
-                        name
-                        owner {
-                          login
-                        }
-                      }
-                    }
+                    source {${issueOrPullFields}}
+                    subject {${issueOrPullFields}}
                   }
                 }
               }
@@ -359,7 +440,7 @@ async function fetchConversationSnapshot(context: GitHubContext, nodeId: string)
     if (timelineItems && Array.isArray(timelineItems.nodes)) {
       for (const item of timelineItems.nodes) {
         if (!isRecord(item)) continue;
-        for (const candidate of [item.source, item.subject]) {
+        for (const candidate of [item.source, item.subject, item.target]) {
           const parsed = parseConversationNode(candidate);
           if (parsed && parsed.id !== root.id) linked.push(parsed);
         }
@@ -544,7 +625,9 @@ export async function resolveConversationKeyForContext(context: GitHubContext, l
   if (!subject) return null;
 
   const snapshot = (await fetchConversationSnapshot(context, subject.id)) ?? { root: subject, linked: [] };
-  const graph = buildGraph(snapshot.root, snapshot.linked);
+  const outbound = await fetchOutboundReferences(context, snapshot.root);
+  const linked = dedupeNodes([...snapshot.linked, ...outbound]);
+  const graph = buildGraph(snapshot.root, linked);
   const nodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as ConversationNode);
 
   const kv = await getKvClient(logger ?? context.logger);
@@ -609,7 +692,7 @@ export async function resolveConversationKeyForContext(context: GitHubContext, l
 
   await persistNode(kv, canonical, canonicalKey);
 
-  return { key: canonicalKey, root: snapshot.root, linked: snapshot.linked };
+  return { key: canonicalKey, root: snapshot.root, linked };
 }
 
 export async function listConversationNodesForKey(context: GitHubContext, key: string, limit = 40, logger?: LoggerLike): Promise<ConversationNode[]> {
