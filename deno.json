@@ -8,7 +8,7 @@
     "check": "deno check --sloppy-imports src/adapters/server.ts src/index.ts src/functions/http-trigger.ts",
     "commitlint": "deno run --allow-env --allow-read --allow-run --allow-sys npm:@commitlint/cli@19.3.0",
     "fmt": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --write .",
-    "fmt:check": "deno run --allow-read --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --check .",
+    "fmt:check": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --check .",
     "format": "deno task format:lint && deno task format:prettier",
     "format:lint": "deno run --allow-read --allow-run --allow-env --allow-sys --allow-write npm:eslint@9.7.0 --fix src tests scripts predev.ts",
     "format:prettier": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --write .",
