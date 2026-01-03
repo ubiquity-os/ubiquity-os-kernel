@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/core";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
+import { config as loadEnv } from "dotenv";
 import type { GitHubContext } from "../src/github/github-context.ts";
 import { type ConversationNode, listConversationNodesForKey, resolveConversationKeyForContext } from "../src/github/utils/conversation-graph.ts";
 import { buildConversationContext } from "../src/github/utils/conversation-context.ts";
@@ -19,6 +20,8 @@ type ParsedUrl = Readonly<{
   number: number;
   kind: "issue" | "pull";
 }>;
+
+loadEnv({ path: ".env" });
 
 const DEFAULT_MAX_NODES = 40;
 const TITLE_MAX_CHARS = 120;
