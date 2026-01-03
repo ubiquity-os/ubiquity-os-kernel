@@ -28,7 +28,9 @@ function normalizeBaseUrl(value) {
 }
 
 function parseBoolean(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
@@ -64,10 +66,7 @@ async function main() {
     throw new Error("MESSAGES must be a non-empty JSON array");
   }
 
-  const baseUrl =
-    normalizeBaseUrl(process.env.UOS_AI_URL) ||
-    normalizeBaseUrl(process.env.UOS_AI_BASE_URL) ||
-    "https://ai.ubq.fi";
+  const baseUrl = normalizeBaseUrl(process.env.UOS_AI_URL) || normalizeBaseUrl(process.env.UOS_AI_BASE_URL) || "https://ai.ubq.fi";
   const model = String(args.model || "gpt-5.2-chat-latest").trim();
   const stream = parseBoolean(args.stream);
 
