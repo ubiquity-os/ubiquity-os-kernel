@@ -5,7 +5,7 @@ import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context";
 import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
-import { getConfigFullPathForEnvironment, getConfigurationFromRepo } from "../utils/config";
+import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config";
 import { getManifest } from "../utils/plugins";
 
 function encodePointerSegment(segment: string) {
@@ -172,10 +172,19 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-  const configPath = getConfigFullPathForEnvironment(context.eventHandler.environment);
-  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(configPath) || commit.added?.includes(configPath));
+  const configPathCandidates = getConfigPathCandidatesForEnvironment(context.eventHandler.environment);
+  let changedConfigPath: string | null = null;
+  for (const commit of commits) {
+    for (const path of configPathCandidates) {
+      if (commit.modified?.includes(path) || commit.added?.includes(path)) {
+        changedConfigPath = path;
+        break;
+      }
+    }
+    if (changedConfigPath) break;
+  }
 
-  if (!didConfigurationFileChange || !repository.owner) {
+  if (!changedConfigPath || !repository.owner) {
     return;
   }
 
@@ -191,7 +200,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after, configPath));
+      body.push(...constructErrorBody(errors, rawData, repository, after, changedConfigPath));
       await createCommitComment(
         context,
         {

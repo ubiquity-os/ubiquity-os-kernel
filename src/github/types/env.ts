@@ -4,7 +4,7 @@ export const envSchema = T.Object({
   // Matches `.github/.ubiquity-os.config.<ENVIRONMENT>.yml` (with `production` mapping to `.github/.ubiquity-os.config.yml`).
   ENVIRONMENT: T.String({ minLength: 1, default: "development", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$" }),
   APP_WEBHOOK_SECRET: T.String({ minLength: 1 }),
-  APP_ID: T.String({ minLength: 1 }),
+  APP_ID: T.String({ minLength: 1, pattern: "^[0-9]+$" }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
   X25519_PRIVATE_KEY: T.Optional(T.String()),
   UOS_AGENT_OWNER: T.String({ minLength: 1, default: "ubiquity-os" }),

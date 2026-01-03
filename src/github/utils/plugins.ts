@@ -41,7 +41,8 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
     context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
     return true;
   }
-  return !plugin.settings?.runsOn?.includes(event);
+  const runsOn = plugin.settings?.runsOn;
+  return Array.isArray(runsOn) && runsOn.length > 0 && !runsOn.includes(event);
 }
 
 export async function getPluginsForEvent(

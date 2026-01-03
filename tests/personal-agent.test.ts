@@ -17,11 +17,13 @@ beforeAll(() => {
 afterEach(() => {
   server.resetHandlers();
   jest.clearAllMocks();
+  jest.resetModules();
 });
 afterAll(() => server.close());
 
 describe("Personal Agent tests", () => {
   beforeEach(async () => {
+    nextCommentId = 1000;
     drop(db);
   });
 
@@ -105,6 +107,7 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
     payload: {
       action: "created",
       repository: { owner: { login: "test_acc" }, name: "ubiquity-os-kernel" },
+      installation: { id: 123456 },
       comment: {
         id: nextCommentId++,
         body: commentBody,

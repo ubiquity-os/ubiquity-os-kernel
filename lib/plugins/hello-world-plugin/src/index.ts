@@ -6,6 +6,7 @@ export type PluginSettings = Record<string, never>;
 export type Env = {
   LOG_LEVEL?: string;
   KERNEL_PUBLIC_KEY?: string;
+  NODE_ENV?: string;
 };
 export type Command =
   | {
@@ -34,8 +35,7 @@ export async function runPlugin(context: Context<PluginSettings, Env, Command, S
   switch (command.name) {
     case "hello": {
       logger.info("Hello command received!");
-
-      console.log("Hello from the hello-world-plugin!");
+      logger.info("Hello from the hello-world-plugin!");
 
       return {
         success: true,

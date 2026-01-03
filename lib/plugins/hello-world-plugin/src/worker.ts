@@ -8,6 +8,11 @@ import { runPlugin } from "./index";
 import { Command } from "./index";
 import { Env, PluginSettings, SupportedEvents } from "./index";
 
+function resolveLogLevel(value?: string): LogLevel {
+  const normalized = (value ?? "").toLowerCase();
+  return (Object.values(LOG_LEVEL) as LogLevel[]).includes(normalized as LogLevel) ? (normalized as LogLevel) : LOG_LEVEL.INFO;
+}
+
 export default {
   async fetch(request: Request, environment: Env, executionCtx?: ExecutionContext) {
     const plugin = createPlugin<PluginSettings, Env, Command, SupportedEvents>(
@@ -17,9 +22,9 @@ export default {
       manifest as Manifest,
       {
         postCommentOnError: true,
-        logLevel: (environment.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,
+        logLevel: resolveLogLevel(environment.LOG_LEVEL),
         kernelPublicKey: environment.KERNEL_PUBLIC_KEY,
-        bypassSignatureVerification: process.env.NODE_ENV === "local",
+        bypassSignatureVerification: environment.NODE_ENV === "local",
       }
     );
 

@@ -4,7 +4,7 @@ import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import OpenAI from "openai";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
 import helloWorldManifest from "./__mocks__/manifest.json";
 import { server } from "./__mocks__/node";
@@ -119,8 +119,9 @@ describe("Kernel Event Processing Tests", () => {
     (mockEventHandler.getToken as jest.Mock).mockResolvedValue(MOCK_TOKEN);
     (mockEventHandler.signPayload as jest.Mock).mockResolvedValue("mock-signature");
 
-    (mockOctokit.rest.repos.getContent as jest.Mock).mockImplementation(async ({ path, mediaType }: { path: string; mediaType?: { format?: string } }) => {
-      if (path === DEV_CONFIG_FULL_PATH && mediaType?.format === "raw") {
+    const configPaths = new Set([DEV_CONFIG_FULL_PATH, CONFIG_FULL_PATH]);
+    (mockOctokit.rest.repos.getContent as jest.Mock).mockImplementation(async ({ path }: { path: string }) => {
+      if (configPaths.has(path)) {
         return { data: mockConfigResponse().data, headers: {} };
       }
       throw Object.assign(new Error("Not Found"), { status: 404 });
@@ -153,6 +154,7 @@ describe("Kernel Event Processing Tests", () => {
     const mockDispatchWorkflow = jest.fn().mockResolvedValue(undefined);
     const mockDispatchWorker = jest.fn().mockResolvedValue(undefined);
 
+    jest.resetModules();
     jest.doMock("../src/github/utils/workflow-dispatch", () => ({
       getDefaultBranch: jest.fn().mockResolvedValue("main"),
       dispatchWorkflow: mockDispatchWorkflow,

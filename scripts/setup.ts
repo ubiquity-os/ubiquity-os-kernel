@@ -172,7 +172,10 @@ class GithubAppSetup {
 }
 
 const setup = new GithubAppSetup();
-void setup.start();
+setup.start().catch((error) => {
+  console.error("Failed to start GitHub App setup.", error);
+  process.exit(1);
+});
 
 process.on("SIGINT", () => {
   setup.stop();

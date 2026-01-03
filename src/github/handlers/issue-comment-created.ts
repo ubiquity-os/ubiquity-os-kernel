@@ -116,11 +116,9 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
   const body = context.payload.comment.body.trim();
   const bodyLower = body.toLowerCase();
-  if (context.payload.comment.user?.type !== "User") {
-    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
-    return;
-  }
-
+  const afterMention = extractAfterUbiquityosMention(body);
+  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
+  const isHuman = context.payload.comment.user?.type === "User";
   const shouldSkip = await shouldSkipDuplicateCommentEvent({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,
@@ -132,17 +130,20 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     return;
   }
 
+  if (!isHuman && !slashInvocation && afterMention === null) {
+    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
+    return;
+  }
+
   if (bodyLower.startsWith(`/help`)) {
     await postHelpCommand(context);
     return;
   }
 
-  const afterMention = extractAfterUbiquityosMention(body);
   if (afterMention !== null) {
     if (context.payload.comment.user?.type === "User") {
       await addReactionEyes(context);
     }
-    const slashInvocation = extractSlashCommandInvocation(afterMention);
     if (slashInvocation) {
       await dispatchSlashCommand(context, slashInvocation);
       return;
@@ -160,7 +161,7 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       await dispatchSlashCommand(context, slashInvocation);
       return;
     }
-  } else if (await isUserHelpRequest(context)) {
+  } else if (isHuman && (await isUserHelpRequest(context))) {
     const issueAuthor = context.payload.issue.user?.login;
     context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
     await commandRouter(context);
@@ -188,7 +189,12 @@ function listUserMentions(text: string): string[] {
   return [...text.matchAll(/@([a-z0-9-_]+)/gi)].map((match) => match[1]);
 }
 
-function parseSlashCommandParameters(commandName: string, rawArgs: string, parametersSpec: unknown, context: GitHubContext<"issue_comment.created">) {
+export function parseSlashCommandParameters(
+  commandName: string,
+  rawArgs: string,
+  parametersSpec: unknown,
+  context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">
+) {
   const paramObject = typeof parametersSpec === "object" && parametersSpec !== null ? (parametersSpec as Record<string, unknown>) : {};
   const specProperties =
     typeof (paramObject as Record<string, unknown>).properties === "object" && (paramObject as Record<string, unknown>).properties !== null
@@ -241,6 +247,10 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 
   const config = await getConfig(context);
+  if (!config) {
+    context.logger.debug("No configuration was found");
+    return;
+  }
   const matches: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; resolvedCommandName: string }[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
@@ -285,6 +295,12 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const manifestCommand = match.manifest.commands?.[match.resolvedCommandName];
   const parameters = parseSlashCommandParameters(match.resolvedCommandName, invocation.rawArgs, manifestCommand?.parameters, context);
   const command = { name: match.resolvedCommandName, parameters };
+
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
+  if (isBotAuthor && match.settings?.skipBotEvents) {
+    context.logger.debug({ plugin: match.target, command: match.resolvedCommandName }, "Skipping slash command dispatch from bot author");
+    return;
+  }
 
   const plugin = match.target;
   const settings = withKernelContextSettingsIfNeeded(match.settings?.with, plugin, context.eventHandler.environment);
@@ -419,7 +435,7 @@ export async function callUbqAiRouter(
   });
 
   const payload = {
-    model: "gpt-5.2-chat-latest",
+    model: context.eventHandler.llm,
     reasoning_effort: "none",
     stream: false,
     messages: [
@@ -641,6 +657,11 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   const config = await getConfig(context);
+  if (!config) {
+    context.logger.debug("No configuration was found");
+    return;
+  }
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
 
@@ -650,6 +671,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
+    if (isBotAuthor && pluginSettings?.skipBotEvents) {
       continue;
     }
     const manifest = await getManifest(context, target);

@@ -13,6 +13,7 @@ Bun.serve({
     const env = {
       LOG_LEVEL: "INFO",
       KERNEL_PUBLIC_KEY: "mock-key",
+      NODE_ENV: "local",
     };
 
     return worker.fetch(request, env);

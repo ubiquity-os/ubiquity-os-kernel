@@ -36,9 +36,10 @@ async function getPidsForPort(port: number): Promise<string[]> {
   if (isWindows) {
     const { stdout } = await runCommand("netstat", ["-ano"]);
     if (!stdout) return [];
+    const portPattern = new RegExp(`:${port}(\\s|$)`);
     const lines = stdout.split(/\r?\n/).map((line) => line.trim());
     const pids = lines
-      .filter((line) => line.includes("LISTENING") && line.includes(`:${port}`))
+      .filter((line) => line.includes("LISTENING") && portPattern.test(line))
       .map((line) => line.split(/\s+/).pop())
       .filter((pid): pid is string => Boolean(pid));
     return unique(pids);
@@ -49,12 +50,14 @@ async function getPidsForPort(port: number): Promise<string[]> {
   return unique(stdout.split(/\s+/).filter(Boolean));
 }
 
-async function killPid(pid: string): Promise<void> {
+async function killPid(pid: string): Promise<boolean> {
+  let result: CommandResult;
   if (isWindows) {
-    await runCommand("taskkill", ["/F", "/PID", pid]);
+    result = await runCommand("taskkill", ["/F", "/PID", pid]);
   } else {
-    await runCommand("kill", ["-9", pid]);
+    result = await runCommand("kill", ["-9", pid]);
   }
+  return result.success;
 }
 
 const pids = await getPidsForPort(PORT);
@@ -65,6 +68,10 @@ if (!pids.length) {
 }
 
 for (const pid of pids) {
-  await killPid(pid);
-  console.log(`Process ${pid} killed successfully.`);
+  const didKill = await killPid(pid);
+  if (didKill) {
+    console.log(`Process ${pid} killed successfully.`);
+  } else {
+    console.warn(`Failed to kill process ${pid}.`);
+  }
 }

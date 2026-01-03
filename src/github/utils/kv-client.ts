@@ -88,7 +88,8 @@ function createPiKvClient(baseUrl: string): KvLike {
     async get(key: KvKey) {
       const url = `${base}/${buildKeyPath(key)}`;
       const response = await fetchJson<{ value?: unknown }>(url, { method: "GET" });
-      return { value: response.value ?? null };
+      const hasValue = Object.prototype.hasOwnProperty.call(response, "value");
+      return { value: hasValue ? response.value : null };
     },
     async set(key: KvKey, value: unknown, options?: KvSetOptions) {
       const url = `${base}/${buildKeyPath(key)}`;
@@ -98,6 +99,10 @@ function createPiKvClient(baseUrl: string): KvLike {
       return null;
     },
     list(selector: KvListSelector, options: KvListOptions = {}) {
+      if (options.reverse) {
+        throw new Error("Pi KV does not support reverse iteration");
+      }
+      // Note: Pi KV list returns a single page; use iterator.cursor to paginate.
       const payload = {
         prefix: selector.prefix,
         limit: options.limit,

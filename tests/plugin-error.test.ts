@@ -106,12 +106,7 @@ describe(PLUGIN_ERROR_EVENT, () => {
   });
 
   it(`dispatches ${PLUGIN_ERROR_EVENT} to subscribed plugins when a plugin dispatch fails`, async () => {
-    jest.mock("../src/github/github-client", () => {
-      return {
-        customOctokit: jest.fn().mockReturnValue(new Octokit()),
-      };
-    });
-
+    jest.resetModules();
     const dispatchWorker = jest
       .fn()
       .mockImplementationOnce(() => {
@@ -119,7 +114,11 @@ describe(PLUGIN_ERROR_EVENT, () => {
       })
       .mockImplementationOnce(() => Promise.resolve("ok"));
 
-    jest.mock("../src/github/utils/workflow-dispatch", () => ({
+    jest.doMock("../src/github/github-client", () => ({
+      customOctokit: jest.fn().mockReturnValue(new Octokit()),
+    }));
+
+    jest.doMock("../src/github/utils/workflow-dispatch", () => ({
       ...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
       dispatchWorker,
       dispatchWorkflow: jest.fn(),
@@ -153,40 +152,42 @@ describe(PLUGIN_ERROR_EVENT, () => {
     const signature = calculateSignature(payloadString, secret);
 
     const originalEnv = { ...process.env };
-    process.env = {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: secret,
-      APP_ID: "1",
-      APP_PRIVATE_KEY: "1234",
-      OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
-      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
-    };
+    try {
+      process.env = {
+        ENVIRONMENT: "production",
+        APP_WEBHOOK_SECRET: secret,
+        APP_ID: "1",
+        APP_PRIVATE_KEY: "1234",
+        OPENROUTER_API_KEY: "token",
+        OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
+        OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
+      };
 
-    const app = (await import("../src/kernel")).app;
-    const res = await app.request("http://localhost:8080", {
-      method: "POST",
-      headers: {
-        "x-github-event": "issues",
-        "x-hub-signature-256": signature,
-        "x-github-delivery": "mocked_delivery_id",
-        "content-type": "application/json",
-      },
-      body: payloadString,
-    });
+      const app = (await import("../src/kernel")).app;
+      const res = await app.request("http://localhost:8080", {
+        method: "POST",
+        headers: {
+          "x-github-event": "issues",
+          "x-hub-signature-256": signature,
+          "x-github-delivery": "mocked_delivery_id",
+          "content-type": "application/json",
+        },
+        body: payloadString,
+      });
 
-    expect(res).toBeTruthy();
-    expect(dispatchWorker).toHaveBeenCalledTimes(2);
+      expect(res).toBeTruthy();
+      expect(dispatchWorker).toHaveBeenCalledTimes(2);
 
-    const [, hotfixInputs] = dispatchWorker.mock.calls[1];
-    expect(hotfixInputs.eventName).toBe(PLUGIN_ERROR_EVENT);
-    const pluginError = JSON.parse(String(hotfixInputs.eventPayload));
-    expect(pluginError.event).toBe(PLUGIN_ERROR_EVENT);
-    expect(pluginError.plugin.type).toBe("http");
-    expect(pluginError.plugin.id).toBe(failingPluginUrl);
-    expect(pluginError.trigger.githubEvent).toBe("issues.opened");
-    expect(pluginError.trigger.repo).toBe("test-user/test-repo");
-
-    process.env = originalEnv;
+      const [, hotfixInputs] = dispatchWorker.mock.calls[1];
+      expect(hotfixInputs.eventName).toBe(PLUGIN_ERROR_EVENT);
+      const pluginError = JSON.parse(String(hotfixInputs.eventPayload));
+      expect(pluginError.event).toBe(PLUGIN_ERROR_EVENT);
+      expect(pluginError.plugin.type).toBe("http");
+      expect(pluginError.plugin.id).toBe(failingPluginUrl);
+      expect(pluginError.trigger.githubEvent).toBe("issues.opened");
+      expect(pluginError.trigger.repo).toBe("test-user/test-repo");
+    } finally {
+      process.env = originalEnv;
+    }
   });
 });

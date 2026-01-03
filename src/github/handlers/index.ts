@@ -380,8 +380,13 @@ async function filterPluginsForSlashCommandEvent(context: GitHubContext, plugins
       const commandNames = Object.keys(manifest.commands).map((name) => name.toLowerCase());
       if (commandNames.includes(slashCommandName)) {
         context.logger.debug({ plugin: plugin.key, command: slashCommandName }, "Skipping global dispatch for command plugin; slash handler will dispatch");
-        continue;
+      } else {
+        context.logger.debug(
+          { plugin: plugin.key, command: slashCommandName },
+          "Skipping global dispatch for non-matching command plugin on slash-command comment"
+        );
       }
+      continue;
     } catch (error) {
       context.logger.debug({ plugin: plugin.key, err: error }, "Failed to inspect plugin manifest for slash-command filtering; allowing dispatch");
     }

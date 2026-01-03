@@ -1,7 +1,7 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
-import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
+import { GithubPlugin, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
@@ -13,7 +13,9 @@ import {
   callUbqAiRouter,
   describeCommands,
   extractAfterUbiquityosMention,
+  extractSlashCommandInvocation,
   getIssueLabelNames,
+  parseSlashCommandParameters,
   truncateForRouter,
   tryParseRouterDecision,
 } from "./issue-comment-created";
@@ -197,17 +199,97 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
   }
 }
 
+type ReviewCommandMatch = {
+  target: string | GithubPlugin;
+  settings: PluginSettings;
+  manifest: Manifest;
+  resolvedCommandName: string;
+};
+
+function resolveReviewCommandMatch(
+  pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest }[],
+  commandName: string
+): ReviewCommandMatch | null {
+  const requested = commandName.toLowerCase();
+  for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+    const candidate = pluginsWithManifest[i];
+    const resolvedCommandName =
+      Object.keys(candidate.manifest.commands ?? {}).find((name) => name.toLowerCase() === requested) ??
+      (candidate.manifest.commands?.[commandName] ? commandName : null);
+    if (!resolvedCommandName) continue;
+    return {
+      ...candidate,
+      resolvedCommandName,
+    };
+  }
+  return null;
+}
+
+async function dispatchReviewCommand(
+  context: GitHubContext<"pull_request_review_comment.created">,
+  match: ReviewCommandMatch,
+  parameters: unknown
+): Promise<void> {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    await postReplyInReviewThread(context, "I couldn't run that command because the GitHub App installation context is missing.");
+    return;
+  }
+
+  const command = {
+    name: match.resolvedCommandName,
+    parameters,
+  };
+
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
+  if (isBotAuthor && match.settings?.skipBotEvents) {
+    context.logger.debug({ plugin: match.target, command: match.resolvedCommandName }, "Skipping review command dispatch from bot author");
+    return;
+  }
+
+  const plugin = match.target;
+  const settings = withKernelContextSettingsIfNeeded(match.settings?.with, plugin, context.eventHandler.environment);
+
+  const isGithubPluginObject = isGithubPlugin(plugin);
+  const stateId = crypto.randomUUID();
+  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+  const token = await context.eventHandler.getToken(context.payload.installation.id);
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
+
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin from review thread.");
+  try {
+    if (!isGithubPluginObject) {
+      await dispatchWorker(plugin, await inputs.getInputs());
+    } else {
+      const baseInputs = (await inputs.getInputs()) as Record<string, string>;
+      const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
+      const runUrl = await dispatchWorkflowWithRunUrl(context, {
+        owner: plugin.owner,
+        repository: plugin.repo,
+        workflowId: plugin.workflowId,
+        ref,
+        inputs: workflowInputs,
+      });
+      await updateRequestCommentRunUrl(context, runUrl);
+    }
+  } catch (error) {
+    context.logger.error({ plugin, err: error }, "An error occurred while processing plugin; skipping plugin");
+    await postReplyInReviewThread(context, "That command failed to start. Check kernel logs for details.");
+  }
+}
+
 export default async function pullRequestReviewCommentCreated(context: GitHubContext<"pull_request_review_comment.created">) {
   const body = context.payload.comment.body?.trim() ?? "";
-  if (context.payload.comment.user?.type !== "User") {
+  const afterMention = extractAfterUbiquityosMention(body);
+  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
+
+  const isHuman = context.payload.comment.user?.type === "User";
+  if (!isHuman) {
     context.logger.debug(
       { author: context.payload.comment.user?.login, type: context.payload.comment.user?.type },
       "Ignoring review comment from non-human author"
     );
     return;
   }
-  const afterMention = extractAfterUbiquityosMention(body);
-  if (afterMention === null) return;
 
   const shouldSkip = await shouldSkipDuplicateCommentEvent({
     owner: context.payload.repository.owner.login,
@@ -220,14 +302,18 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  await addReactionEyes(context);
+  if (afterMention) {
+    await addReactionEyes(context);
+  }
 
-  const agentPrefixMatch = /^agent\b/i.exec(afterMention);
-  if (agentPrefixMatch) {
+  const agentPrefixMatch = afterMention ? /^agent\b/i.exec(afterMention) : null;
+  if (agentPrefixMatch && afterMention) {
     const task = afterMention.replace(/^agent\b/i, "").trim() || body;
     await dispatchInternalAgent(context, task);
     return;
   }
+
+  if (!afterMention && !slashInvocation) return;
 
   const config = await getConfig(context);
   if (!config) {
@@ -235,7 +321,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -250,6 +336,29 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
     manifests.push(manifest);
   }
+
+  if (slashInvocation) {
+    if (slashInvocation.name.toLowerCase() === "help") {
+      await postReplyInReviewThread(context, "Use `/help` in the PR conversation (top-level comments) to list all available commands.");
+      return;
+    }
+
+    const match = resolveReviewCommandMatch(pluginsWithManifest, slashInvocation.name);
+    if (!match) {
+      await postReplyInReviewThread(
+        context,
+        `I couldn't find a plugin for \`/${slashInvocation.name}\`. Use \`/help\` in the PR conversation to see commands.`
+      );
+      return;
+    }
+
+    const manifestCommand = match.manifest.commands?.[match.resolvedCommandName];
+    const parameters = parseSlashCommandParameters(match.resolvedCommandName, slashInvocation.rawArgs, manifestCommand?.parameters, context);
+    await dispatchReviewCommand(context, match, parameters);
+    return;
+  }
+
+  if (afterMention === null) return;
 
   const commands = describeCommands(manifests);
   const recentComments = await getReviewThreadCommentsForRouter(context, 10);
@@ -354,64 +463,19 @@ ${JSON.stringify(commands)}
     return;
   }
   if (decision.action === "command") {
-    if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-      await postReplyInReviewThread(context, "I couldn't run that command because the GitHub App installation context is missing.");
-      return;
-    }
-
     const commandName = decision.command?.name;
     if (!commandName || typeof commandName !== "string") {
       await postReplyInReviewThread(context, "I couldn't determine which command to run. Try `@ubiquityos help` in the PR conversation.");
       return;
     }
 
-    let pluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
-    for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
-      const candidate = pluginsWithManifest[i];
-      if (candidate?.manifest?.commands?.[commandName] !== undefined) {
-        pluginWithManifest = candidate;
-        break;
-      }
-    }
-    if (!pluginWithManifest) {
+    const match = resolveReviewCommandMatch(pluginsWithManifest, commandName);
+    if (!match) {
       await postReplyInReviewThread(context, `I couldn't find a plugin for \`/${commandName}\`. Use \`/help\` in the PR conversation to see commands.`);
       return;
     }
 
-    const command = {
-      name: commandName,
-      parameters: decision.command?.parameters ?? null,
-    };
-
-    const plugin = pluginWithManifest.target;
-    const settings = withKernelContextSettingsIfNeeded(pluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
-
-    const isGithubPluginObject = isGithubPlugin(plugin);
-    const stateId = crypto.randomUUID();
-    const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
-    const token = await context.eventHandler.getToken(context.payload.installation.id);
-    const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
-
-    context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin from review thread.");
-    try {
-      if (!isGithubPluginObject) {
-        await dispatchWorker(plugin, await inputs.getInputs());
-      } else {
-        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-        const runUrl = await dispatchWorkflowWithRunUrl(context, {
-          owner: plugin.owner,
-          repository: plugin.repo,
-          workflowId: plugin.workflowId,
-          ref,
-          inputs: workflowInputs,
-        });
-        await updateRequestCommentRunUrl(context, runUrl);
-      }
-    } catch (error) {
-      context.logger.error({ plugin, err: error }, "An error occurred while processing plugin; skipping plugin");
-      await postReplyInReviewThread(context, "That command failed to start. Check kernel logs for details.");
-    }
+    await dispatchReviewCommand(context, match, decision.command?.parameters ?? null);
     return;
   }
 

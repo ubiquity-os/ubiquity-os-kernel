@@ -31,10 +31,10 @@ runs:
       run: |
         node ${{ github.action_path }}/dist/call-llm.js \
           --model ${{ inputs.model }} \
-          --messages '${{ inputs.messages }}' \
           --stream ${{ inputs.stream }}
       env:
         AUTH_TOKEN: ${{ inputs.auth-token }}
         OWNER: ${{ inputs.owner }}
         REPO: ${{ inputs.repo }}
+        MESSAGES: ${{ inputs.messages }}
       shell: bash
