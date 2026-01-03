@@ -256,9 +256,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   const labels = getIssueLabelNames((context.payload.pull_request as unknown as { labels?: unknown }).labels);
   const issueBody = truncateForRouter(context.payload.pull_request.body);
   const conversation = await resolveConversationKeyForContext(context, context.logger);
-  const conversationContext = conversation
-    ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600, includeSemantic: false })
-    : "";
+  const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
   const agentMemory = await getAgentMemorySnippet({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,

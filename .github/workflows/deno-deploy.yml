@@ -70,6 +70,8 @@ jobs:
           UOS_AGENT_REPO: ${{ secrets.UOS_AGENT_REPO || github.event.repository.name }}
           UOS_AGENT_WORKFLOW: ${{ secrets.UOS_AGENT_WORKFLOW || 'agent.yml' }}
           UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
+          UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL || '' }}
+          UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY || '' }}
           UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
           UOS_AI_FALLBACK_BASE_URL: ${{ secrets.UOS_AI_FALLBACK_BASE_URL || 'https://ai-ubq-fi.deno.dev' }}
           UOS_KERNEL_REFRESH_URL: ${{ secrets.UOS_KERNEL_REFRESH_URL || '' }}
