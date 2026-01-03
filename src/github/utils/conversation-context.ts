@@ -1,15 +1,23 @@
 import { GitHubContext } from "../github-context";
 import { ConversationNode, ConversationKeyResult, listConversationNodesForKey } from "./conversation-graph";
-import { fetchVectorDocument, fetchVectorDocuments, findSimilarIssues, getVectorDbConfig, VectorDocument } from "./vector-db";
+import {
+  fetchVectorDocument,
+  fetchVectorDocuments,
+  fetchVectorDocumentsByParentId,
+  findSimilarComments,
+  findSimilarIssues,
+  getVectorDbConfig,
+  VectorDocument,
+} from "./vector-db";
 
 const DEFAULT_MAX_ITEMS = 10;
 const DEFAULT_MAX_CHARS = 4000;
-const DEFAULT_SNIPPET_CHARS = 260;
 const DEFAULT_SIMILARITY_THRESHOLD = 0.8;
 const DEFAULT_SIMILARITY_TOP_K = 5;
 const DEFAULT_AUTHOR_BOOST = 0.07;
 const DEFAULT_OWNER_BOOST = 0.04;
 const DEFAULT_RECENCY_BOOST = 0.06;
+const COMMENT_DOC_TYPES = ["issue_comment", "review_comment", "pull_request_review"];
 
 function clampText(value: string, maxChars: number): string {
   const text = value.trim();
@@ -26,12 +34,16 @@ function formatNodeLine(node: ConversationNode): string {
   return `- [${typeLabel}] ${repoLabel}${numberLabel}${title}`;
 }
 
-function snippetFromMarkdown(markdown: string | null, maxChars: number): string {
+function indentBlock(text: string, indent: string): string {
+  return text
+    .split("\n")
+    .map((line) => `${indent}${line}`)
+    .join("\n");
+}
+
+function normalizeMarkdown(markdown: string | null): string {
   if (!markdown) return "";
-  const cleaned = markdown.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  if (cleaned.length <= maxChars) return cleaned;
-  return `${cleaned.slice(0, maxChars)}...`;
+  return markdown.trim();
 }
 
 function dedupeNodes(nodes: ConversationNode[]): ConversationNode[] {
@@ -108,22 +120,169 @@ function buildNodeFromDocument(doc: VectorDocument): ConversationNode | null {
   };
 }
 
+type DocumentDescriptor = Readonly<{
+  id: string;
+  kind: "Issue" | "PullRequest" | "IssueComment" | "ReviewComment" | "PullRequestReview";
+  owner: string;
+  repo: string;
+  number?: number;
+  title?: string;
+  url: string;
+  author?: string;
+  createdAt?: string;
+}>;
+
+function buildDescriptorFromDocument(doc: VectorDocument): DocumentDescriptor | null {
+  const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
+  if (!payload) return null;
+  const repository = isRecord(payload.repository) ? payload.repository : null;
+  const owner = isRecord(repository?.owner) ? String(repository.owner.login || "").trim() : "";
+  const repo = typeof repository?.name === "string" ? repository.name : "";
+  if (!owner || !repo) return null;
+
+  if (doc.docType === "issue" || doc.docType === "pull_request") {
+    const node = buildNodeFromDocument(doc);
+    if (!node) return null;
+    return {
+      id: doc.id,
+      kind: node.type === "Issue" ? "Issue" : "PullRequest",
+      owner: node.owner,
+      repo: node.repo,
+      number: node.number,
+      title: node.title,
+      url: node.url,
+      createdAt: node.createdAt,
+    };
+  }
+
+  if (!COMMENT_DOC_TYPES.includes(doc.docType)) return null;
+  const comment = isRecord(payload.comment) ? payload.comment : null;
+  const review = isRecord(payload.review) ? payload.review : null;
+  const source = comment ?? review;
+  if (!isRecord(source)) return null;
+  const createdAt = typeof source.created_at === "string" ? source.created_at : "";
+  const submittedAt = typeof source.submitted_at === "string" ? source.submitted_at : "";
+  const timestamp = createdAt || submittedAt;
+  let url = "";
+  if (typeof source.html_url === "string") {
+    url = source.html_url;
+  } else if (typeof source.url === "string") {
+    url = source.url;
+  }
+  const user = isRecord(source.user) ? source.user : null;
+  const author = typeof user?.login === "string" ? user.login.trim() : "";
+  const issue = isRecord(payload.issue) ? payload.issue : null;
+  const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
+  let number: number | undefined;
+  if (typeof issue?.number === "number") {
+    number = issue.number;
+  } else if (typeof pullRequest?.number === "number") {
+    number = pullRequest.number;
+  }
+  if (!url || !timestamp) return null;
+  let kind: DocumentDescriptor["kind"] = "PullRequestReview";
+  if (doc.docType === "issue_comment") {
+    kind = "IssueComment";
+  } else if (doc.docType === "review_comment") {
+    kind = "ReviewComment";
+  }
+  return {
+    id: doc.id,
+    kind,
+    owner,
+    repo,
+    number,
+    url,
+    author: author || undefined,
+    createdAt: timestamp,
+  };
+}
+
+function formatDescriptorLine(descriptor: DocumentDescriptor, options: Readonly<{ similarity?: number }> = {}): string {
+  let typeLabel = "Review";
+  if (descriptor.kind === "Issue") {
+    typeLabel = "Issue";
+  } else if (descriptor.kind === "PullRequest") {
+    typeLabel = "PR";
+  } else if (descriptor.kind === "IssueComment") {
+    typeLabel = "Issue Comment";
+  } else if (descriptor.kind === "ReviewComment") {
+    typeLabel = "Review Comment";
+  }
+  const repoLabel = descriptor.owner && descriptor.repo ? `${descriptor.owner}/${descriptor.repo}` : "unknown";
+  const numberLabel = typeof descriptor.number === "number" ? `#${descriptor.number}` : "";
+  const title = descriptor.title ? ` - ${descriptor.title}` : "";
+  const author = descriptor.author ? ` @${descriptor.author}` : "";
+  const score = typeof options.similarity === "number" ? ` (sim ${options.similarity.toFixed(2)})` : "";
+  return `- [${typeLabel}] ${repoLabel}${numberLabel}${title}${author}${score}`;
+}
+
+function formatSeedLabel(doc: VectorDocument): string {
+  const descriptor = buildDescriptorFromDocument(doc);
+  if (!descriptor) return doc.id;
+  return formatDescriptorLine(descriptor).replace(/^- /, "");
+}
+
+function formatMatchedBy(labels: string[]): string {
+  if (labels.length === 0) return "";
+  const trimmed = labels.slice(0, 3);
+  const extra = labels.length - trimmed.length;
+  const suffix = extra > 0 ? ` +${extra} more` : "";
+  return `${trimmed.join("; ")}${suffix}`;
+}
+
 function getDocumentTimestamp(doc: VectorDocument): number | null {
   const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
   if (!payload) return null;
   const issue = isRecord(payload.issue) ? payload.issue : null;
   const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
+  const comment = isRecord(payload.comment) ? payload.comment : null;
+  const review = isRecord(payload.review) ? payload.review : null;
   let source: Record<string, unknown> | null = null;
   if (doc.docType === "issue") {
     source = issue;
   } else if (doc.docType === "pull_request") {
     source = pullRequest;
+  } else if (COMMENT_DOC_TYPES.includes(doc.docType)) {
+    source = comment ?? review;
   }
   if (!source) return null;
   const updatedAt = typeof source.updated_at === "string" ? source.updated_at : "";
   const createdAt = typeof source.created_at === "string" ? source.created_at : "";
-  const parsed = Date.parse(updatedAt || createdAt);
+  const submittedAt = typeof source.submitted_at === "string" ? source.submitted_at : "";
+  const parsed = Date.parse(updatedAt || submittedAt || createdAt);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function findSimilarForDocument(config: ReturnType<typeof getVectorDbConfig>, doc: VectorDocument): Promise<{ id: string; similarity: number }[]> {
+  if (!config) return [];
+  const embedding = Array.isArray(doc.embedding) ? doc.embedding : [];
+  if (embedding.length === 0) return [];
+  const [issueResults, commentResults] = await Promise.all([
+    findSimilarIssues(config, {
+      currentId: doc.id,
+      embedding,
+      threshold: DEFAULT_SIMILARITY_THRESHOLD,
+      topK: DEFAULT_SIMILARITY_TOP_K,
+    }),
+    findSimilarComments(config, {
+      currentId: doc.id,
+      embedding,
+      threshold: DEFAULT_SIMILARITY_THRESHOLD,
+      topK: DEFAULT_SIMILARITY_TOP_K,
+    }),
+  ]);
+  const combined = [...issueResults, ...commentResults];
+  combined.sort((a, b) => b.similarity - a.similarity);
+  const seen = new Set<string>();
+  const deduped: { id: string; similarity: number }[] = [];
+  for (const item of combined) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+    if (deduped.length >= DEFAULT_SIMILARITY_TOP_K) break;
+  }
+  return deduped;
 }
 
 export async function buildConversationContext(
@@ -144,63 +303,137 @@ export async function buildConversationContext(
 
   const config = includeSemantic ? getVectorDbConfig(params.context.logger) : null;
   const docMap = new Map<string, VectorDocument>();
+  const graphDocIds = new Set<string>([params.conversation.root.id]);
   if (config) {
     const explicitDocs = await fetchVectorDocuments(
       config,
-      explicitNodes.map((node) => node.id)
+      explicitNodes.map((node) => node.id),
+      { includeEmbedding: true }
     );
-    for (const doc of explicitDocs) docMap.set(doc.id, doc);
+    for (const doc of explicitDocs) {
+      docMap.set(doc.id, doc);
+      graphDocIds.add(doc.id);
+    }
   }
 
-  const semanticNodes: ConversationNode[] = [];
+  const semanticEntries: Array<{
+    doc: VectorDocument;
+    descriptor: DocumentDescriptor;
+    similarity: number;
+    matchedBy: string;
+  }> = [];
   if (config) {
+    const seedDocs: VectorDocument[] = [];
     const rootDoc = await fetchVectorDocument(config, params.conversation.root.id);
-    if (rootDoc?.embedding && rootDoc.embedding.length > 0) {
-      const similar = await findSimilarIssues(config, {
-        currentId: params.conversation.root.id,
-        embedding: rootDoc.embedding,
-        threshold: DEFAULT_SIMILARITY_THRESHOLD,
-        topK: DEFAULT_SIMILARITY_TOP_K,
+    if (rootDoc) {
+      docMap.set(rootDoc.id, rootDoc);
+      graphDocIds.add(rootDoc.id);
+      if (rootDoc.embedding && rootDoc.embedding.length > 0) {
+        seedDocs.push(rootDoc);
+      }
+    }
+
+    for (const doc of docMap.values()) {
+      if (doc.embedding && doc.embedding.length > 0) {
+        seedDocs.push(doc);
+      }
+    }
+
+    const commentSeedLimit = Math.max(DEFAULT_MAX_ITEMS, maxItems);
+    for (const node of [params.conversation.root, ...explicitNodes]) {
+      const comments = await fetchVectorDocumentsByParentId(config, node.id, {
+        includeEmbedding: true,
+        maxPerParent: commentSeedLimit,
+        docTypes: COMMENT_DOC_TYPES,
       });
-      const candidateIds = similar.map((item) => item.id).filter((id) => id !== params.conversation.root.id);
+      for (const doc of comments) {
+        docMap.set(doc.id, doc);
+        graphDocIds.add(doc.id);
+        if (doc.embedding && doc.embedding.length > 0) {
+          seedDocs.push(doc);
+        }
+      }
+    }
+
+    const seedMap = new Map<string, VectorDocument>();
+    for (const doc of seedDocs) {
+      if (!seedMap.has(doc.id)) seedMap.set(doc.id, doc);
+    }
+
+    const similarityById = new Map<string, { similarity: number; sources: Set<string> }>();
+    for (const doc of seedMap.values()) {
+      const matches = await findSimilarForDocument(config, doc);
+      for (const match of matches) {
+        if (graphDocIds.has(match.id)) continue;
+        const existing = similarityById.get(match.id);
+        if (existing) {
+          existing.sources.add(doc.id);
+          if (match.similarity > existing.similarity) existing.similarity = match.similarity;
+        } else {
+          similarityById.set(match.id, { similarity: match.similarity, sources: new Set([doc.id]) });
+        }
+      }
+    }
+
+    const candidateIds = [...similarityById.keys()];
+    if (candidateIds.length > 0) {
       const candidateDocs = await fetchVectorDocuments(config, candidateIds);
-      for (const doc of candidateDocs) docMap.set(doc.id, doc);
+      for (const doc of candidateDocs) {
+        docMap.set(doc.id, doc);
+      }
+
+      const candidates = candidateDocs
+        .map((doc) => {
+          const descriptor = buildDescriptorFromDocument(doc);
+          const meta = similarityById.get(doc.id);
+          if (!descriptor || !meta) return null;
+          const timestampMs = getDocumentTimestamp(doc);
+          return { descriptor, doc, similarity: meta.similarity, sources: meta.sources, timestampMs };
+        })
+        .filter((row): row is { descriptor: DocumentDescriptor; doc: VectorDocument; similarity: number; sources: Set<string>; timestampMs: number | null } =>
+          Boolean(row)
+        );
 
       const participants = collectParticipantIds(params.context);
       const repoOwner = getRepositoryOwner(params.context);
-      const scoredSeed = similar
-        .map((item) => {
-          const doc = docMap.get(item.id);
-          const node = doc ? buildNodeFromDocument(doc) : null;
-          if (!doc || !node) return null;
-          const timestampMs = getDocumentTimestamp(doc);
-          return { node, doc, similarity: item.similarity, timestampMs };
-        })
-        .filter((row): row is { node: ConversationNode; doc: VectorDocument; similarity: number; timestampMs: number | null } => Boolean(row));
-      const timeValues = scoredSeed.map((row) => row.timestampMs).filter((value): value is number => typeof value === "number");
+      const timeValues = candidates.map((row) => row.timestampMs).filter((value): value is number => typeof value === "number");
       const minTime = timeValues.length ? Math.min(...timeValues) : null;
       const maxTime = timeValues.length ? Math.max(...timeValues) : null;
       const timeRange = minTime !== null && maxTime !== null ? maxTime - minTime : 0;
-      const scored = scoredSeed.map((row) => {
-        const authorBoost = row.doc.authorId !== null && participants.has(row.doc.authorId) ? DEFAULT_AUTHOR_BOOST : 0;
-        const ownerBoost = repoOwner && row.node.owner.toLowerCase() === repoOwner ? DEFAULT_OWNER_BOOST : 0;
-        const recency = timeRange > 0 && typeof row.timestampMs === "number" && minTime !== null ? (row.timestampMs - minTime) / timeRange : 1;
-        const recencyBoost = timeRange > 0 ? recency * DEFAULT_RECENCY_BOOST : 0;
-        return { node: row.node, score: row.similarity + authorBoost + ownerBoost + recencyBoost };
+
+      candidates.sort((a, b) => {
+        const authorBoostA = a.doc.authorId !== null && participants.has(a.doc.authorId) ? DEFAULT_AUTHOR_BOOST : 0;
+        const authorBoostB = b.doc.authorId !== null && participants.has(b.doc.authorId) ? DEFAULT_AUTHOR_BOOST : 0;
+        const ownerBoostA = repoOwner && a.descriptor.owner.toLowerCase() === repoOwner ? DEFAULT_OWNER_BOOST : 0;
+        const ownerBoostB = repoOwner && b.descriptor.owner.toLowerCase() === repoOwner ? DEFAULT_OWNER_BOOST : 0;
+        const recencyA = timeRange > 0 && typeof a.timestampMs === "number" && minTime !== null ? (a.timestampMs - minTime) / timeRange : 1;
+        const recencyB = timeRange > 0 && typeof b.timestampMs === "number" && minTime !== null ? (b.timestampMs - minTime) / timeRange : 1;
+        const recencyBoostA = timeRange > 0 ? recencyA * DEFAULT_RECENCY_BOOST : 0;
+        const recencyBoostB = timeRange > 0 ? recencyB * DEFAULT_RECENCY_BOOST : 0;
+        const scoreA = a.similarity + authorBoostA + ownerBoostA + recencyBoostA;
+        const scoreB = b.similarity + authorBoostB + ownerBoostB + recencyBoostB;
+        return scoreB - scoreA;
       });
 
-      scored.sort((a, b) => b.score - a.score);
-      for (const entry of scored) {
-        semanticNodes.push(entry.node);
+      for (const row of candidates) {
+        const meta = similarityById.get(row.doc.id);
+        if (!meta) continue;
+        const sourceLabels = [...meta.sources]
+          .map((id) => seedMap.get(id))
+          .filter((seed): seed is VectorDocument => Boolean(seed))
+          .map((seed) => formatSeedLabel(seed));
+        const matchedBy = formatMatchedBy(sourceLabels);
+        semanticEntries.push({
+          doc: row.doc,
+          descriptor: row.descriptor,
+          similarity: row.similarity,
+          matchedBy,
+        });
       }
     }
   }
 
-  const explicitSet = new Set(explicitNodes.map((node) => node.id));
-  const semanticFiltered = semanticNodes.filter((node) => !explicitSet.has(node.id));
-  const related = [...explicitNodes, ...semanticFiltered];
-
-  if (related.length === 0) return "";
+  if (explicitNodes.length === 0 && semanticEntries.length === 0) return "";
 
   const lines: string[] = [];
   if (explicitNodes.length > 0) {
@@ -208,19 +441,20 @@ export async function buildConversationContext(
     for (const node of explicitNodes.slice(0, maxItems)) {
       lines.push(formatNodeLine(node));
       if (node.url) lines.push(`  ${node.url}`);
-      const snippet = docMap.has(node.id) ? snippetFromMarkdown(docMap.get(node.id)?.markdown ?? null, DEFAULT_SNIPPET_CHARS) : "";
-      if (snippet) lines.push(`  ${snippet}`);
+      const markdown = normalizeMarkdown(docMap.get(node.id)?.markdown ?? null);
+      if (markdown) lines.push(indentBlock(markdown, "  "));
     }
   }
 
-  if (semanticFiltered.length > 0) {
+  if (semanticEntries.length > 0) {
     if (lines.length > 0) lines.push("");
     lines.push("Related threads (semantic):");
-    for (const node of semanticFiltered.slice(0, maxItems)) {
-      lines.push(formatNodeLine(node));
-      if (node.url) lines.push(`  ${node.url}`);
-      const snippet = docMap.has(node.id) ? snippetFromMarkdown(docMap.get(node.id)?.markdown ?? null, DEFAULT_SNIPPET_CHARS) : "";
-      if (snippet) lines.push(`  ${snippet}`);
+    for (const entry of semanticEntries.slice(0, maxItems)) {
+      lines.push(formatDescriptorLine(entry.descriptor, { similarity: entry.similarity }));
+      if (entry.descriptor.url) lines.push(`  ${entry.descriptor.url}`);
+      if (entry.matchedBy) lines.push(`  matched by: ${entry.matchedBy}`);
+      const markdown = normalizeMarkdown(entry.doc.markdown);
+      if (markdown) lines.push(indentBlock(markdown, "  "));
     }
   }
 

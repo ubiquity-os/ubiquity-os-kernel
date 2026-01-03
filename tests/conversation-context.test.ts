@@ -66,6 +66,8 @@ async function loadModules() {
   jest.doMock("../src/github/utils/vector-db", () => ({
     fetchVectorDocument: jest.fn(),
     fetchVectorDocuments: jest.fn(),
+    fetchVectorDocumentsByParentId: jest.fn(),
+    findSimilarComments: jest.fn(),
     findSimilarIssues: jest.fn(),
     getVectorDbConfig: jest.fn(),
   }));
@@ -83,7 +85,9 @@ describe("buildConversationContext", () => {
     const getConfigSpy = vectorDb.getVectorDbConfig as jest.MockedFunction<typeof vectorDb.getVectorDbConfig>;
     const fetchDocSpy = vectorDb.fetchVectorDocument as jest.MockedFunction<typeof vectorDb.fetchVectorDocument>;
     const findSimilarSpy = vectorDb.findSimilarIssues as jest.MockedFunction<typeof vectorDb.findSimilarIssues>;
+    const findSimilarCommentsSpy = vectorDb.findSimilarComments as jest.MockedFunction<typeof vectorDb.findSimilarComments>;
     const fetchDocsSpy = vectorDb.fetchVectorDocuments as jest.MockedFunction<typeof vectorDb.fetchVectorDocuments>;
+    const fetchDocsByParentSpy = vectorDb.fetchVectorDocumentsByParentId as jest.MockedFunction<typeof vectorDb.fetchVectorDocumentsByParentId>;
 
     listSpy.mockResolvedValue([explicitNodeB]);
     getConfigSpy.mockReturnValue({ url: "https://example.supabase.co", key: "test-key" });
@@ -111,6 +115,8 @@ describe("buildConversationContext", () => {
       { id: "similar-1", similarity: 0.9 },
       { id: "similar-2", similarity: 0.9 },
     ]);
+    findSimilarCommentsSpy.mockResolvedValue([]);
+    fetchDocsByParentSpy.mockResolvedValue([]);
 
     const documents = new Map<string, VectorDocument>([
       [

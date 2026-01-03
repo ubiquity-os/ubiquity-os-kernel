@@ -3,7 +3,7 @@ import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { config as loadEnv } from "dotenv";
 import type { GitHubContext } from "../src/github/github-context.ts";
 import { type ConversationNode, listConversationNodesForKey, resolveConversationKeyForContext } from "../src/github/utils/conversation-graph.ts";
-import { fetchVectorDocument, fetchVectorDocuments, findSimilarIssues, getVectorDbConfig, type VectorDocument } from "../src/github/utils/vector-db.ts";
+import { fetchVectorDocuments, findSimilarComments, findSimilarIssues, getVectorDbConfig, type VectorDocument } from "../src/github/utils/vector-db.ts";
 
 type Options = Readonly<{
   includeSemantic: boolean;
@@ -180,9 +180,49 @@ function buildNodeFromVectorDocument(doc: VectorDocument): ConversationNode | nu
   };
 }
 
+function buildCommentNodeFromDocument(doc: VectorDocument): CommentNode | null {
+  if (doc.docType !== "issue_comment" && doc.docType !== "review_comment" && doc.docType !== "pull_request_review") return null;
+  const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
+  if (!payload) return null;
+  const comment = isRecord(payload.comment) ? payload.comment : null;
+  const review = isRecord(payload.review) ? payload.review : null;
+  const source = comment ?? review;
+  if (!isRecord(source)) return null;
+  const createdAt = typeof source.created_at === "string" ? source.created_at : "";
+  const submittedAt = typeof source.submitted_at === "string" ? source.submitted_at : "";
+  const timestamp = createdAt || submittedAt;
+  let url = "";
+  if (typeof source.html_url === "string") {
+    url = source.html_url;
+  } else if (typeof source.url === "string") {
+    url = source.url;
+  }
+  const user = isRecord(source.user) ? source.user : null;
+  const author = typeof user?.login === "string" ? user.login.trim() : "";
+  const rawBody = doc.markdown ?? (typeof source.body === "string" ? source.body : "");
+  const body = normalizeWhitespace(rawBody);
+  if (!doc.id || !url || !timestamp) return null;
+  let kind: CommentKind = "Review";
+  if (doc.docType === "issue_comment") {
+    kind = "IssueComment";
+  } else if (doc.docType === "review_comment") {
+    kind = "ReviewComment";
+  }
+  return {
+    id: doc.id,
+    kind,
+    createdAt: timestamp,
+    url,
+    author,
+    body,
+  };
+}
+
 function buildCommentNode(kind: CommentKind, payload: Record<string, unknown>): CommentNode | null {
   let id = "";
-  if (typeof payload.id === "number") {
+  if (typeof payload.node_id === "string") {
+    id = payload.node_id;
+  } else if (typeof payload.id === "number") {
     id = String(payload.id);
   } else if (typeof payload.id === "string") {
     id = payload.id;
@@ -420,7 +460,7 @@ function renderNodeList(
   });
 }
 
-function renderCommentList(nodes: CommentNode[], isColorEnabled: boolean, indent: string): void {
+function renderCommentList(nodes: CommentNode[], isColorEnabled: boolean, indent: string, similarityById: Map<string, SimilarityMatchDisplay[]>): void {
   if (!nodes.length) {
     console.log(`${indent}\`-- ${styleDim("(none)", isColorEnabled)}`);
     return;
@@ -434,6 +474,17 @@ function renderCommentList(nodes: CommentNode[], isColorEnabled: boolean, indent
     if (node.url) {
       console.log(`${indent}${childIndent}${styleDim(node.url, isColorEnabled)}`);
     }
+
+    const matches = similarityById.get(node.id) ?? [];
+    if (matches.length > 0) {
+      const sectionIndent = renderSection("Similar", {
+        count: matches.length,
+        isLast: true,
+        isColorEnabled,
+        indent: `${indent}${childIndent}`,
+      });
+      renderSimilarityList(matches, isColorEnabled, sectionIndent);
+    }
   });
 }
 
@@ -441,6 +492,7 @@ function renderNodeListWithComments(
   nodes: ConversationNode[],
   commentsById: Map<string, CommentList>,
   isColorEnabled: boolean,
+  similarityById: Map<string, SimilarityMatchDisplay[]>,
   options: Readonly<{ indent?: string; showHeader?: boolean }> = {}
 ): void {
   const indent = options.indent ?? "";
@@ -464,97 +516,157 @@ function renderNodeListWithComments(
       console.log(`${indent}${childIndent}${styleDim(node.url, isColorEnabled)}`);
     }
 
+    const sections: Array<{ title: string; count: number | string; render: (sectionIndent: string) => void }> = [];
     const commentList = commentsById.get(node.id);
     if (commentList && commentList.nodes.length > 0) {
       const countLabel = commentList.total > commentList.nodes.length ? `${commentList.nodes.length}/${commentList.total}` : commentList.total;
-      const sectionIndent = renderSection("Comments", {
+      sections.push({
+        title: "Comments",
         count: countLabel,
-        isLast: true,
+        render: (sectionIndent) => renderCommentList(commentList.nodes, isColorEnabled, sectionIndent, similarityById),
+      });
+    }
+    const matches = similarityById.get(node.id) ?? [];
+    if (matches.length > 0) {
+      sections.push({
+        title: "Similar",
+        count: matches.length,
+        render: (sectionIndent) => renderSimilarityList(matches, isColorEnabled, sectionIndent),
+      });
+    }
+
+    sections.forEach((section, sectionIndex) => {
+      const sectionIndent = renderSection(section.title, {
+        count: section.count,
+        isLast: sectionIndex === sections.length - 1,
         isColorEnabled,
         indent: `${indent}${childIndent}`,
       });
-      renderCommentList(commentList.nodes, isColorEnabled, sectionIndent);
+      section.render(sectionIndent);
+    });
+  });
+}
+
+type SimilarityMatchDisplay = Readonly<{
+  similarity: number;
+  node: ConversationNode | CommentNode;
+}>;
+
+type SimilaritySeedMatch = Readonly<{
+  id: string;
+  similarity: number;
+}>;
+
+function isCommentNode(node: ConversationNode | CommentNode): node is CommentNode {
+  return "kind" in node;
+}
+
+function formatSimilarityMatch(match: SimilarityMatchDisplay): string {
+  const base = isCommentNode(match.node) ? formatCommentNode(match.node) : formatNode(match.node as ConversationNode);
+  return `${base} (sim ${match.similarity.toFixed(2)})`;
+}
+
+function renderSimilarityList(matches: SimilarityMatchDisplay[], isColorEnabled: boolean, indent: string): void {
+  if (!matches.length) {
+    console.log(`${indent}\`-- ${styleDim("(none)", isColorEnabled)}`);
+    return;
+  }
+  matches.forEach((match, index) => {
+    const isLast = index === matches.length - 1;
+    const branch = isLast ? "`--" : "|--";
+    const childIndent = isLast ? "    " : "|   ";
+    const nodeText = formatSimilarityMatch(match);
+    console.log(`${indent}${styleDim(branch, isColorEnabled)} ${styleValue(nodeText, isColorEnabled)}`);
+    if (match.node.url) {
+      console.log(`${indent}${childIndent}${styleDim(match.node.url, isColorEnabled)}`);
     }
   });
 }
 
-type SimilarityStatus = "disabled" | "missing-config" | "missing-document" | "missing-embedding" | "no-results" | "ok";
-
-type SimilarityMatch = Readonly<{
-  node: ConversationNode;
-  similarity: number;
-}>;
-
-type SimilarityInfo = Readonly<{
-  status: SimilarityStatus;
-  matches: SimilarityMatch[];
-}>;
-
-async function getSimilarityMatches(context: GitHubContext, rootId: string, includeSemantic: boolean): Promise<SimilarityInfo> {
-  if (!includeSemantic) {
-    return { status: "disabled", matches: [] };
+async function findSimilarForDocument(config: ReturnType<typeof getVectorDbConfig>, doc: VectorDocument): Promise<SimilaritySeedMatch[]> {
+  if (!config) return [];
+  const embedding = Array.isArray(doc.embedding) ? doc.embedding : [];
+  if (embedding.length === 0) return [];
+  const [issueResults, commentResults] = await Promise.all([
+    findSimilarIssues(config, {
+      currentId: doc.id,
+      embedding,
+      threshold: DEFAULT_SEMANTIC_THRESHOLD,
+      topK: DEFAULT_SEMANTIC_TOP_K,
+    }),
+    findSimilarComments(config, {
+      currentId: doc.id,
+      embedding,
+      threshold: DEFAULT_SEMANTIC_THRESHOLD,
+      topK: DEFAULT_SEMANTIC_TOP_K,
+    }),
+  ]);
+  const combined = [...issueResults, ...commentResults];
+  combined.sort((a, b) => b.similarity - a.similarity);
+  const seen = new Set<string>();
+  const deduped: SimilaritySeedMatch[] = [];
+  for (const item of combined) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+    if (deduped.length >= DEFAULT_SEMANTIC_TOP_K) break;
   }
-
-  const config = getVectorDbConfig(context.logger);
-  if (!config) {
-    return { status: "missing-config", matches: [] };
-  }
-
-  const rootDoc = await fetchVectorDocument(config, rootId);
-  if (!rootDoc) {
-    return { status: "missing-document", matches: [] };
-  }
-
-  const embedding = Array.isArray(rootDoc.embedding) ? rootDoc.embedding : [];
-  if (embedding.length === 0) {
-    return { status: "missing-embedding", matches: [] };
-  }
-
-  const results = await findSimilarIssues(config, {
-    currentId: rootId,
-    embedding,
-    threshold: DEFAULT_SEMANTIC_THRESHOLD,
-    topK: DEFAULT_SEMANTIC_TOP_K,
-  });
-
-  if (results.length === 0) {
-    return { status: "no-results", matches: [] };
-  }
-
-  const docs = await fetchVectorDocuments(
-    config,
-    results.map((row) => row.id)
-  );
-  const docMap = new Map(docs.map((doc) => [doc.id, doc]));
-  const matches = results
-    .map((row) => {
-      const doc = docMap.get(row.id);
-      const node = doc ? buildNodeFromVectorDocument(doc) : null;
-      if (!node) return null;
-      return { node, similarity: row.similarity };
-    })
-    .filter((entry): entry is SimilarityMatch => Boolean(entry));
-
-  if (!matches.length) {
-    return { status: "no-results", matches: [] };
-  }
-
-  return { status: "ok", matches };
+  return deduped;
 }
 
-function formatSimilarityTitle(status: SimilarityStatus): string {
-  switch (status) {
-    case "disabled":
-      return "Similarity (disabled)";
-    case "missing-config":
-      return "Similarity (missing vector DB)";
-    case "missing-document":
-      return "Similarity (root missing)";
-    case "missing-embedding":
-      return "Similarity (root embedding missing)";
-    default:
-      return "Similarity";
+async function buildSimilarityMap(
+  config: ReturnType<typeof getVectorDbConfig>,
+  seedDocs: VectorDocument[],
+  excludeIds: Set<string>
+): Promise<Map<string, SimilarityMatchDisplay[]>> {
+  if (!config || seedDocs.length === 0) return new Map();
+
+  const seedMatches = new Map<string, SimilaritySeedMatch[]>();
+  const matchIds = new Set<string>();
+  for (const doc of seedDocs) {
+    const matches = await findSimilarForDocument(config, doc);
+    const filtered = matches.filter((match) => !excludeIds.has(match.id));
+    if (!filtered.length) continue;
+    seedMatches.set(doc.id, filtered);
+    for (const match of filtered) {
+      matchIds.add(match.id);
+    }
   }
+
+  if (matchIds.size === 0) return new Map();
+
+  const matchDocs = await fetchVectorDocuments(config, [...matchIds]);
+  const matchDocMap = new Map(matchDocs.map((doc) => [doc.id, doc]));
+  const out = new Map<string, SimilarityMatchDisplay[]>();
+  for (const [seedId, matches] of seedMatches) {
+    const display: SimilarityMatchDisplay[] = [];
+    for (const match of matches) {
+      const doc = matchDocMap.get(match.id);
+      if (!doc) continue;
+      const node = buildNodeFromVectorDocument(doc) ?? buildCommentNodeFromDocument(doc);
+      if (!node) continue;
+      display.push({ node, similarity: match.similarity });
+    }
+    if (display.length > 0) {
+      out.set(seedId, display);
+    }
+  }
+  return out;
+}
+
+async function buildSimilarityForGraph(
+  context: GitHubContext,
+  root: ConversationNode,
+  linked: ConversationNode[],
+  commentNodes: CommentNode[],
+  includeSemantic: boolean
+): Promise<Map<string, SimilarityMatchDisplay[]>> {
+  if (!includeSemantic) return new Map();
+  const config = getVectorDbConfig(context.logger);
+  if (!config) return new Map();
+  const seedIds = new Set<string>([root.id, ...linked.map((node) => node.id), ...commentNodes.map((node) => node.id)]);
+  const seedDocs = await fetchVectorDocuments(config, [...seedIds], { includeEmbedding: true });
+  return buildSimilarityMap(config, seedDocs, seedIds);
 }
 
 function parseArgs(args: string[]): { url: string | null; options: Options } {
@@ -770,6 +882,8 @@ async function main() {
   const kvNodes = keyNodes.filter((node) => node.id !== conversation.root.id && !linkedIds.has(node.id));
   const commentTargets = options.includeComments ? [conversation.root, ...linked] : [];
   const commentMap = options.includeComments ? await fetchCommentsForNodes(context, commentTargets, options.maxComments) : new Map();
+  const commentNodes = options.includeComments ? [...commentMap.values()].flatMap((list) => list.nodes) : [];
+  const similarityById = await buildSimilarityForGraph(context, conversation.root, linked, commentNodes, options.includeSemantic);
 
   console.log(styleHeader("Conversation Graph", isColorEnabled));
   console.log(`${styleLabel("Root:", isColorEnabled)} ${styleValue(formatNode(conversation.root), isColorEnabled)}`);
@@ -781,28 +895,24 @@ async function main() {
   if (rootComments && rootComments.nodes.length > 0) {
     const countLabel = rootComments.total > rootComments.nodes.length ? `${rootComments.nodes.length}/${rootComments.total}` : rootComments.total;
     const commentsIndent = renderSection("Comments", { count: countLabel, isLast: false, isColorEnabled });
-    renderCommentList(rootComments.nodes, isColorEnabled, commentsIndent);
+    renderCommentList(rootComments.nodes, isColorEnabled, commentsIndent, similarityById);
+  }
+
+  const rootMatches = similarityById.get(conversation.root.id) ?? [];
+  if (rootMatches.length > 0) {
+    const similarIndent = renderSection("Similar", { count: rootMatches.length, isLast: false, isColorEnabled });
+    renderSimilarityList(rootMatches, isColorEnabled, similarIndent);
   }
 
   const linksIndent = renderSection("Links", { count: linked.length, isLast: false, isColorEnabled });
-  renderNodeListWithComments(linked, commentMap, isColorEnabled, { indent: linksIndent, showHeader: false });
+  renderNodeListWithComments(linked, commentMap, isColorEnabled, similarityById, { indent: linksIndent, showHeader: false });
 
-  const memoryIndent = renderSection("Memory (merged history)", { count: kvNodes.length, isLast: false, isColorEnabled });
+  const memoryIndent = renderSection("Memory (merged history)", { count: kvNodes.length, isLast: true, isColorEnabled });
   if (kvNodes.length > 0) {
     renderNodeList("", kvNodes, isColorEnabled, { indent: memoryIndent, showHeader: false });
   } else {
     console.log(`${memoryIndent}\`-- ${styleDim("(none yet; populated when this key merges related threads)", isColorEnabled)}`);
   }
-
-  const similarityInfo = await getSimilarityMatches(context, conversation.root.id, options.includeSemantic);
-  const similarityTitle = formatSimilarityTitle(similarityInfo.status);
-  const similarityIndent = renderSection(similarityTitle, { count: similarityInfo.matches.length, isLast: true, isColorEnabled });
-  renderNodeList(
-    "",
-    similarityInfo.matches.map((match) => match.node),
-    isColorEnabled,
-    { indent: similarityIndent, showHeader: false }
-  );
 }
 
 if (import.meta.main) {
