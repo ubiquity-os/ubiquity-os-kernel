@@ -219,7 +219,8 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
   };
 
   if (signature) {
-    headers["X-Hub-Signature-256"] = `sha256=${signature}`;
+    const signatureValue = String(signature);
+    headers["X-Hub-Signature-256"] = signatureValue.startsWith("sha256=") ? signatureValue : `sha256=${signatureValue}`;
   }
 
   const result = await fetch(targetUrl, {
