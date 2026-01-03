@@ -4,6 +4,7 @@ import { config as loadEnv } from "dotenv";
 import type { GitHubContext } from "../src/github/github-context.ts";
 import { type ConversationNode, listConversationNodesForKey, resolveConversationKeyForContext } from "../src/github/utils/conversation-graph.ts";
 import { buildConversationContext } from "../src/github/utils/conversation-context.ts";
+import { fetchVectorDocument, findSimilarIssues, getVectorDbConfig } from "../src/github/utils/vector-db.ts";
 
 type Options = Readonly<{
   showContext: boolean;
@@ -25,6 +26,8 @@ loadEnv({ path: ".env" });
 
 const DEFAULT_MAX_NODES = 40;
 const TITLE_MAX_CHARS = 120;
+const DEFAULT_SEMANTIC_THRESHOLD = 0.8;
+const DEFAULT_SEMANTIC_TOP_K = 5;
 const USAGE = `
 Render an ASCII conversation graph from a GitHub issue/PR URL.
 
@@ -101,6 +104,85 @@ function renderNodeList(
       console.log(`${indent}${childIndent}${colorize(node.url, "\u001b[2m", isColorEnabled)}`);
     }
   });
+}
+
+type SemanticStatus = "disabled" | "missing-config" | "missing-document" | "missing-embedding" | "no-results" | "ok";
+
+type SemanticInfo = Readonly<{
+  status: SemanticStatus;
+  threshold: number;
+  topK: number;
+  embeddingSize: number;
+  resultsCount: number;
+}>;
+
+async function getSemanticInfo(context: GitHubContext, rootId: string, includeSemantic: boolean): Promise<SemanticInfo> {
+  const threshold = DEFAULT_SEMANTIC_THRESHOLD;
+  const topK = DEFAULT_SEMANTIC_TOP_K;
+  if (!includeSemantic) {
+    return { status: "disabled", threshold, topK, embeddingSize: 0, resultsCount: 0 };
+  }
+
+  const config = getVectorDbConfig(context.logger);
+  if (!config) {
+    return { status: "missing-config", threshold, topK, embeddingSize: 0, resultsCount: 0 };
+  }
+
+  const rootDoc = await fetchVectorDocument(config, rootId);
+  if (!rootDoc) {
+    return { status: "missing-document", threshold, topK, embeddingSize: 0, resultsCount: 0 };
+  }
+
+  const embedding = Array.isArray(rootDoc.embedding) ? rootDoc.embedding : [];
+  if (embedding.length === 0) {
+    return { status: "missing-embedding", threshold, topK, embeddingSize: 0, resultsCount: 0 };
+  }
+
+  const results = await findSimilarIssues(config, {
+    currentId: rootId,
+    embedding,
+    threshold,
+    topK,
+  });
+
+  if (results.length === 0) {
+    return { status: "no-results", threshold, topK, embeddingSize: embedding.length, resultsCount: 0 };
+  }
+
+  return { status: "ok", threshold, topK, embeddingSize: embedding.length, resultsCount: results.length };
+}
+
+function renderSemanticInfo(info: SemanticInfo, isColorEnabled: boolean): void {
+  console.log("Semantic:");
+  let statusLabel = "";
+  switch (info.status) {
+    case "disabled":
+      statusLabel = "disabled (flag --no-semantic)";
+      break;
+    case "missing-config":
+      statusLabel = "disabled (missing vector DB config)";
+      break;
+    case "missing-document":
+      statusLabel = "enabled (root document missing)";
+      break;
+    case "missing-embedding":
+      statusLabel = "enabled (root embedding missing)";
+      break;
+    case "no-results":
+      statusLabel = "enabled (no matches above threshold)";
+      break;
+    case "ok":
+      statusLabel = "enabled";
+      break;
+  }
+  console.log(`- Status: ${colorize(statusLabel, "\u001b[36m", isColorEnabled)}`);
+  console.log(`- Threshold: ${info.threshold} | TopK: ${info.topK}`);
+  if (info.embeddingSize > 0) {
+    console.log(`- Root embedding: present (${info.embeddingSize} dims)`);
+  } else {
+    console.log("- Root embedding: missing");
+  }
+  console.log(`- Matches: ${info.resultsCount}`);
 }
 
 function parseArgs(args: string[]): { url: string | null; options: Options } {
@@ -322,6 +404,10 @@ async function main() {
     console.log("- Links are built from timeline cross-references + outbound references in the issue body and recent comments.");
     console.log("- Memory (KV) lists previously merged nodes tied to this conversation key.");
   }
+
+  const semanticInfo = await getSemanticInfo(context, conversation.root.id, options.includeSemantic);
+  console.log("");
+  renderSemanticInfo(semanticInfo, isColorEnabled);
 
   if (options.showContext) {
     const contextText = await buildConversationContext({
