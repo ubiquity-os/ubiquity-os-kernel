@@ -9,6 +9,8 @@ type Options = Readonly<{
   includeSemantic: boolean;
   maxNodes: number;
   isVerbose: boolean;
+  colorMode: "auto" | "always" | "never";
+  showNotes: boolean;
 }>;
 
 type ParsedUrl = Readonly<{
@@ -31,6 +33,9 @@ Options:
   --semantic        Include semantic threads when --context is set
   --max-nodes=N     Limit number of KV nodes shown (default: ${DEFAULT_MAX_NODES})
   --verbose         Print debug warnings from graph resolution
+  --color           Force ANSI color output
+  --no-color        Disable ANSI color output
+  --no-notes        Hide the "Notes" section
   -h, --help        Show this help
 `.trim();
 
@@ -47,13 +52,50 @@ function formatNode(node: ConversationNode): string {
   return `[${typeLabel}] ${repoLabel}${numberLabel}${title}`;
 }
 
-function renderNodeList(nodes: ConversationNode[]): void {
-  for (const node of nodes) {
-    console.log(`|-- ${formatNode(node)}`);
-    if (node.url) {
-      console.log(`|   ${node.url}`);
-    }
+function supportsColor(): boolean {
+  const forceColor = Deno.env.get("FORCE_COLOR");
+  const noColor = Deno.env.get("NO_COLOR");
+  const term = (Deno.env.get("TERM") ?? "").toLowerCase();
+  return (forceColor !== undefined && forceColor !== "0") || (noColor === undefined && term !== "" && term !== "dumb");
+}
+
+function resolveColorMode(mode: Options["colorMode"]): boolean {
+  if (mode === "always") return true;
+  if (mode === "never") return false;
+  return supportsColor();
+}
+
+function colorize(text: string, code: string, isColorEnabled: boolean): string {
+  if (!isColorEnabled) return text;
+  return `${code}${text}\u001b[0m`;
+}
+
+function renderNodeList(
+  title: string,
+  nodes: ConversationNode[],
+  isColorEnabled: boolean,
+  options: Readonly<{ indent?: string; showHeader?: boolean }> = {}
+): void {
+  const indent = options.indent ?? "";
+  const showHeader = options.showHeader !== false;
+  if (showHeader) {
+    const countLabel = colorize(`[${nodes.length}]`, "\u001b[2m", isColorEnabled);
+    console.log(`${indent}${title} ${countLabel}`);
   }
+  if (!nodes.length) {
+    console.log(`${indent}\`-- ${colorize("(none)", "\u001b[2m", isColorEnabled)}`);
+    return;
+  }
+  nodes.forEach((node, index) => {
+    const isLast = index === nodes.length - 1;
+    const branch = isLast ? "`--" : "|--";
+    const childIndent = isLast ? "    " : "|   ";
+    const nodeText = formatNode(node);
+    console.log(`${indent}${branch} ${colorize(nodeText, "\u001b[36m", isColorEnabled)}`);
+    if (node.url) {
+      console.log(`${indent}${childIndent}${colorize(node.url, "\u001b[2m", isColorEnabled)}`);
+    }
+  });
 }
 
 function parseArgs(args: string[]): { url: string | null; options: Options } {
@@ -62,6 +104,8 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
   let includeSemantic = false;
   let maxNodes = DEFAULT_MAX_NODES;
   let isVerbose = false;
+  let colorMode: Options["colorMode"] = "auto";
+  let showNotes = true;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -79,6 +123,18 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
     }
     if (arg === "--verbose") {
       isVerbose = true;
+      continue;
+    }
+    if (arg === "--color") {
+      colorMode = "always";
+      continue;
+    }
+    if (arg === "--no-color") {
+      colorMode = "never";
+      continue;
+    }
+    if (arg === "--no-notes") {
+      showNotes = false;
       continue;
     }
     if (arg === "--max-nodes" && args[i + 1]) {
@@ -108,7 +164,7 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
     maxNodes = DEFAULT_MAX_NODES;
   }
 
-  return { url, options: { showContext, includeSemantic, maxNodes, isVerbose } };
+  return { url, options: { showContext, includeSemantic, maxNodes, isVerbose, colorMode, showNotes } };
 }
 
 function parseGithubUrl(input: string): ParsedUrl {
@@ -222,6 +278,7 @@ async function main() {
   const { octokit, payload } = await buildContext(parsed);
   const logger = createLogger(options.isVerbose);
   const context = { payload, octokit, logger } as unknown as GitHubContext;
+  const isColorEnabled = resolveColorMode(options.colorMode);
 
   const conversation = await resolveConversationKeyForContext(context, logger);
   if (!conversation) {
@@ -234,20 +291,23 @@ async function main() {
   const linkedIds = new Set(linked.map((node) => node.id));
   const kvNodes = keyNodes.filter((node) => node.id !== conversation.root.id && !linkedIds.has(node.id));
 
-  console.log(`Graph for ${url}`);
-  console.log(`Key: ${conversation.key}`);
-  console.log(`Root: ${formatNode(conversation.root)}`);
+  console.log(colorize("Conversation Graph", "\u001b[1m", isColorEnabled));
+  console.log(`URL: ${colorize(url, "\u001b[2m", isColorEnabled)}`);
+  console.log(`Key: ${colorize(conversation.key, "\u001b[2m", isColorEnabled)}`);
+  console.log("Root:");
+  renderNodeList("", [conversation.root], isColorEnabled, { indent: "", showHeader: false });
 
-  if (linked.length) {
-    console.log("");
-    console.log("Links (direct/outbound):");
-    renderNodeList(linked);
-  }
+  console.log("");
+  renderNodeList("Links (direct/outbound)", linked, isColorEnabled);
 
-  if (kvNodes.length) {
+  console.log("");
+  renderNodeList("Memory (KV)", kvNodes, isColorEnabled);
+
+  if (options.showNotes) {
     console.log("");
-    console.log("Memory (KV):");
-    renderNodeList(kvNodes);
+    console.log("Notes:");
+    console.log("- Links are built from timeline cross-references + outbound references in the issue body and recent comments.");
+    console.log("- Memory (KV) lists previously merged nodes tied to this conversation key.");
   }
 
   if (options.showContext) {
