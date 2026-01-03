@@ -663,9 +663,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const labels = getIssueLabelNames(context.payload.issue.labels);
   const issueBody = truncateForRouter(context.payload.issue.body);
   const conversation = await resolveConversationKeyForContext(context, context.logger);
-  const conversationContext = conversation
-    ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600, includeSemantic: false })
-    : "";
+  const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
   const agentMemory = await getAgentMemorySnippet({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,
