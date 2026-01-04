@@ -36,6 +36,36 @@ deno task dev
 
 `deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
 
+## Conversation Graph and Agent Context
+
+The kernel builds a conversation graph for each issue/PR event so the agent can answer with context that spans linked threads.
+
+What the graph contains:
+
+- The root issue or pull request.
+- Linked threads from timeline cross-references and outbound GitHub URLs in bodies and comments.
+- Optional semantic matches from the vector DB (issues, PRs, issue comments, review comments).
+
+Agent context selection:
+
+- `buildConversationContext` collects the graph plus recent comments and runs a lightweight selector using the user query.
+- The root node is always included; comment bodies are trimmed to 256 characters by default, with full URLs preserved for follow-up fetches.
+- Semantic matches are included when the vector DB is configured.
+
+Vector DB configuration (Supabase):
+
+- Set `UOS_VECTOR_DB_URL` and `UOS_VECTOR_DB_KEY`, or
+- Set `SUPABASE_URL` plus `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY` for read-only access).
+- `SUPABASE_PROJECT_ID` can be used to derive the URL when `SUPABASE_URL` is not set.
+
+Conversation graph CLI (debug/preview):
+
+```bash
+GITHUB_TOKEN=... deno run -A --sloppy-imports scripts/conversation-graph.ts <github-url> --context
+```
+
+Useful flags: `--all`, `--no-semantic`, `--context-max-comments`, `--context-max-comment-chars`.
+
 ### Deploying to Cloudflare Workers
 
 1. **Install Dependencies (for deploy tooling):**
