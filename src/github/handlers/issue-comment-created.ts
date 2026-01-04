@@ -1,12 +1,11 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import type { ChatCompletion } from "openai/resources/chat/completions";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
 import { getConfig, getConfigPathCandidatesForEnvironment } from "../utils/config";
-import { createKernelAttestationToken } from "../utils/kernel-attestation";
+import { callUbqAiRouter } from "../utils/ai-router";
 import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
 import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
@@ -397,101 +396,6 @@ async function postReply(context: GitHubContext<"issue_comment.created">, body: 
   });
 }
 
-function isCloudflareAntibotHtml(status: number, html: string): boolean {
-  if (status !== 403 && status !== 503) return false;
-  const body = html.toLowerCase();
-  return body.includes("<title>just a moment...</title>") || body.includes("cloudflare") || body.includes("cf-chl");
-}
-
-function normalizeBaseUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
-
-export async function callUbqAiRouter(
-  context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">,
-  prompt: string,
-  routerInput: unknown
-): Promise<string> {
-  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    throw new Error("Missing installation id");
-  }
-
-  const owner = context.payload.repository.owner.login;
-  const repo = context.payload.repository.name;
-  const installationId = context.payload.installation.id;
-
-  const token = await context.eventHandler.getToken(installationId);
-  const kernelToken = await createKernelAttestationToken({
-    sign: (payload) => context.eventHandler.signPayload(payload),
-    owner,
-    repo,
-    installationId,
-    authToken: token,
-    stateId: crypto.randomUUID(),
-    ttlSeconds: 120,
-  });
-
-  const payload = {
-    model: context.eventHandler.llm,
-    reasoning_effort: "none",
-    stream: false,
-    messages: [
-      { role: "system", content: prompt },
-      {
-        role: "user",
-        content: JSON.stringify(routerInput),
-      },
-    ],
-  };
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "User-Agent": "ubiquity-os-kernel/router",
-    "X-GitHub-Owner": owner,
-    "X-GitHub-Repo": repo,
-    "X-GitHub-Installation-Id": String(installationId),
-    "X-Ubiquity-Kernel-Token": kernelToken,
-  };
-
-  const baseUrl = normalizeBaseUrl(context.eventHandler.aiBaseUrl);
-  const endpoint = new URL("/v1/chat/completions", baseUrl).toString();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      if (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text)) {
-        context.logger.warn({ status: response.status }, "Router endpoint blocked");
-      }
-      const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
-      throw new Error(`${endpoint} -> ${response.status} ${snippet}`);
-    }
-
-    const data = (await response.json()) as ChatCompletion;
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      throw new Error(`${endpoint} -> ok but missing assistant content`);
-    }
-    return content;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Router error: ${message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function dispatchInternalAgent(context: GitHubContext<"issue_comment.created">, task: string, settingsOverrides?: Record<string, unknown>) {
   const agentOwner = context.eventHandler.agent.owner;
   const agentRepo = context.eventHandler.agent.repo;
@@ -508,7 +412,9 @@ async function dispatchInternalAgent(context: GitHubContext<"issue_comment.creat
     const ref = context.eventHandler.agent.ref?.trim() || (await getDefaultBranch(context, agentOwner, agentRepo));
     const token = await context.eventHandler.getToken(context.payload.installation.id);
     const conversation = await resolveConversationKeyForContext(context, context.logger);
-    const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 8, maxChars: 3200 }) : "";
+    const conversationContext = conversation
+      ? await buildConversationContext({ context, conversation, maxItems: 8, maxChars: 3200, query: task, useSelector: true })
+      : "";
     const agentMemory = await getAgentMemorySnippet({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,

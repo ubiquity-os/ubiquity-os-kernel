@@ -3,13 +3,19 @@ import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { config as loadEnv } from "dotenv";
 import type { GitHubContext } from "../src/github/github-context.ts";
 import { type ConversationNode, listConversationNodesForKey, resolveConversationKeyForContext } from "../src/github/utils/conversation-graph.ts";
+import { buildConversationContext } from "../src/github/utils/conversation-context.ts";
 import { fetchVectorDocuments, findSimilarComments, findSimilarIssues, getVectorDbConfig, type VectorDocument } from "../src/github/utils/vector-db.ts";
 
 type Options = Readonly<{
   includeSemantic: boolean;
   includeComments: boolean;
+  includeContext: boolean;
   maxNodes: number;
   maxComments: number;
+  contextMaxItems: number;
+  contextMaxChars: number;
+  contextMaxComments: number;
+  contextMaxCommentChars: number;
   isVerbose: boolean;
   colorMode: "auto" | "always" | "never";
 }>;
@@ -25,6 +31,10 @@ loadEnv({ path: ".env" });
 
 const DEFAULT_MAX_NODES = 40;
 const DEFAULT_MAX_COMMENTS = 8;
+const DEFAULT_CONTEXT_MAX_ITEMS = 8;
+const DEFAULT_CONTEXT_MAX_CHARS = 3200;
+const DEFAULT_CONTEXT_MAX_COMMENTS = 8;
+const DEFAULT_CONTEXT_MAX_COMMENT_CHARS = 256;
 const UNLIMITED = Number.POSITIVE_INFINITY;
 const TITLE_MAX_CHARS = 120;
 const COMMENT_SNIPPET_CHARS = 120;
@@ -39,10 +49,16 @@ Usage:
 Options:
   --no-semantic     Hide similarity matches
   --no-comments     Hide comment leaves
+  --context         Print conversationContext preview (agent input)
+  --no-context      Skip conversationContext preview (default)
   --all             Show all nodes/comments (no limits)
   --max-output=N    Set max nodes and comments to N (use "all" for unlimited)
   --max-nodes=N     Limit number of KV nodes shown (default: ${DEFAULT_MAX_NODES})
   --max-comments=N  Limit number of comments shown per node (default: ${DEFAULT_MAX_COMMENTS})
+  --context-max-items=N         Max linked nodes in conversationContext (default: ${DEFAULT_CONTEXT_MAX_ITEMS})
+  --context-max-chars=N         Max chars for conversationContext (default: ${DEFAULT_CONTEXT_MAX_CHARS})
+  --context-max-comments=N      Max comments per node in conversationContext (default: ${DEFAULT_CONTEXT_MAX_COMMENTS})
+  --context-max-comment-chars=N Max chars per comment in conversationContext (default: ${DEFAULT_CONTEXT_MAX_COMMENT_CHARS})
   --verbose         Print debug warnings from graph resolution
   --color           Force ANSI color output
   --no-color        Disable ANSI color output
@@ -252,6 +268,7 @@ function buildCommentNode(kind: CommentKind, payload: Record<string, unknown>): 
   const author = typeof user?.login === "string" ? user.login.trim() : "";
   const rawBody = typeof payload.body === "string" ? payload.body : "";
   const body = normalizeWhitespace(rawBody);
+  if (kind === "Review" && !body) return null;
   const timestamp = createdAt || submittedAt;
   if (!id || !url || !timestamp) return null;
   return {
@@ -372,6 +389,8 @@ async function fetchPullCommentNodes(context: GitHubContext, node: ConversationN
           pull_number: node.number,
           per_page: pageSize,
           page,
+          sort: "created",
+          direction: "desc",
         });
         return data ?? [];
       },
@@ -747,8 +766,13 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
   let url: string | null = null;
   let includeSemantic = true;
   let includeComments = true;
+  let includeContext = false;
   let maxNodes = DEFAULT_MAX_NODES;
   let maxComments = DEFAULT_MAX_COMMENTS;
+  let contextMaxItems = DEFAULT_CONTEXT_MAX_ITEMS;
+  let contextMaxChars = DEFAULT_CONTEXT_MAX_CHARS;
+  let contextMaxComments = DEFAULT_CONTEXT_MAX_COMMENTS;
+  let contextMaxCommentChars = DEFAULT_CONTEXT_MAX_COMMENT_CHARS;
   let isVerbose = false;
   let colorMode: Options["colorMode"] = "auto";
 
@@ -758,7 +782,12 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
       console.log(USAGE);
       Deno.exit(0);
     }
-    if (arg === "--context" || arg === "--no-context") {
+    if (arg === "--context") {
+      includeContext = true;
+      continue;
+    }
+    if (arg === "--no-context") {
+      includeContext = false;
       continue;
     }
     if (arg === "--semantic") {
@@ -825,6 +854,42 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
       maxComments = parseLimitValue(arg.split("=").slice(1).join("="));
       continue;
     }
+    if (arg === "--context-max-items" && args[i + 1]) {
+      contextMaxItems = parseLimitValue(args[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--context-max-items=")) {
+      contextMaxItems = parseLimitValue(arg.split("=").slice(1).join("="));
+      continue;
+    }
+    if (arg === "--context-max-chars" && args[i + 1]) {
+      contextMaxChars = parseLimitValue(args[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--context-max-chars=")) {
+      contextMaxChars = parseLimitValue(arg.split("=").slice(1).join("="));
+      continue;
+    }
+    if (arg === "--context-max-comments" && args[i + 1]) {
+      contextMaxComments = parseLimitValue(args[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--context-max-comments=")) {
+      contextMaxComments = parseLimitValue(arg.split("=").slice(1).join("="));
+      continue;
+    }
+    if (arg === "--context-max-comment-chars" && args[i + 1]) {
+      contextMaxCommentChars = parseLimitValue(args[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--context-max-comment-chars=")) {
+      contextMaxCommentChars = parseLimitValue(arg.split("=").slice(1).join("="));
+      continue;
+    }
     if (arg.startsWith("-")) {
       console.error(`Unknown option: ${arg}`);
       console.log(USAGE);
@@ -846,7 +911,22 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
     maxComments = DEFAULT_MAX_COMMENTS;
   }
 
-  return { url, options: { includeSemantic, includeComments, maxNodes, maxComments, isVerbose, colorMode } };
+  return {
+    url,
+    options: {
+      includeSemantic,
+      includeComments,
+      includeContext,
+      maxNodes,
+      maxComments,
+      contextMaxItems,
+      contextMaxChars,
+      contextMaxComments,
+      contextMaxCommentChars,
+      isVerbose,
+      colorMode,
+    },
+  };
 }
 
 function parseGithubUrl(input: string): ParsedUrl {
@@ -882,12 +962,18 @@ function parseGithubUrl(input: string): ParsedUrl {
   return { owner, repo, number, kind };
 }
 
+function noop(): void {}
+
 function createLogger(isVerbose: boolean) {
   return {
-    debug: isVerbose ? console.debug.bind(console) : () => undefined,
+    debug: isVerbose ? console.debug.bind(console) : noop,
     warn: console.warn.bind(console),
     error: console.error.bind(console),
   };
+}
+
+function sumTotals<T>(values: T[], pick: (value: T) => number): number {
+  return values.reduce((total, value) => total + pick(value), 0);
 }
 
 async function buildContext(parsed: ParsedUrl) {
@@ -961,21 +1047,43 @@ async function main() {
   const logger = createLogger(options.isVerbose);
   const context = { payload, octokit, logger } as unknown as GitHubContext;
   const isColorEnabled = resolveColorMode(options.colorMode);
+  function logTiming(label: string, startMs: number, detail?: string) {
+    if (!options.isVerbose) return;
+    const elapsed = Date.now() - startMs;
+    const suffix = detail ? ` (${detail})` : "";
+    console.log(styleDim(`[timing] ${label}: ${elapsed}ms${suffix}`, isColorEnabled));
+  }
 
+  const resolveStart = Date.now();
   const conversation = await resolveConversationKeyForContext(context, logger);
   if (!conversation) {
     console.error("Failed to resolve conversation graph for the URL.");
     Deno.exit(1);
   }
+  logTiming("resolve graph", resolveStart, `linked=${conversation.linked.length}`);
 
   const linked = conversation.linked;
+  const kvStart = Date.now();
   const keyNodes = await listConversationNodesForKey(context, conversation.key, options.maxNodes, logger);
+  logTiming("load kv nodes", kvStart, `nodes=${keyNodes.length}`);
   const linkedIds = new Set(linked.map((node) => node.id));
   const kvNodes = keyNodes.filter((node) => node.id !== conversation.root.id && !linkedIds.has(node.id));
   const commentTargets = options.includeComments ? [conversation.root, ...linked] : [];
+  const commentStart = Date.now();
   const commentMap = options.includeComments ? await fetchCommentsForNodes(context, commentTargets, options.maxComments) : new Map();
   const commentNodes = options.includeComments ? [...commentMap.values()].flatMap((list) => list.nodes) : [];
+  if (options.includeComments) {
+    const totals = [...commentMap.values()];
+    const shown = sumTotals(totals, (list) => list.nodes.length);
+    const total = sumTotals(totals, (list) => list.total);
+    logTiming("fetch comments", commentStart, `threads=${commentTargets.length} comments=${shown}/${total}`);
+  }
+  const semanticStart = Date.now();
   const similarityById = await buildSimilarityForGraph(context, conversation.root, linked, commentNodes, options.includeSemantic);
+  if (options.includeSemantic) {
+    const matches = sumTotals([...similarityById.values()], (list) => list.length);
+    logTiming("semantic lookup", semanticStart, `matches=${matches}`);
+  }
 
   console.log(styleHeader("Conversation Graph", isColorEnabled));
   console.log(`${styleLabel("Root:", isColorEnabled)} ${styleValue(formatNode(conversation.root), isColorEnabled)}`);
@@ -1004,6 +1112,34 @@ async function main() {
     renderNodeList("", kvNodes, isColorEnabled, { indent: memoryIndent, showHeader: false });
   } else {
     console.log(`${memoryIndent}\`-- ${styleDim("(none yet; populated when this key merges related threads)", isColorEnabled)}`);
+  }
+
+  if (options.includeContext) {
+    const contextStart = Date.now();
+    const contextMaxItems = isUnlimitedLimit(options.contextMaxItems) ? DEFAULT_CONTEXT_MAX_ITEMS : options.contextMaxItems;
+    const contextMaxComments = isUnlimitedLimit(options.contextMaxComments) ? DEFAULT_CONTEXT_MAX_COMMENTS : options.contextMaxComments;
+    const contextMaxChars = isUnlimitedLimit(options.contextMaxChars) ? DEFAULT_CONTEXT_MAX_CHARS : options.contextMaxChars;
+    const contextMaxCommentChars = isUnlimitedLimit(options.contextMaxCommentChars) ? DEFAULT_CONTEXT_MAX_COMMENT_CHARS : options.contextMaxCommentChars;
+    const conversationContext = await buildConversationContext({
+      context,
+      conversation,
+      maxItems: contextMaxItems,
+      maxChars: contextMaxChars,
+      includeSemantic: options.includeSemantic,
+      includeComments: options.includeComments,
+      maxComments: contextMaxComments,
+      maxCommentChars: contextMaxCommentChars,
+      useSelector: false,
+    });
+    logTiming("build conversationContext", contextStart);
+    console.log("");
+    console.log(styleHeader("Conversation Context Preview", isColorEnabled));
+    if (conversationContext) {
+      console.log("Conversation context (linked/semantic, untrusted):");
+      console.log(conversationContext);
+    } else {
+      console.log(styleDim("(conversationContext is empty)", isColorEnabled));
+    }
   }
 }
 

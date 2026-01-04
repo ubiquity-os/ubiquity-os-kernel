@@ -10,7 +10,6 @@ import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
 import {
-  callUbqAiRouter,
   describeCommands,
   extractAfterUbiquityosMention,
   extractSlashCommandInvocation,
@@ -22,6 +21,7 @@ import {
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph";
 import { buildConversationContext } from "../utils/conversation-context";
+import { callUbqAiRouter } from "../utils/ai-router";
 
 async function addReactionEyes(context: GitHubContext<"pull_request_review_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -131,7 +131,9 @@ async function dispatchInternalAgent(context: GitHubContext<"pull_request_review
     const ref = context.eventHandler.agent.ref?.trim() || (await getDefaultBranch(context, agentOwner, agentRepo));
     const token = await context.eventHandler.getToken(context.payload.installation.id);
     const conversation = await resolveConversationKeyForContext(context, context.logger);
-    const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 8, maxChars: 3200 }) : "";
+    const conversationContext = conversation
+      ? await buildConversationContext({ context, conversation, maxItems: 8, maxChars: 3200, query: task, useSelector: true })
+      : "";
     const agentMemory = await getAgentMemorySnippet({
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,

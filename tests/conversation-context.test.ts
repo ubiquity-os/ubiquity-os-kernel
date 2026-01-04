@@ -7,9 +7,11 @@ import { logger } from "../src/logger/logger";
 const mockOctokit = {
   rest: {
     issues: {
+      get: jest.fn().mockResolvedValue({ data: { body: "" } }),
       listComments: jest.fn().mockResolvedValue({ data: [] }),
     },
     pulls: {
+      get: jest.fn().mockResolvedValue({ data: { body: "" } }),
       listReviewComments: jest.fn().mockResolvedValue({ data: [] }),
       listReviews: jest.fn().mockResolvedValue({ data: [] }),
     },

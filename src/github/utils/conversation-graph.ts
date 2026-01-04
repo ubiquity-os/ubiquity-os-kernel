@@ -152,7 +152,44 @@ function parseOwnerRepoFromUrl(url: string): { owner: string; repo: string } {
   return { owner: "", repo: "" };
 }
 
-function extractReferencesFromText(text: string, defaultOwner: string, defaultRepo: string): OutboundReference[] {
+function parseGithubReferenceUrl(raw: string): OutboundReference | null {
+  try {
+    const parsed = new URL(raw, "https://github.com");
+    if (parsed.hostname.toLowerCase() !== "github.com") return null;
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length < 4) return null;
+    const owner = normalizeString(parts[0]);
+    const repo = normalizeString(parts[1]);
+    const segment = normalizeString(parts[2]).toLowerCase();
+    const number = normalizeNumber(Number(parts[3]));
+    if (!owner || !repo || number === undefined) return null;
+    if (segment === "issues") {
+      return { owner, repo, number, kind: "Issue" };
+    }
+    if (segment === "pull" || segment === "pulls") {
+      return { owner, repo, number, kind: "PullRequest" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractReferencesFromHtml(html: string): OutboundReference[] {
+  const out: OutboundReference[] = [];
+  const trimmed = html.trim();
+  if (!trimmed) return out;
+  const hrefRegex = /href="([^"]+)"/gi;
+  for (const match of trimmed.matchAll(hrefRegex)) {
+    const href = normalizeString(match[1]);
+    if (!href) continue;
+    const ref = parseGithubReferenceUrl(href);
+    if (ref) out.push(ref);
+  }
+  return out;
+}
+
+function extractReferencesFromText(text: string): OutboundReference[] {
   const out: OutboundReference[] = [];
   const trimmed = text.trim();
   if (!trimmed) return out;
@@ -176,14 +213,6 @@ function extractReferencesFromText(text: string, defaultOwner: string, defaultRe
     if (!owner || !repo || number === undefined) continue;
     out.push({ owner, repo, number, kind: "Unknown" });
   }
-
-  const localRegex = /(^|[^A-Za-z0-9_/])#(\d+)\b/g;
-  for (const match of trimmed.matchAll(localRegex)) {
-    const number = normalizeNumber(Number(match[2]));
-    if (!defaultOwner || !defaultRepo || number === undefined) continue;
-    out.push({ owner: defaultOwner, repo: defaultRepo, number, kind: "Unknown" });
-  }
-
   return out;
 }
 
@@ -277,15 +306,22 @@ async function fetchOutboundReferences(context: GitHubContext, root: Conversatio
   if (!owner || !repo || issueNumber === undefined) return [];
 
   let body = "";
+  let bodyHtml = "";
   try {
-    const { data } = await context.octokit.rest.issues.get({ owner, repo, issue_number: issueNumber });
+    const { data } = await context.octokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      headers: { accept: "application/vnd.github.v3.html+json" },
+    });
     body = typeof data.body === "string" ? data.body : "";
+    bodyHtml = typeof data.body_html === "string" ? data.body_html : "";
   } catch (error) {
     context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue body for outbound references (non-fatal)");
     return [];
   }
 
-  const rawReferences = extractReferencesFromText(body, owner, repo);
+  const rawReferences = bodyHtml ? extractReferencesFromHtml(bodyHtml) : extractReferencesFromText(body);
 
   try {
     const { data: comments } = await context.octokit.rest.issues.listComments({
@@ -295,11 +331,16 @@ async function fetchOutboundReferences(context: GitHubContext, root: Conversatio
       per_page: OUTBOUND_COMMENT_LIMIT,
       sort: "created",
       direction: "desc",
+      headers: { accept: "application/vnd.github.v3.html+json" },
     });
     for (const comment of comments ?? []) {
+      const html = typeof comment?.body_html === "string" ? comment.body_html : "";
       const text = typeof comment?.body === "string" ? comment.body : "";
-      if (!text) continue;
-      rawReferences.push(...extractReferencesFromText(text, owner, repo));
+      if (html) {
+        rawReferences.push(...extractReferencesFromHtml(html));
+      } else if (text) {
+        rawReferences.push(...extractReferencesFromText(text));
+      }
     }
   } catch (error) {
     context.logger.debug({ err: error, owner, repo, issueNumber }, "Failed to fetch issue comments for outbound references (non-fatal)");
