@@ -4,6 +4,18 @@ import type { ConversationKeyResult, ConversationNode } from "../src/github/util
 import type { VectorDocument } from "../src/github/utils/vector-db";
 import { logger } from "../src/logger/logger";
 
+const mockOctokit = {
+  rest: {
+    issues: {
+      listComments: jest.fn().mockResolvedValue({ data: [] }),
+    },
+    pulls: {
+      listReviewComments: jest.fn().mockResolvedValue({ data: [] }),
+      listReviews: jest.fn().mockResolvedValue({ data: [] }),
+    },
+  },
+};
+
 const baseContext = {
   payload: {
     repository: {
@@ -16,6 +28,7 @@ const baseContext = {
       user: { id: 7 },
     },
   },
+  octokit: mockOctokit,
   logger,
 } as unknown as GitHubContext;
 
@@ -213,10 +226,12 @@ describe("buildConversationContext", () => {
       maxChars: 4000,
     });
 
+    expect(result).toContain("Current thread:");
     expect(result).toContain("Conversation links (auto-merged):");
+    expect(result).toContain(rootNode.url);
     expect(result).toContain(explicitNodeA.url);
     expect(result).toContain(explicitNodeB.url);
-    expect(result).toContain("Related threads (semantic):");
+    expect(result).toContain("Similar (semantic):");
 
     const firstIndex = result.indexOf("https://github.com/acme/repo/issues/4");
     const secondIndex = result.indexOf("https://github.com/other/other-repo/issues/5");
@@ -241,6 +256,6 @@ describe("buildConversationContext", () => {
 
     expect(getConfigSpy).not.toHaveBeenCalled();
     expect(result).toContain("Conversation links (auto-merged):");
-    expect(result).not.toContain("Related threads (semantic):");
+    expect(result).not.toContain("Similar (semantic):");
   });
 });

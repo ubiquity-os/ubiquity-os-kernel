@@ -25,6 +25,7 @@ loadEnv({ path: ".env" });
 
 const DEFAULT_MAX_NODES = 40;
 const DEFAULT_MAX_COMMENTS = 8;
+const UNLIMITED = Number.POSITIVE_INFINITY;
 const TITLE_MAX_CHARS = 120;
 const COMMENT_SNIPPET_CHARS = 120;
 const DEFAULT_SEMANTIC_THRESHOLD = 0.8;
@@ -38,6 +39,8 @@ Usage:
 Options:
   --no-semantic     Hide similarity matches
   --no-comments     Hide comment leaves
+  --all             Show all nodes/comments (no limits)
+  --max-output=N    Set max nodes and comments to N (use "all" for unlimited)
   --max-nodes=N     Limit number of KV nodes shown (default: ${DEFAULT_MAX_NODES})
   --max-comments=N  Limit number of comments shown per node (default: ${DEFAULT_MAX_COMMENTS})
   --verbose         Print debug warnings from graph resolution
@@ -51,6 +54,16 @@ Options:
 function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars - 3)}...`;
+}
+
+function parseLimitValue(raw: string): number {
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === "all") return UNLIMITED;
+  return Number(raw);
+}
+
+function isUnlimitedLimit(value: number): boolean {
+  return value === UNLIMITED;
 }
 
 function formatNode(node: ConversationNode): string {
@@ -273,19 +286,27 @@ function sortCommentsByDate(nodes: CommentNode[]): CommentNode[] {
   });
 }
 
-async function fetchIssueCommentNodes(context: GitHubContext, node: ConversationNode, perPage: number): Promise<CommentNode[]> {
+async function fetchIssueCommentNodes(context: GitHubContext, node: ConversationNode, perPage: number, maxComments: number): Promise<CommentNode[]> {
   if (node.number === undefined) return [];
   try {
-    const { data } = await context.octokit.rest.issues.listComments({
-      owner: node.owner,
-      repo: node.repo,
-      issue_number: node.number,
-      per_page: perPage,
-      sort: "created",
-      direction: "desc",
-    });
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.issues.listComments({
+          owner: node.owner,
+          repo: node.repo,
+          issue_number: node.number,
+          per_page: pageSize,
+          page,
+          sort: "created",
+          direction: "desc",
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
     const nodes: CommentNode[] = [];
-    for (const comment of data ?? []) {
+    for (const comment of raw) {
       const parsed = isRecord(comment) ? buildCommentNode("IssueComment", comment) : null;
       if (parsed) nodes.push(parsed);
     }
@@ -296,19 +317,45 @@ async function fetchIssueCommentNodes(context: GitHubContext, node: Conversation
   }
 }
 
-async function fetchPullCommentNodes(context: GitHubContext, node: ConversationNode, perPage: number): Promise<CommentNode[]> {
+async function fetchPagedItems<T>(fetchPage: (page: number, perPage: number) => Promise<T[]>, perPage: number, maxItems: number): Promise<T[]> {
+  const isUnlimited = isUnlimitedLimit(maxItems);
+  const items: T[] = [];
+  let page = 1;
+  while (true) {
+    const batch = await fetchPage(page, perPage);
+    if (batch.length === 0) break;
+    items.push(...batch);
+    if (!isUnlimited && items.length >= maxItems) {
+      return items.slice(0, maxItems);
+    }
+    if (batch.length < perPage) break;
+    page += 1;
+    if (page > 2000) break;
+  }
+  return items;
+}
+
+async function fetchPullCommentNodes(context: GitHubContext, node: ConversationNode, perPage: number, maxComments: number): Promise<CommentNode[]> {
   if (node.number === undefined) return [];
   const nodes: CommentNode[] = [];
   try {
-    const { data } = await context.octokit.rest.issues.listComments({
-      owner: node.owner,
-      repo: node.repo,
-      issue_number: node.number,
-      per_page: perPage,
-      sort: "created",
-      direction: "desc",
-    });
-    for (const comment of data ?? []) {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.issues.listComments({
+          owner: node.owner,
+          repo: node.repo,
+          issue_number: node.number,
+          per_page: pageSize,
+          page,
+          sort: "created",
+          direction: "desc",
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const comment of raw) {
       const parsed = isRecord(comment) ? buildCommentNode("IssueComment", comment) : null;
       if (parsed) nodes.push(parsed);
     }
@@ -317,13 +364,21 @@ async function fetchPullCommentNodes(context: GitHubContext, node: ConversationN
   }
 
   try {
-    const { data } = await context.octokit.rest.pulls.listReviewComments({
-      owner: node.owner,
-      repo: node.repo,
-      pull_number: node.number,
-      per_page: perPage,
-    });
-    for (const comment of data ?? []) {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.pulls.listReviewComments({
+          owner: node.owner,
+          repo: node.repo,
+          pull_number: node.number,
+          per_page: pageSize,
+          page,
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const comment of raw) {
       const parsed = isRecord(comment) ? buildCommentNode("ReviewComment", comment) : null;
       if (parsed) nodes.push(parsed);
     }
@@ -332,13 +387,21 @@ async function fetchPullCommentNodes(context: GitHubContext, node: ConversationN
   }
 
   try {
-    const { data } = await context.octokit.rest.pulls.listReviews({
-      owner: node.owner,
-      repo: node.repo,
-      pull_number: node.number,
-      per_page: perPage,
-    });
-    for (const review of data ?? []) {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.pulls.listReviews({
+          owner: node.owner,
+          repo: node.repo,
+          pull_number: node.number,
+          per_page: pageSize,
+          page,
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const review of raw) {
       const parsed = isRecord(review) ? buildCommentNode("Review", review) : null;
       if (parsed) nodes.push(parsed);
     }
@@ -351,10 +414,21 @@ async function fetchPullCommentNodes(context: GitHubContext, node: ConversationN
 
 async function fetchCommentsForNode(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentList> {
   if (maxComments <= 0) return { total: 0, nodes: [] };
-  const perPage = Math.min(100, Math.max(1, maxComments));
-  const rawNodes = node.type === "PullRequest" ? await fetchPullCommentNodes(context, node, perPage) : await fetchIssueCommentNodes(context, node, perPage);
+  const isUnlimited = isUnlimitedLimit(maxComments);
+  const pageLimit = Number.isFinite(maxComments) ? Math.min(maxComments, 100) : 100;
+  const perPage = Math.min(100, Math.max(1, pageLimit));
+  const rawNodes =
+    node.type === "PullRequest"
+      ? await fetchPullCommentNodes(context, node, perPage, maxComments)
+      : await fetchIssueCommentNodes(context, node, perPage, maxComments);
   const deduped = dedupeCommentNodes(rawNodes);
   const sorted = sortCommentsByDate(deduped);
+  if (isUnlimited) {
+    return {
+      total: sorted.length,
+      nodes: sorted,
+    };
+  }
   return {
     total: sorted.length,
     nodes: sorted.slice(0, maxComments),
@@ -703,6 +777,11 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
       includeComments = false;
       continue;
     }
+    if (arg === "--all") {
+      maxNodes = UNLIMITED;
+      maxComments = UNLIMITED;
+      continue;
+    }
     if (arg === "--verbose") {
       isVerbose = true;
       continue;
@@ -716,21 +795,34 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
       continue;
     }
     if (arg === "--max-nodes" && args[i + 1]) {
-      maxNodes = Number(args[i + 1]);
+      maxNodes = parseLimitValue(args[i + 1]);
       i += 1;
       continue;
     }
     if (arg.startsWith("--max-nodes=")) {
-      maxNodes = Number(arg.split("=").slice(1).join("="));
+      maxNodes = parseLimitValue(arg.split("=").slice(1).join("="));
+      continue;
+    }
+    if (arg === "--max-output" && args[i + 1]) {
+      const parsed = parseLimitValue(args[i + 1]);
+      maxNodes = parsed;
+      maxComments = parsed;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--max-output=")) {
+      const parsed = parseLimitValue(arg.split("=").slice(1).join("="));
+      maxNodes = parsed;
+      maxComments = parsed;
       continue;
     }
     if (arg === "--max-comments" && args[i + 1]) {
-      maxComments = Number(args[i + 1]);
+      maxComments = parseLimitValue(args[i + 1]);
       i += 1;
       continue;
     }
     if (arg.startsWith("--max-comments=")) {
-      maxComments = Number(arg.split("=").slice(1).join("="));
+      maxComments = parseLimitValue(arg.split("=").slice(1).join("="));
       continue;
     }
     if (arg.startsWith("-")) {
@@ -747,10 +839,10 @@ function parseArgs(args: string[]): { url: string | null; options: Options } {
     }
   }
 
-  if (!Number.isFinite(maxNodes) || maxNodes <= 0) {
+  if (!isUnlimitedLimit(maxNodes) && (!Number.isFinite(maxNodes) || maxNodes <= 0)) {
     maxNodes = DEFAULT_MAX_NODES;
   }
-  if (!Number.isFinite(maxComments) || maxComments < 0) {
+  if (!isUnlimitedLimit(maxComments) && (!Number.isFinite(maxComments) || maxComments < 0)) {
     maxComments = DEFAULT_MAX_COMMENTS;
   }
 

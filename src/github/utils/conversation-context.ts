@@ -12,6 +12,7 @@ import {
 
 const DEFAULT_MAX_ITEMS = 10;
 const DEFAULT_MAX_CHARS = 4000;
+const DEFAULT_MAX_COMMENTS = 8;
 const DEFAULT_SIMILARITY_THRESHOLD = 0.8;
 const DEFAULT_SIMILARITY_TOP_K = 5;
 const DEFAULT_AUTHOR_BOOST = 0.07;
@@ -34,6 +35,17 @@ function formatNodeLine(node: ConversationNode): string {
   return `- [${typeLabel}] ${repoLabel}${numberLabel}${title}`;
 }
 
+type CommentKind = "IssueComment" | "ReviewComment" | "Review";
+
+type CommentEntry = Readonly<{
+  id: string;
+  kind: CommentKind;
+  author: string;
+  createdAt: string;
+  url: string;
+  body: string;
+}>;
+
 function indentBlock(text: string, indent: string): string {
   return text
     .split("\n")
@@ -46,6 +58,26 @@ function normalizeMarkdown(markdown: string | null): string {
   return markdown.trim();
 }
 
+function formatDateLabel(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function getCommentKindLabel(kind: CommentKind): string {
+  if (kind === "IssueComment") return "Issue Comment";
+  if (kind === "ReviewComment") return "Review Comment";
+  return "Review";
+}
+
+function formatCommentLine(comment: CommentEntry): string {
+  const kindLabel = getCommentKindLabel(comment.kind);
+  const author = comment.author ? `@${comment.author}` : "unknown";
+  const date = formatDateLabel(comment.createdAt);
+  const meta = [author, date].filter(Boolean).join(" ");
+  return `- [${kindLabel}] ${meta}`.trim();
+}
+
 function dedupeNodes(nodes: ConversationNode[]): ConversationNode[] {
   const seen = new Set<string>();
   const out: ConversationNode[] = [];
@@ -55,6 +87,28 @@ function dedupeNodes(nodes: ConversationNode[]): ConversationNode[] {
     out.push(node);
   }
   return out;
+}
+
+function dedupeComments(nodes: CommentEntry[]): CommentEntry[] {
+  const seen = new Set<string>();
+  const out: CommentEntry[] = [];
+  for (const node of nodes) {
+    const key = `${node.kind}:${node.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(node);
+  }
+  return out;
+}
+
+function sortCommentsByDate(nodes: CommentEntry[]): CommentEntry[] {
+  return [...nodes].sort((a, b) => {
+    const aTime = Date.parse(a.createdAt);
+    const bTime = Date.parse(b.createdAt);
+    const aScore = Number.isFinite(aTime) ? aTime : 0;
+    const bScore = Number.isFinite(bTime) ? bTime : 0;
+    return bScore - aScore;
+  });
 }
 
 function collectParticipantIds(context: GitHubContext): Set<number> {
@@ -79,11 +133,184 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function buildCommentEntry(kind: CommentKind, payload: Record<string, unknown>): CommentEntry | null {
+  let id = "";
+  if (typeof payload.node_id === "string") {
+    id = payload.node_id;
+  } else if (typeof payload.id === "number") {
+    id = String(payload.id);
+  } else if (typeof payload.id === "string") {
+    id = payload.id;
+  }
+  const createdAt = typeof payload.created_at === "string" ? payload.created_at : "";
+  const submittedAt = typeof payload.submitted_at === "string" ? payload.submitted_at : "";
+  const timestamp = createdAt || submittedAt;
+  let url = "";
+  if (typeof payload.html_url === "string") {
+    url = payload.html_url;
+  } else if (typeof payload.url === "string") {
+    url = payload.url;
+  }
+  const user = isRecord(payload.user) ? payload.user : null;
+  const author = typeof user?.login === "string" ? user.login.trim() : "";
+  const rawBody = typeof payload.body === "string" ? payload.body : "";
+  if (!id || !url || !timestamp) return null;
+  return {
+    id,
+    kind,
+    createdAt: timestamp,
+    url,
+    author,
+    body: rawBody,
+  };
+}
+
 function getRepositoryOwner(context: GitHubContext): string {
   const payload = context.payload as Record<string, unknown>;
   const repository = isRecord(payload.repository) ? payload.repository : null;
   const owner = isRecord(repository?.owner) ? repository?.owner : null;
   return typeof owner?.login === "string" ? owner.login.trim().toLowerCase() : "";
+}
+
+async function fetchPagedItems<T>(fetchPage: (page: number, perPage: number) => Promise<T[]>, perPage: number, maxItems: number): Promise<T[]> {
+  const items: T[] = [];
+  let page = 1;
+  while (items.length < maxItems) {
+    const batch = await fetchPage(page, perPage);
+    if (batch.length === 0) break;
+    items.push(...batch);
+    if (batch.length < perPage) break;
+    page += 1;
+    if (page > 2000) break;
+  }
+  return items.slice(0, maxItems);
+}
+
+async function fetchIssueComments(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentEntry[]> {
+  if (node.number === undefined || maxComments <= 0) return [];
+  try {
+    const perPage = Math.min(100, Math.max(1, maxComments));
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.issues.listComments({
+          owner: node.owner,
+          repo: node.repo,
+          issue_number: node.number,
+          per_page: pageSize,
+          page,
+          sort: "created",
+          direction: "desc",
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    const entries: CommentEntry[] = [];
+    for (const comment of raw) {
+      const parsed = isRecord(comment) ? buildCommentEntry("IssueComment", comment) : null;
+      if (parsed) entries.push(parsed);
+    }
+    return entries;
+  } catch (error) {
+    context.logger.debug({ err: error, nodeId: node.id }, "Failed to fetch issue comments for conversation context");
+    return [];
+  }
+}
+
+async function fetchPullComments(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentEntry[]> {
+  if (node.number === undefined || maxComments <= 0) return [];
+  const perPage = Math.min(100, Math.max(1, maxComments));
+  const entries: CommentEntry[] = [];
+  try {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.issues.listComments({
+          owner: node.owner,
+          repo: node.repo,
+          issue_number: node.number,
+          per_page: pageSize,
+          page,
+          sort: "created",
+          direction: "desc",
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const comment of raw) {
+      const parsed = isRecord(comment) ? buildCommentEntry("IssueComment", comment) : null;
+      if (parsed) entries.push(parsed);
+    }
+  } catch (error) {
+    context.logger.debug({ err: error, nodeId: node.id }, "Failed to fetch PR issue comments for conversation context");
+  }
+
+  try {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.pulls.listReviewComments({
+          owner: node.owner,
+          repo: node.repo,
+          pull_number: node.number,
+          per_page: pageSize,
+          page,
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const comment of raw) {
+      const parsed = isRecord(comment) ? buildCommentEntry("ReviewComment", comment) : null;
+      if (parsed) entries.push(parsed);
+    }
+  } catch (error) {
+    context.logger.debug({ err: error, nodeId: node.id }, "Failed to fetch PR review comments for conversation context");
+  }
+
+  try {
+    const raw = await fetchPagedItems(
+      async (page, pageSize) => {
+        const { data } = await context.octokit.rest.pulls.listReviews({
+          owner: node.owner,
+          repo: node.repo,
+          pull_number: node.number,
+          per_page: pageSize,
+          page,
+        });
+        return data ?? [];
+      },
+      perPage,
+      maxComments
+    );
+    for (const review of raw) {
+      const parsed = isRecord(review) ? buildCommentEntry("Review", review) : null;
+      if (parsed) entries.push(parsed);
+    }
+  } catch (error) {
+    context.logger.debug({ err: error, nodeId: node.id }, "Failed to fetch PR reviews for conversation context");
+  }
+
+  return entries;
+}
+
+async function fetchCommentsForNode(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentEntry[]> {
+  if (maxComments <= 0) return [];
+  const raw = node.type === "PullRequest" ? await fetchPullComments(context, node, maxComments) : await fetchIssueComments(context, node, maxComments);
+  const deduped = dedupeComments(raw);
+  const sorted = sortCommentsByDate(deduped);
+  return sorted.slice(0, maxComments);
+}
+
+async function fetchCommentsForNodes(context: GitHubContext, nodes: ConversationNode[], maxComments: number): Promise<Map<string, CommentEntry[]>> {
+  const map = new Map<string, CommentEntry[]>();
+  for (const node of nodes) {
+    const comments = await fetchCommentsForNode(context, node, maxComments);
+    map.set(node.id, comments);
+  }
+  return map;
 }
 
 function buildNodeFromDocument(doc: VectorDocument): ConversationNode | null {
@@ -292,18 +519,28 @@ export async function buildConversationContext(
     maxItems?: number;
     maxChars?: number;
     includeSemantic?: boolean;
+    includeComments?: boolean;
+    maxComments?: number;
   }>
 ): Promise<string> {
   const maxItems = typeof params.maxItems === "number" && Number.isFinite(params.maxItems) ? Math.max(1, Math.trunc(params.maxItems)) : DEFAULT_MAX_ITEMS;
   const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : DEFAULT_MAX_CHARS;
   const includeSemantic = params.includeSemantic !== false;
+  const maxComments =
+    typeof params.maxComments === "number" && Number.isFinite(params.maxComments) ? Math.max(0, Math.trunc(params.maxComments)) : DEFAULT_MAX_COMMENTS;
+  const includeComments = params.includeComments !== false && maxComments > 0;
 
   const keyNodes = await listConversationNodesForKey(params.context, params.conversation.key, maxItems * 2, params.context.logger);
   const explicitNodes = dedupeNodes([...params.conversation.linked, ...keyNodes]).filter((node) => node.id !== params.conversation.root.id);
+  const threadNodes = [params.conversation.root, ...explicitNodes];
+
+  const commentMap = includeComments ? await fetchCommentsForNodes(params.context, threadNodes, maxComments) : new Map<string, CommentEntry[]>();
 
   const config = includeSemantic ? getVectorDbConfig(params.context.logger) : null;
   const docMap = new Map<string, VectorDocument>();
   const graphDocIds = new Set<string>([params.conversation.root.id]);
+  const seedParentMap = new Map<string, string>();
+  const semanticByParent = new Map<string, Array<{ doc: VectorDocument; descriptor: DocumentDescriptor; similarity: number; matchedBy: string }>>();
   if (config) {
     const explicitDocs = await fetchVectorDocuments(
       config,
@@ -313,21 +550,17 @@ export async function buildConversationContext(
     for (const doc of explicitDocs) {
       docMap.set(doc.id, doc);
       graphDocIds.add(doc.id);
+      seedParentMap.set(doc.id, doc.id);
     }
   }
 
-  const semanticEntries: Array<{
-    doc: VectorDocument;
-    descriptor: DocumentDescriptor;
-    similarity: number;
-    matchedBy: string;
-  }> = [];
   if (config) {
     const seedDocs: VectorDocument[] = [];
     const rootDoc = await fetchVectorDocument(config, params.conversation.root.id);
     if (rootDoc) {
       docMap.set(rootDoc.id, rootDoc);
       graphDocIds.add(rootDoc.id);
+      seedParentMap.set(rootDoc.id, params.conversation.root.id);
       if (rootDoc.embedding && rootDoc.embedding.length > 0) {
         seedDocs.push(rootDoc);
       }
@@ -339,8 +572,8 @@ export async function buildConversationContext(
       }
     }
 
-    const commentSeedLimit = Math.max(DEFAULT_MAX_ITEMS, maxItems);
-    for (const node of [params.conversation.root, ...explicitNodes]) {
+    const commentSeedLimit = Math.max(DEFAULT_MAX_COMMENTS, maxComments);
+    for (const node of threadNodes) {
       const comments = await fetchVectorDocumentsByParentId(config, node.id, {
         includeEmbedding: true,
         maxPerParent: commentSeedLimit,
@@ -349,6 +582,7 @@ export async function buildConversationContext(
       for (const doc of comments) {
         docMap.set(doc.id, doc);
         graphDocIds.add(doc.id);
+        seedParentMap.set(doc.id, node.id);
         if (doc.embedding && doc.embedding.length > 0) {
           seedDocs.push(doc);
         }
@@ -415,6 +649,7 @@ export async function buildConversationContext(
         return scoreB - scoreA;
       });
 
+      const seenByParent = new Map<string, Set<string>>();
       for (const row of candidates) {
         const meta = similarityById.get(row.doc.id);
         if (!meta) continue;
@@ -423,40 +658,91 @@ export async function buildConversationContext(
           .filter((seed): seed is VectorDocument => Boolean(seed))
           .map((seed) => formatSeedLabel(seed));
         const matchedBy = formatMatchedBy(sourceLabels);
-        semanticEntries.push({
-          doc: row.doc,
-          descriptor: row.descriptor,
-          similarity: row.similarity,
-          matchedBy,
-        });
+        const entry = { doc: row.doc, descriptor: row.descriptor, similarity: row.similarity, matchedBy };
+        const parentIds = new Set<string>();
+        for (const sourceId of meta.sources) {
+          const parentId = seedParentMap.get(sourceId);
+          if (parentId) parentIds.add(parentId);
+        }
+        for (const parentId of parentIds) {
+          const seen = seenByParent.get(parentId) ?? new Set<string>();
+          if (seen.has(row.doc.id)) continue;
+          seen.add(row.doc.id);
+          seenByParent.set(parentId, seen);
+          const list = semanticByParent.get(parentId) ?? [];
+          list.push(entry);
+          semanticByParent.set(parentId, list);
+        }
       }
     }
   }
 
-  if (explicitNodes.length === 0 && semanticEntries.length === 0) return "";
-
   const lines: string[] = [];
+  const rootMarkdown = normalizeMarkdown(docMap.get(params.conversation.root.id)?.markdown ?? null);
+  const rootComments = commentMap.get(params.conversation.root.id) ?? [];
+  const rootSemantic = semanticByParent.get(params.conversation.root.id) ?? [];
+  const hasRootContent = Boolean(rootMarkdown) || rootComments.length > 0 || rootSemantic.length > 0;
+  if (hasRootContent) {
+    lines.push("Current thread:");
+    lines.push(formatNodeLine(params.conversation.root));
+    if (params.conversation.root.url) lines.push(`  ${params.conversation.root.url}`);
+    if (rootMarkdown) lines.push(indentBlock(rootMarkdown, "  "));
+    if (rootComments.length > 0) {
+      lines.push("  Comments:");
+      for (const comment of rootComments) {
+        lines.push(`  ${formatCommentLine(comment)}`);
+        if (comment.url) lines.push(`    ${comment.url}`);
+        const body = normalizeMarkdown(comment.body);
+        if (body) lines.push(indentBlock(body, "    "));
+      }
+    }
+    if (rootSemantic.length > 0) {
+      lines.push("  Similar (semantic):");
+      const entries = [...rootSemantic].sort((a, b) => b.similarity - a.similarity).slice(0, DEFAULT_SIMILARITY_TOP_K);
+      for (const entry of entries) {
+        lines.push(`  ${formatDescriptorLine(entry.descriptor, { similarity: entry.similarity })}`);
+        if (entry.descriptor.url) lines.push(`    ${entry.descriptor.url}`);
+        if (entry.matchedBy) lines.push(`    matched by: ${entry.matchedBy}`);
+        const markdown = normalizeMarkdown(entry.doc.markdown);
+        if (markdown) lines.push(indentBlock(markdown, "    "));
+      }
+    }
+  }
+
   if (explicitNodes.length > 0) {
+    if (lines.length > 0) lines.push("");
     lines.push("Conversation links (auto-merged):");
     for (const node of explicitNodes.slice(0, maxItems)) {
       lines.push(formatNodeLine(node));
       if (node.url) lines.push(`  ${node.url}`);
       const markdown = normalizeMarkdown(docMap.get(node.id)?.markdown ?? null);
       if (markdown) lines.push(indentBlock(markdown, "  "));
+      const comments = commentMap.get(node.id) ?? [];
+      if (comments.length > 0) {
+        lines.push("  Comments:");
+        for (const comment of comments) {
+          lines.push(`  ${formatCommentLine(comment)}`);
+          if (comment.url) lines.push(`    ${comment.url}`);
+          const body = normalizeMarkdown(comment.body);
+          if (body) lines.push(indentBlock(body, "    "));
+        }
+      }
+      const semantic = semanticByParent.get(node.id) ?? [];
+      if (semantic.length > 0) {
+        lines.push("  Similar (semantic):");
+        const entries = [...semantic].sort((a, b) => b.similarity - a.similarity).slice(0, DEFAULT_SIMILARITY_TOP_K);
+        for (const entry of entries) {
+          lines.push(`  ${formatDescriptorLine(entry.descriptor, { similarity: entry.similarity })}`);
+          if (entry.descriptor.url) lines.push(`    ${entry.descriptor.url}`);
+          if (entry.matchedBy) lines.push(`    matched by: ${entry.matchedBy}`);
+          const entryMarkdown = normalizeMarkdown(entry.doc.markdown);
+          if (entryMarkdown) lines.push(indentBlock(entryMarkdown, "    "));
+        }
+      }
     }
   }
 
-  if (semanticEntries.length > 0) {
-    if (lines.length > 0) lines.push("");
-    lines.push("Related threads (semantic):");
-    for (const entry of semanticEntries.slice(0, maxItems)) {
-      lines.push(formatDescriptorLine(entry.descriptor, { similarity: entry.similarity }));
-      if (entry.descriptor.url) lines.push(`  ${entry.descriptor.url}`);
-      if (entry.matchedBy) lines.push(`  matched by: ${entry.matchedBy}`);
-      const markdown = normalizeMarkdown(entry.doc.markdown);
-      if (markdown) lines.push(indentBlock(markdown, "  "));
-    }
-  }
+  if (lines.length === 0) return "";
 
   return clampText(lines.join("\n"), maxChars);
 }
