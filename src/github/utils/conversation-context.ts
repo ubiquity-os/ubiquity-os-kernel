@@ -137,8 +137,10 @@ function parseSelectorResponse(raw: string): { includeIds: string[] } | null {
     }
   })();
   if (direct && typeof direct === "object" && direct !== null) {
-    const includeIds = Array.isArray((direct as { includeIds?: unknown }).includeIds) ? (direct as { includeIds?: unknown }).includeIds : [];
-    return { includeIds: includeIds.filter((id) => typeof id === "string" && id.trim()) };
+    const includeIdsRaw = (direct as { includeIds?: unknown }).includeIds;
+    const includeIds = Array.isArray(includeIdsRaw) ? includeIdsRaw : [];
+    const filtered = includeIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    return { includeIds: filtered };
   }
 
   const snippet = extractJsonObject(trimmed);
@@ -146,7 +148,8 @@ function parseSelectorResponse(raw: string): { includeIds: string[] } | null {
   try {
     const parsed = JSON.parse(snippet) as { includeIds?: unknown };
     const includeIds = Array.isArray(parsed?.includeIds) ? parsed.includeIds : [];
-    return { includeIds: includeIds.filter((id) => typeof id === "string" && id.trim()) };
+    const filtered = includeIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    return { includeIds: filtered };
   } catch {
     return null;
   }
@@ -262,7 +265,8 @@ async function fetchPagedItems<T>(fetchPage: (page: number, perPage: number) => 
 }
 
 async function fetchIssueComments(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentEntry[]> {
-  if (node.number === undefined || maxComments <= 0) return [];
+  const nodeNumber = node.number;
+  if (nodeNumber === undefined || maxComments <= 0) return [];
   try {
     const perPage = Math.min(100, Math.max(1, maxComments));
     const raw = await fetchPagedItems(
@@ -270,7 +274,7 @@ async function fetchIssueComments(context: GitHubContext, node: ConversationNode
         const { data } = await context.octokit.rest.issues.listComments({
           owner: node.owner,
           repo: node.repo,
-          issue_number: node.number,
+          issue_number: nodeNumber,
           per_page: pageSize,
           page,
           sort: "created",
@@ -294,7 +298,8 @@ async function fetchIssueComments(context: GitHubContext, node: ConversationNode
 }
 
 async function fetchPullComments(context: GitHubContext, node: ConversationNode, maxComments: number): Promise<CommentEntry[]> {
-  if (node.number === undefined || maxComments <= 0) return [];
+  const nodeNumber = node.number;
+  if (nodeNumber === undefined || maxComments <= 0) return [];
   const perPage = Math.min(100, Math.max(1, maxComments));
   const entries: CommentEntry[] = [];
   try {
@@ -303,7 +308,7 @@ async function fetchPullComments(context: GitHubContext, node: ConversationNode,
         const { data } = await context.octokit.rest.issues.listComments({
           owner: node.owner,
           repo: node.repo,
-          issue_number: node.number,
+          issue_number: nodeNumber,
           per_page: pageSize,
           page,
           sort: "created",
@@ -328,7 +333,7 @@ async function fetchPullComments(context: GitHubContext, node: ConversationNode,
         const { data } = await context.octokit.rest.pulls.listReviewComments({
           owner: node.owner,
           repo: node.repo,
-          pull_number: node.number,
+          pull_number: nodeNumber,
           per_page: pageSize,
           page,
           sort: "created",
@@ -353,7 +358,7 @@ async function fetchPullComments(context: GitHubContext, node: ConversationNode,
         const { data } = await context.octokit.rest.pulls.listReviews({
           owner: node.owner,
           repo: node.repo,
-          pull_number: node.number,
+          pull_number: nodeNumber,
           per_page: pageSize,
           page,
         });
@@ -394,20 +399,21 @@ async function fetchCommentsForNodes(context: GitHubContext, nodes: Conversation
 }
 
 async function fetchNodeBodyMarkdown(context: GitHubContext, node: ConversationNode): Promise<string> {
-  if (node.number === undefined) return "";
+  const nodeNumber = node.number;
+  if (nodeNumber === undefined) return "";
   try {
     if (node.type === "PullRequest") {
       const { data } = await context.octokit.rest.pulls.get({
         owner: node.owner,
         repo: node.repo,
-        pull_number: node.number,
+        pull_number: nodeNumber,
       });
       return typeof data.body === "string" ? data.body : "";
     }
     const { data } = await context.octokit.rest.issues.get({
       owner: node.owner,
       repo: node.repo,
-      issue_number: node.number,
+      issue_number: nodeNumber,
     });
     return typeof data.body === "string" ? data.body : "";
   } catch (error) {

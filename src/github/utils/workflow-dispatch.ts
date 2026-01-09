@@ -98,7 +98,7 @@ async function findWorkflowRunUrl(
 
   while (Date.now() <= deadline) {
     try {
-      const { data } = await authenticatedOctokit.rest.actions.listWorkflowRunsForWorkflow({
+      const { data } = await authenticatedOctokit.rest.actions.listWorkflowRuns({
         owner: options.owner,
         repo: options.repository,
         workflow_id: options.workflowId,

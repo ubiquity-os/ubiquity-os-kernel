@@ -1,5 +1,5 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { Type as T } from "@sinclair/typebox";
+import { Type as T, type TProperties } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
@@ -9,7 +9,7 @@ import { getEnvValue } from "./env.ts";
 
 const _manifestCache: Record<string, Manifest> = {};
 const kernelManifestSchema = T.Object({
-  ...sdkManifestSchema.properties,
+  ...(sdkManifestSchema.properties as unknown as TProperties),
   // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
   "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
 });

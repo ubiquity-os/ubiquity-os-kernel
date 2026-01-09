@@ -318,9 +318,10 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 }
 
-function truncateForRouter(text: string): string {
-  if (text.length <= 1000) return text;
-  return `${text.slice(0, 500)}\n...\n${text.slice(-500)}`;
+export function truncateForRouter(text?: string | null): string {
+  const normalized = text ?? "";
+  if (normalized.length <= 1000) return normalized;
+  return `${normalized.slice(0, 500)}\n...\n${normalized.slice(-500)}`;
 }
 
 type CommandDescriptor = {
