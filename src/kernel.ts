@@ -16,6 +16,7 @@ import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
 export const app = new Hono();
+export default app;
 
 app.use(requestId());
 app.use(async (c: Context, next) => {

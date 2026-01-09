@@ -11,10 +11,9 @@ import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugin
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
 import issueCommentCreated from "./issue-comment-created";
-import issueCommentEdited from "./issue-comment-edited";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created";
-import pullRequestReviewCommentEdited from "./pull-request-review-comment-edited";
 import handlePushEvent from "./push-event";
+import { handleAgentRunCommentEdited } from "./agent-run-comment";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
 const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
@@ -342,9 +341,13 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.on("issue_comment.created", issueCommentCreated);
-  eventHandler.on("issue_comment.edited", issueCommentEdited);
+  eventHandler.on("issue_comment.edited", async (context) => {
+    await handleAgentRunCommentEdited(context as GitHubContext<"issue_comment.edited">, context.payload.issue.number);
+  });
   eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
-  eventHandler.on("pull_request_review_comment.edited", pullRequestReviewCommentEdited);
+  eventHandler.on("pull_request_review_comment.edited", async (context) => {
+    await handleAgentRunCommentEdited(context as GitHubContext<"pull_request_review_comment.edited">, context.payload.pull_request.number);
+  });
   eventHandler.on("push", handlePushEvent);
   eventHandler.on("installation.created", () => {}); // No-op to handle event
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird

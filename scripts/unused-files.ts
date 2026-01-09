@@ -1,7 +1,7 @@
 import { extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_ENTRIES = ["src/kernel.ts", "src/adapters/server.ts"];
+const DEFAULT_ENTRIES = ["src/kernel.ts"];
 const DEFAULT_INCLUDES = ["src"];
 const SKIP_DIRS = new Set([".git", "node_modules", ".cache", "dist", "coverage"]);
 

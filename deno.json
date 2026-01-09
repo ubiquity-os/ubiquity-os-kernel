@@ -2,9 +2,9 @@
   "nodeModulesDir": "auto",
   "tasks": {
     "dev": "deno run --allow-run --allow-env predev.ts && deno task dev:serve",
-    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts",
+    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
     "test": "deno test --allow-env --allow-net --allow-read",
-    "check": "deno check --sloppy-imports src/adapters/server.ts src/kernel.ts",
+    "check": "deno check --sloppy-imports src/kernel.ts",
     "commitlint": "deno run --allow-env --allow-read --allow-run --allow-sys npm:@commitlint/cli@19.3.0",
     "fmt": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --write .",
     "fmt:check": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --check .",
@@ -17,7 +17,7 @@
     "deps:unused": "deno run --allow-read --allow-run scripts/unused-files.ts",
     "deps:unused:strict": "deno run --allow-read --allow-run scripts/unused-files.ts --fail",
     "dev:easy": "deno run -A predev.ts && deno task dev:serve:easy",
-    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/adapters/server.ts"
+    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/kernel.ts"
   },
   "compilerOptions": {
     "lib": ["deno.window"],
