@@ -1,5 +1,4 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import OpenAI from "openai";
 import { logger as pinoLogger } from "../logger/logger";
 import { customOctokit } from "./github-client";
 import { GitHubEventHandler } from "./github-event-handler";
@@ -13,7 +12,6 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   }[TSupportedEvents]["payload"];
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
-  public openAi: OpenAI;
   public llm: string;
   public logger = pinoLogger;
 
@@ -21,7 +19,6 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     eventHandler: InstanceType<typeof GitHubEventHandler>,
     event: WebhookEvent<TSupportedEvents>,
     octokit: InstanceType<typeof customOctokit>,
-    openAi: OpenAI,
     logger: typeof pinoLogger
   ) {
     this.eventHandler = eventHandler;
@@ -34,7 +31,6 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
       this.key = this.name;
     }
     this.octokit = octokit;
-    this.openAi = openAi;
     this.llm = eventHandler.llm;
     const instigator = "repository" in this.payload ? this.payload.repository?.html_url : undefined;
     this.logger = logger.child({ name: this.key, instigator });

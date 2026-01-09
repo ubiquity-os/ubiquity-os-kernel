@@ -2,7 +2,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest 
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
-import OpenAI from "openai";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
@@ -30,15 +29,6 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
-
-// Mock OpenAI
-const mockOpenAi = {
-  chat: {
-    completions: {
-      create: jest.fn(),
-    },
-  },
-} as unknown as OpenAI;
 
 // Mock GitHubEventHandler
 const TEST_ENVIRONMENT = "development";
@@ -128,25 +118,6 @@ describe("Kernel Event Processing Tests", () => {
     });
 
     server.use(http.get(`${TEST_HELLO_WORLD_URL}/manifest.json`, () => HttpResponse.json(helloWorldManifest)));
-
-    // Mock OpenAI for command routing
-    (mockOpenAi.chat.completions.create as jest.Mock).mockResolvedValue({
-      choices: [
-        {
-          message: {
-            tool_calls: [
-              {
-                type: "function",
-                function: {
-                  name: "hello",
-                  arguments: "{}",
-                },
-              },
-            ],
-          },
-        },
-      ],
-    });
   });
 
   it("Should process /hello comment and dispatch to hello-world-plugin", async () => {
@@ -170,7 +141,6 @@ describe("Kernel Event Processing Tests", () => {
       webhookSecret: TEST_WEBHOOK_SECRET,
       appId: TEST_APP_ID,
       privateKey: TEST_PRIVATE_KEY,
-      llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
     jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
@@ -184,7 +154,6 @@ describe("Kernel Event Processing Tests", () => {
       id: "test-context-id",
       key: "issue_comment.created",
       octokit: mockOctokit,
-      openAi: mockOpenAi,
       eventHandler: mockEventHandler,
       payload: fakeEvent.payload,
       logger: logger,
@@ -192,9 +161,6 @@ describe("Kernel Event Processing Tests", () => {
 
     // Trigger event processing
     await eventHandler.webhooks.receive(fakeEvent);
-
-    // Slash commands should bypass LLM routing
-    expect(mockOpenAi.chat.completions.create).not.toHaveBeenCalled();
 
     // Verify dispatches
     expect(mockDispatchWorker).toHaveBeenCalledWith(
@@ -216,7 +182,6 @@ describe("Kernel Event Processing Tests", () => {
       webhookSecret: TEST_WEBHOOK_SECRET,
       appId: TEST_APP_ID,
       privateKey: TEST_PRIVATE_KEY,
-      llmClient: mockOpenAi,
       llm: TEST_MODEL,
     });
     jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
@@ -226,7 +191,6 @@ describe("Kernel Event Processing Tests", () => {
       id: "test-context-id",
       key: "issue_comment.created",
       octokit: mockOctokit,
-      openAi: mockOpenAi,
       eventHandler: mockEventHandler,
       payload: fakeEvent.payload,
       logger: logger,

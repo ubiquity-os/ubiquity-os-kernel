@@ -2,16 +2,15 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { env as honoEnv } from "hono/adapter";
 import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { createAppAuth } from "@octokit/auth-app";
-import OpenAI from "openai";
-import { KERNEL_VERSION } from "./version.ts";
 import { GitHubEventHandler } from "./github/github-event-handler.ts";
 import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
+import { getKernelVersion } from "./github/utils/kernel-metadata.ts";
 import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
@@ -26,8 +25,9 @@ app.use(async (c: Context, next) => {
   await next();
 });
 
-app.get("/", (c) => {
-  return c.text(`Welcome to UbiquityOS kernel version ${KERNEL_VERSION}`);
+app.get("/", async (c) => {
+  const version = await getKernelVersion();
+  return c.text(`Welcome to UbiquityOS kernel version ${version}`);
 });
 
 app.get("/x25519_public_key", async (ctx: Context) => {
@@ -116,13 +116,11 @@ app.post("/", async (ctx: Context) => {
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const llmClient = new OpenAI({ apiKey: "dummy" });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      llmClient,
       llm: "gpt-5.2",
       aiBaseUrl: env.UOS_AI_BASE_URL,
       kernelRefreshUrl,
@@ -137,12 +135,7 @@ app.post("/", async (ctx: Context) => {
     });
     bindHandlers(eventHandler);
 
-    // if running in Cloudflare Worker, handle the webhook in the background and return a response immediately
-    if (getRuntimeKey() === "workerd") {
-      ctx.executionCtx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
-    } else {
-      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
-    }
+    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);

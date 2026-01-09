@@ -3,7 +3,7 @@
 The kernel is designed to:
 
 - Interface with plugins (GitHub Actions) for longer running processes.
-- Run on Cloudflare Workers.
+- Run on Deno Deploy.
 
 ## Environment Variables
 
@@ -66,13 +66,11 @@ GITHUB_TOKEN=... deno run -A --sloppy-imports scripts/conversation-graph.ts <git
 
 Useful flags: `--all`, `--no-semantic`, `--context-max-comments`, `--context-max-comment-chars`.
 
-### Deploying to Cloudflare Workers
+### Deploying to Deno Deploy
 
-1. **Install Dependencies (for deploy tooling):**
+Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml`.
 
-   - Execute `npm install` (or your preferred Node package manager).
-
-2. **Create a GitHub App:**
+1. **Create a GitHub App:**
 
    - Generate a GitHub App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
@@ -89,26 +87,18 @@ Useful flags: `--all`, `--no-semantic`, `--context-max-comments`, `--context-max
 
      - Members: Read only
 
-3. **Cloudflare Account Setup:**
+2. **Set repository secrets (required):**
 
-   - If not done already, create a Cloudflare account.
-   - Run `npx wrangler login` to log in.
+   - `DENO_DEPLOY_TOKEN`
+   - `APP_WEBHOOK_SECRET`
+   - `APP_ID`
+   - `APP_PRIVATE_KEY`
 
-4. **Manage Secrets:**
+   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
 
-   - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
-   - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
+3. **Deploy:**
 
-     ```sh
-     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM) | npx wrangler secret put APP_PRIVATE_KEY --env dev
-     ```
-
-5. **Deploy the Kernel:**
-
-   - Execute `npm run deploy-dev` to deploy the kernel.
-
-6. **Setup database (optional)**
-   - You can set up your local database by going through [this repository](https://github.com/ubiquity-os/database) and following the instructions.
+   - Push to `main` (or run the workflow manually) to deploy.
 
 ### Plugin-Kernel Input/Output Interface
 
@@ -147,9 +137,9 @@ const input: PluginInput = {
 The kernel supports 2 types of plugins:
 
 1. GitHub actions ([wiki](https://github.com/ubiquity-os/ubiquity-os-kernel/wiki/How-it-works))
-2. Cloudflare Workers (which are simple backend servers with a single API route)
+2. HTTP plugins (simple backend servers with a single API route)
 
-How to run a "hello-world" plugin the Cloudflare way:
+How to run a "hello-world" plugin locally:
 
 1. Run `deno task dev` to spin up the kernel
 2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
@@ -184,5 +174,5 @@ A screencast tutorial on how to set up and run a hello world plugin is available
 To start Jest tests, run
 
 ```shell
-bun test
+bun run jest:test
 ```

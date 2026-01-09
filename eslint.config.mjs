@@ -11,8 +11,6 @@ export default tsEslint.config({
     "check-file": checkFile,
   },
   ignores: [
-    ".github/knip.ts",
-    "**/.wrangler/**",
     "jest.config.ts",
     ".husky/**",
     "dist/**",

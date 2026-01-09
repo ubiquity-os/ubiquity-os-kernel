@@ -2,13 +2,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest 
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
-import type OpenAI from "openai";
 import { readFileSync } from "node:fs";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config";
 import { logger } from "../src/logger/logger";
-import { KERNEL_VERSION } from "../src/version";
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
 
@@ -30,7 +28,6 @@ const kernelRepo = "ubiquity-os-kernel";
 const name = kernelRepo;
 const eventName = "issue_comment.created";
 const UBIQUITY_OS_OWNER = "ubiquity-os";
-const openAi = {} as unknown as OpenAI;
 const baseComment = {
   user: {
     login: "test-user",
@@ -144,17 +141,8 @@ const getCommitHashForTest = (): string => {
   return "unknown";
 };
 
-const getPackageVersionForTest = (): string => {
-  const envVersion = process.env.UOS_KERNEL_VERSION ?? process.env.npm_package_version ?? process.env.PACKAGE_VERSION;
-  if (envVersion?.trim()) {
-    return envVersion.trim();
-  }
-  return KERNEL_VERSION;
-};
-
-const EXPECTED_VERSION = getPackageVersionForTest();
-const EXPECTED_COMMIT_HASH = getCommitHashForTest();
-const EXPECTED_HELP_FOOTER = `\n\n###### UbiquityOS Production [v${EXPECTED_VERSION}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${EXPECTED_VERSION}) [${EXPECTED_COMMIT_HASH}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${EXPECTED_COMMIT_HASH})`;
+let expectedCommitHash = "";
+let expectedHelpFooter = "";
 const EXPECTED_COMMAND_RESPONSE_MARKER = '\n\n<!-- "commentKind": "command-response" -->';
 
 let nextCommentId = 1000;
@@ -168,8 +156,10 @@ type LlmRequestPayload = {
   messages?: Array<{ role?: string; content?: unknown }>;
 };
 
-beforeAll(() => {
+beforeAll(async () => {
   server.listen();
+  expectedCommitHash = getCommitHashForTest();
+  expectedHelpFooter = `\n\n###### UbiquityOS Production [${expectedCommitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${expectedCommitHash})`;
 });
 afterEach(() => {
   server.resetHandlers();
@@ -331,7 +321,6 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -349,7 +338,7 @@ describe("Event related tests", () => {
         "| `/foo` | foo command | `/foo bar` |",
         "| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |",
       ].join("\n") +
-      EXPECTED_HELP_FOOTER +
+      expectedHelpFooter +
       EXPECTED_COMMAND_RESPONSE_MARKER;
     expect(spy.mock.calls).toEqual([
       [
@@ -385,7 +374,6 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -425,7 +413,6 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -461,7 +448,6 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,
@@ -502,7 +488,6 @@ describe("Event related tests", () => {
           },
         },
       },
-      openAi,
       eventHandler: eventHandler,
       payload: {
         ...payload,

@@ -1,7 +1,6 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
-import OpenAI from "openai";
 import { logger } from "../logger/logger.ts";
 import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
 
@@ -12,7 +11,6 @@ export type Options = {
   webhookSecret: string;
   appId: string | number;
   privateKey: string;
-  llmClient: OpenAI;
   llm: string;
   aiBaseUrl?: string;
   kernelRefreshUrl?: string;
@@ -37,7 +35,6 @@ export class GitHubEventHandler {
   private readonly _privateKey: string;
   private _cachedKernelPublicKeyPem?: string;
   private readonly _appId: number;
-  private readonly _llmClient: OpenAI;
   public readonly llm: string;
   public readonly aiBaseUrl: string;
   public readonly kernelRefreshUrl: string;
@@ -55,7 +52,6 @@ export class GitHubEventHandler {
     this._privateKey = normalizeMultilineSecret(options.privateKey);
     this._appId = Number(options.appId);
     this._webhookSecret = options.webhookSecret;
-    this._llmClient = options.llmClient;
     this.llm = options.llm;
     this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
     this.kernelRefreshUrl = options.kernelRefreshUrl ?? "";
@@ -101,10 +97,10 @@ export class GitHubEventHandler {
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
+      return new GitHubContext(this, event, octokit, this.logger);
     } else {
       const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
+      return new GitHubContext(this, event, octokit, this.logger);
     }
   }
 

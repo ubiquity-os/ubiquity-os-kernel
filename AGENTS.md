@@ -349,4 +349,3 @@ sequenceDiagram
 - `src/github/utils/plugins.ts`
 - `src/github/utils/workflow-dispatch.ts`
 - `tests/kernel.test.ts`
-- `tests/__mocks__/hello-world-plugin.ts`

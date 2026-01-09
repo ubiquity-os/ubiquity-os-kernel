@@ -127,7 +127,6 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
       getAuthenticatedOctokit: jest.fn().mockReturnValue(octokit),
       logger: logger,
     } as unknown as GitHubEventHandler,
-    openAi: {} as unknown as GitHubContext<"issue_comment.created">["openAi"],
     llm: "",
   };
 }

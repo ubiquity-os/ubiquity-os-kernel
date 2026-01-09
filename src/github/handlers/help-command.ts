@@ -2,7 +2,7 @@ import { GitHubContext } from "../github-context";
 import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
 import { getConfig } from "../utils/config";
 import { getManifest } from "../utils/plugins";
-import { getKernelCommit, getKernelVersion } from "../utils/kernel-metadata";
+import { getKernelCommit } from "../utils/kernel-metadata";
 
 type CommandRow = {
   key: string;
@@ -87,8 +87,7 @@ async function parseCommandsFromManifest(context: GitHubContext<"issue_comment.c
 export async function postHelpCommand(context: GitHubContext<"issue_comment.created">) {
   await applyCommandResponsePolicy(context);
 
-  // Get kernel version and commit hash
-  const version = await getKernelVersion();
+  // Get kernel commit hash
   const commitHash = await getKernelCommit();
   const environment = context.eventHandler.environment;
 
@@ -120,7 +119,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
         return a.localeCompare(b);
       })
       .map(([, row]) => row);
-    const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [v${version}](https://github.com/ubiquity-os/ubiquity-os-kernel/releases/tag/v${version}) [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
+    const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
     const body = appendCommandResponseMarker(comments.concat(commands).join("\n") + footer);
     await context.octokit.rest.issues.createComment({
       body,

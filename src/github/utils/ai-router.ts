@@ -1,6 +1,13 @@
-import type { ChatCompletion } from "openai/resources/chat/completions";
 import { GitHubContext } from "../github-context";
 import { createKernelAttestationToken } from "./kernel-attestation";
+
+type ChatCompletion = Readonly<{
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    } | null;
+  } | null> | null;
+}>;
 
 function isCloudflareAntibotHtml(status: number, html: string): boolean {
   if (status !== 403 && status !== 503) return false;

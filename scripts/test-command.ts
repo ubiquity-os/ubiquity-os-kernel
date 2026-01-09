@@ -341,17 +341,12 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
       return merged;
     }
 
-    // Create a minimal OpenAI client for the event handler
-    const { default: openai } = await import("openai");
-    const llmClient = new openai({ apiKey: "dummy" }); // Not needed for config fetching
-
     // Create a GitHubEventHandler for app authentication
     const eventHandler = new GitHubEventHandler({
       environment: process.env.ENVIRONMENT ?? "development",
       webhookSecret: "dummy", // Not needed for config fetching
       appId: appId,
       privateKey: privateKey,
-      llmClient: llmClient,
       llm: "dummy", // Not needed for config fetching
     });
 
@@ -468,10 +463,6 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
 
   if (appId && privateKey) {
     try {
-      // Create a minimal OpenAI client for the event handler
-      const { default: openai } = await import("openai");
-      const llmClient = new openai({ apiKey: "dummy" });
-
       // Create a GitHubEventHandler for app authentication
       const { GitHubEventHandler } = await import("../src/github/github-event-handler.js");
       const eventHandler = new GitHubEventHandler({
@@ -479,7 +470,6 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
         webhookSecret: "dummy",
         appId: appId,
         privateKey: privateKey,
-        llmClient: llmClient,
         llm: "dummy",
       });
 
