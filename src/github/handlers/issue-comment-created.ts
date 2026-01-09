@@ -1,14 +1,44 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import { GitHubContext } from "../github-context";
-import { PluginInput } from "../types/plugin";
-import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
-import { getConfig } from "../utils/config";
-import { getManifest, getWorkerUrlFromManifest } from "../utils/plugins";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
-import { postHelpCommand } from "./help-command";
-import { callPersonalAgent } from "./personal-agent";
+import { GitHubContext } from "../github-context.ts";
+import { PluginInput } from "../types/plugin.ts";
+import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
+import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
+import { getConfig } from "../utils/config.ts";
+import { getManifest } from "../utils/plugins.ts";
+import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
+import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch.ts";
+import { postHelpCommand } from "./help-command.ts";
+import { dispatchInternalAgent } from "./internal-agent.ts";
+import { buildRouterPrompt } from "./router-prompt.ts";
+import { callPersonalAgent } from "./personal-agent.ts";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
+import { buildConversationContext } from "../utils/conversation-context.ts";
+import { getRouterDecision } from "./router-decision.ts";
 
-async function isUserContributor(context: GitHubContext<"issue_comment.created">) {
+type SlashCommandInvocation = {
+  name: string;
+  rawArgs: string;
+};
+
+async function addReactionEyes(context: GitHubContext<"issue_comment.created">) {
+  const commentId = context.payload.comment.id;
+  const owner = context.payload.repository.owner.login;
+  const repo = context.payload.repository.name;
+  try {
+    await context.octokit.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content: "eyes",
+    });
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to add 👀 reaction (non-fatal)");
+  }
+}
+
+async function isExternalContributor(context: GitHubContext<"issue_comment.created">) {
   const {
     octokit,
     payload: {
@@ -56,8 +86,8 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
   const issueAuthor = context.payload.issue.user?.login;
   const commentAuthor = context.payload.comment.user?.login;
 
-  // The author of that comment is not a contributor, or not a human
-  if (comment.user?.type !== "User" || !(await isUserContributor(context))) {
+  // The author of that comment is not an external contributor, or not a human
+  if (comment.user?.type !== "User" || !(await isExternalContributor(context))) {
     context.logger.warn(`Comment author is not an external contributor, or not a human, will ignore the help request.`);
     return false;
   }
@@ -84,12 +114,54 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 }
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim().toLowerCase();
-  if (body.startsWith(`/help`)) {
+  const body = context.payload.comment.body.trim();
+  const bodyLower = body.toLowerCase();
+  const afterMention = extractAfterUbiquityosMention(body);
+  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
+  const isHuman = context.payload.comment.user?.type === "User";
+  const shouldSkip = await shouldSkipDuplicateCommentEvent({
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+    eventName: context.key,
+    commentId: context.payload.comment.id,
+  });
+  if (shouldSkip) {
+    context.logger.info({ commentId: context.payload.comment.id }, "Skipping duplicate comment event");
+    return;
+  }
+
+  if (!isHuman && !slashInvocation && afterMention === null) {
+    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
+    return;
+  }
+
+  if (bodyLower.startsWith(`/help`)) {
     await postHelpCommand(context);
-  } else if (body.startsWith(`@ubiquityos`)) {
+    return;
+  }
+
+  if (afterMention !== null) {
+    if (context.payload.comment.user?.type === "User") {
+      await addReactionEyes(context);
+    }
+    if (slashInvocation) {
+      await dispatchSlashCommand(context, slashInvocation);
+      return;
+    }
+    const agentPrefixMatch = /^agent\b/i.exec(afterMention);
+    if (agentPrefixMatch) {
+      const task = afterMention.replace(/^agent\b/i, "").trim() || body.trim();
+      await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+      return;
+    }
     await commandRouter(context);
-  } else if (await isUserHelpRequest(context)) {
+  } else if (body.startsWith(`/`)) {
+    const slashInvocation = extractSlashCommandInvocation(body);
+    if (slashInvocation) {
+      await dispatchSlashCommand(context, slashInvocation);
+      return;
+    }
+  } else if (isHuman && (await isUserHelpRequest(context))) {
     const issueAuthor = context.payload.issue.user?.login;
     context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
     await commandRouter(context);
@@ -98,205 +170,410 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 }
 
-interface OpenAiFunction {
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters?: Record<string, unknown>;
-    strict?: boolean | null;
+export function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
+  const match = /^\s*\/([\w-]+)\b(.*)$/s.exec(text);
+  if (!match) return null;
+  return {
+    name: match[1],
+    rawArgs: (match[2] ?? "").trim(),
   };
 }
 
-const embeddedCommands: Array<OpenAiFunction> = [
-  {
-    type: "function",
-    function: {
-      name: "help",
-      description: "Shows all available commands and their examples",
-      strict: false,
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-    },
-  },
-];
+export function extractAfterUbiquityosMention(text: string): string | null {
+  const match = /@ubiquityos\b/i.exec(text);
+  if (!match || match.index === undefined) return null;
+  return text.slice(match.index + match[0].length).trim();
+}
 
-async function commandRouter(context: GitHubContext<"issue_comment.created">) {
+function listUserMentions(text: string): string[] {
+  return [...text.matchAll(/@([a-z0-9-_]+)/gi)].map((match) => match[1]);
+}
+
+export function parseSlashCommandParameters(
+  commandName: string,
+  rawArgs: string,
+  parametersSpec: unknown,
+  context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">
+) {
+  const paramObject = typeof parametersSpec === "object" && parametersSpec !== null ? (parametersSpec as Record<string, unknown>) : {};
+  const specProperties =
+    typeof (paramObject as Record<string, unknown>).properties === "object" && (paramObject as Record<string, unknown>).properties !== null
+      ? ((paramObject as Record<string, unknown>).properties as Record<string, unknown>)
+      : paramObject;
+
+  const propertyNames = Object.keys(specProperties);
+  if (!propertyNames.length) return {};
+
+  const args = rawArgs.trim();
+
+  if (propertyNames.includes("teammates")) {
+    const teammates = listUserMentions(args);
+    return { teammates };
+  }
+
+  if (propertyNames.includes("username")) {
+    const first = args.split(/\s+/).find(Boolean) ?? "";
+    const username = (first.startsWith("@") ? first.slice(1) : first) || context.payload.comment.user?.login || "";
+    return { username };
+  }
+
+  if (propertyNames.includes("walletAddress") && propertyNames.includes("unset")) {
+    const token = args.split(/\s+/).find(Boolean)?.toLowerCase() ?? "";
+    const shouldUnset = token === "unset";
+    return { walletAddress: shouldUnset ? "" : args, unset: shouldUnset };
+  }
+
+  if (propertyNames.length === 1) {
+    return { [propertyNames[0]]: args };
+  }
+
+  if (commandName.toLowerCase() === "stop") {
+    return {};
+  }
+
+  return {};
+}
+
+async function dispatchSlashCommand(context: GitHubContext<"issue_comment.created">, invocation: SlashCommandInvocation) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    context.logger.warn(`No installation found, cannot invoke command`);
+    context.logger.warn(`No installation found, cannot route slash command`);
     return;
   }
 
-  const commands = [...embeddedCommands];
+  const slashCommandName = invocation.name;
   const config = await getConfig(context);
-  const pluginsWithManifest: { target: GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  if (!config) {
+    context.logger.debug("No configuration was found");
+    return;
+  }
+
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
-    let target: GithubPlugin;
+    let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
-    const manifest = await getManifest(context, target);
-    if (!manifest?.commands) {
+    if (isBotAuthor && pluginSettings?.skipBotEvents) {
       continue;
     }
-    pluginsWithManifest.push({
-      target,
-      settings: pluginSettings,
-      manifest,
-    });
-    for (const [name, command] of Object.entries(manifest.commands)) {
-      commands.push({
-        type: "function",
-        function: {
-          name: name,
-          description: command.description,
-          parameters: command.parameters
-            ? {
-                ...command.parameters,
-                required: Object.keys(command.parameters?.properties ?? {}),
-                additionalProperties: false,
-              }
-            : undefined,
-          strict: true,
-        },
+    const manifest = await getManifest(context, target);
+    if (!manifest?.commands) continue;
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+  }
+
+  let matchedPluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
+  for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+    const candidate = pluginsWithManifest[i];
+    if (candidate?.manifest?.commands?.[slashCommandName] !== undefined) {
+      matchedPluginWithManifest = candidate;
+      break;
+    }
+  }
+
+  if (!matchedPluginWithManifest) {
+    context.logger.debug({ slashCommandName }, "No plugin found for slash command.");
+    return;
+  }
+
+  const commandSpec = matchedPluginWithManifest.manifest.commands?.[slashCommandName];
+  const parameters = parseSlashCommandParameters(slashCommandName, invocation.rawArgs, commandSpec?.parameters, context);
+
+  const command = {
+    name: slashCommandName,
+    parameters,
+  };
+
+  const plugin = matchedPluginWithManifest.target;
+  const settings = withKernelContextSettingsIfNeeded(matchedPluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
+
+  const isGithubPluginObject = isGithubPlugin(plugin);
+  const stateId = crypto.randomUUID();
+  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+  const token = await context.eventHandler.getToken(context.payload.installation.id);
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
+
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch slash command plugin.");
+  try {
+    if (!isGithubPluginObject) {
+      await dispatchWorker(plugin, await inputs.getInputs());
+    } else {
+      const baseInputs = (await inputs.getInputs()) as Record<string, string>;
+      const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
+      const runUrl = await dispatchWorkflowWithRunUrl(context, {
+        owner: plugin.owner,
+        repository: plugin.repo,
+        workflowId: plugin.workflowId,
+        ref,
+        inputs: workflowInputs,
+      });
+      await updateRequestCommentRunUrl(context, runUrl);
+    }
+  } catch (e) {
+    context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
+  }
+}
+
+function truncateForRouter(text: string): string {
+  if (text.length <= 1000) return text;
+  return `${text.slice(0, 500)}\n...\n${text.slice(-500)}`;
+}
+
+type CommandDescriptor = {
+  name: string;
+  description: string;
+  example: string;
+  parameters: unknown;
+};
+
+function getAgentTaskFromParameters(parameters: unknown): string | null {
+  if (typeof parameters !== "object" || parameters === null) return null;
+  if (!("task" in parameters)) return null;
+  const task = (parameters as { task?: unknown }).task;
+  if (typeof task !== "string") return null;
+  const trimmed = task.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function postReply(context: GitHubContext<"issue_comment.created">, body: string) {
+  const message = body.trim();
+  if (!message) return;
+  await context.octokit.rest.issues.createComment({
+    body: message,
+    issue_number: context.payload.issue.number,
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+  });
+}
+
+export function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
+  const out = new Map<string, CommandDescriptor>();
+
+  function setCommand(command: CommandDescriptor) {
+    const key = command.name.toLowerCase();
+    out.delete(key);
+    out.set(key, command);
+  }
+
+  for (const manifest of manifests) {
+    for (const [name, command] of Object.entries(manifest.commands ?? {})) {
+      setCommand({
+        name,
+        description: command.description,
+        example: command["ubiquity:example"],
+        parameters: command.parameters,
       });
     }
   }
 
-  context.logger.debug(commands, "Available commands");
-
-  const response = await context.openAi.chat.completions.create({
-    model: context.llm,
-    messages: [
-      {
-        role: "system",
-        content: [
-          {
-            text: `
-You are a GitHub bot named **UbiquityOS**. You receive a single JSON object and OPTIONAL tool definitions (functions). Your job is to either (a) choose exactly one appropriate tool to call with strictly valid JSON arguments, or (b) produce a plain natural language message WITHOUT calling any tool.
-
-### Input JSON fields
-- repositoryOwner
-- repositoryName
-- issueNumber
-- author
-- comment  (natural language text mentioning "@UbiquityOS")
-
-### Tool Calling Rules (CRITICAL)
-1. Only call a tool if the user's comment clearly maps to a known command/function provided in the current tool list (the "tools" array).
-2. If the request is vague, conversational, a greeting, gratitude, or cannot be unambiguously mapped: DO NOT call a tool. Return a short helpful textual reply instead.
-3. If the user asks for a list of commands or how to use you: call the "help" function.
-4. Never invent tools or parameters. Use only the exact names & JSON schema provided.
-5. If required parameters are missing or ambiguous in the comment, DO NOT guess. Return a clarification message (no tool call).
-6. Return at most one tool call. parallel_tool_calls is false.
-7. If multiple intents are present, pick the highest‑priority actionable one only if unambiguous; otherwise ask for clarification (no tool call).
-8. If no suitable tool: respond with plain text and ensure tool_calls is EMPTY (omit it entirely by not calling any tool).
-
-### Output Behavior
-- To invoke a tool: respond via the tool call mechanism (the API will structure tool_calls). Provide only arguments allowed by that tool's schema.
-- To NOT invoke a tool: just produce a concise message (e.g., "I can’t perform that action. Try @UbiquityOS help for available commands.").
-
-### Safety / Validation
-- Do not hallucinate permissions or repository changes.
-- Do not fabricate parameters or users.
-- Prefer *not* calling a tool over an uncertain or speculative mapping.
-
-Follow these rules exactly. If uncertain, DO NOT call a tool.
-If you have nothing useful to add to the conversation, don't respond with a comment at all. This is because you are stepping in as a first responder on behalf of the issue author.
-`,
-            type: "text",
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            text: JSON.stringify({
-              repositoryOwner: context.payload.repository.owner.login,
-              repositoryName: context.payload.repository.name,
-              issueNumber: context.payload.issue.number,
-              author: context.payload.comment.user?.login,
-              comment: context.payload.comment.body,
-            }),
-            type: "text",
-          },
-        ],
-      },
-    ],
-    temperature: 0.3,
-    max_completion_tokens: 1024,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    tools: commands,
-    parallel_tool_calls: false,
-    response_format: {
-      type: "text",
-    },
+  setCommand({ name: "help", description: "Show all available commands and examples.", example: "/help", parameters: {} });
+  setCommand({
+    name: "agent",
+    description: "Run the full-power agent to handle complex requests.",
+    example: "@ubiquityos <request>",
+    parameters: {},
   });
 
-  context.logger.debug({ response }, "LLM response");
+  return [...out.values()];
+}
 
-  if (!response?.choices?.length) {
+export function getIssueLabelNames(labels: unknown): string[] {
+  if (!Array.isArray(labels)) return [];
+  const names = labels
+    .map((label) => {
+      if (typeof label === "string") return label;
+      if (typeof label === "object" && label !== null && "name" in label) {
+        const name = (label as { name?: unknown }).name;
+        return typeof name === "string" ? name : null;
+      }
+      return null;
+    })
+    .filter((name): name is string => Boolean(name));
+  return [...new Set(names)];
+}
+
+async function getRecentCommentsForRouter(context: GitHubContext<"issue_comment.created">, limit: number): Promise<{ author: string; body: string }[]> {
+  try {
+    const owner = context.payload.repository.owner.login;
+    const repo = context.payload.repository.name;
+    const issue_number = context.payload.issue.number;
+    const { data } = await context.octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number,
+      per_page: Math.min(30, Math.max(1, limit * 3)),
+      sort: "created",
+      direction: "desc",
+    });
+
+    return data
+      .filter((comment) => comment.user?.type === "User")
+      .slice(0, limit)
+      .reverse()
+      .map((comment) => ({
+        author: comment.user?.login ?? "unknown",
+        body: comment.body ?? "",
+      }));
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to fetch recent comments for router (non-fatal)");
+    return [];
+  }
+}
+
+async function commandRouter(context: GitHubContext<"issue_comment.created">) {
+  if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
+    context.logger.warn(`No installation found, cannot route command`);
     return;
   }
 
-  const toolCalls = response.choices[0].message.tool_calls;
-  if (!toolCalls?.length) {
-    context.logger.warn("No tool call was made.");
+  const config = await getConfig(context);
+  if (!config) {
+    context.logger.debug("No configuration was found");
+    return;
+  }
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const manifests: Manifest[] = [];
+
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+    let target: string | GithubPlugin;
+    try {
+      target = parsePluginIdentifier(pluginKey);
+    } catch (error) {
+      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      continue;
+    }
+    if (isBotAuthor && pluginSettings?.skipBotEvents) {
+      continue;
+    }
+    const manifest = await getManifest(context, target);
+    if (!manifest?.commands) continue;
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+    manifests.push(manifest);
+  }
+
+  const commands = describeCommands(manifests);
+  const recentComments = await getRecentCommentsForRouter(context, 10);
+  const labels = getIssueLabelNames(context.payload.issue.labels);
+  const issueBody = truncateForRouter(context.payload.issue.body);
+  const conversation = await resolveConversationKeyForContext(context, context.logger);
+  const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
+  const agentMemory = await getAgentMemorySnippet({
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+    limit: 6,
+    maxChars: 1200,
+    scopeKey: conversation?.key,
+    logger: context.logger,
+  });
+
+  const prompt = buildRouterPrompt({
+    commands,
+    recentCommentsDescription: "array of the last ~10 human comments: { author, body }",
+    replyActionDescription: "post a comment",
+  });
+
+  const routerResult = await getRouterDecision(context, prompt, {
+    repositoryOwner: context.payload.repository.owner.login,
+    repositoryName: context.payload.repository.name,
+    issueNumber: context.payload.issue.number,
+    issueTitle: context.payload.issue.title,
+    issueBody,
+    isPullRequest: Boolean(context.payload.issue.pull_request),
+    labels,
+    recentComments,
+    agentMemory,
+    conversationContext,
+    author: context.payload.comment.user?.login,
+    comment: context.payload.comment.body,
+  });
+  if (!routerResult) return;
+  const { raw, decision } = routerResult;
+  if (!decision) {
+    await postReply(context, raw);
     return;
   }
 
-  const toolCall = toolCalls[0];
-  if (!toolCall) {
-    context.logger.debug("No tool can be called.");
+  if (decision.action === "ignore") return;
+  if (decision.action === "help") {
+    await postHelpCommand(context);
+    return;
+  }
+  if (decision.action === "reply") {
+    await postReply(context, decision.reply);
+    return;
+  }
+  if (decision.action === "agent") {
+    const task = String(decision.task ?? "").trim() || extractAfterUbiquityosMention(context.payload.comment.body) || context.payload.comment.body.trim();
+    await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+    return;
+  }
+
+  const commandName = decision.command?.name;
+  if (!commandName || typeof commandName !== "string") {
+    await postReply(context, "I couldn't determine which command to run. Try `@ubiquityos help`.");
+    return;
+  }
+
+  if (commandName === "help") {
+    await postHelpCommand(context);
+    return;
+  }
+  if (commandName === "agent") {
+    const task =
+      getAgentTaskFromParameters(decision.command?.parameters) ??
+      extractAfterUbiquityosMention(context.payload.comment.body) ??
+      context.payload.comment.body.trim();
+    await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+    return;
+  }
+
+  let pluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
+  for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+    const candidate = pluginsWithManifest[i];
+    if (candidate?.manifest?.commands?.[commandName] !== undefined) {
+      pluginWithManifest = candidate;
+      break;
+    }
+  }
+  if (!pluginWithManifest) {
+    await postReply(context, `I couldn't find a plugin for \`/${commandName}\`. Try \`@ubiquityos help\`.`);
     return;
   }
 
   const command = {
-    name: toolCall.function.name,
-    parameters: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : null,
+    name: commandName,
+    parameters: decision.command?.parameters ?? null,
   };
 
-  if (command.name === "help") {
-    await postHelpCommand(context);
-    return;
-  }
-
-  const pluginWithManifest = pluginsWithManifest.find((o) => o.manifest?.commands?.[command.name] !== undefined);
-  if (!pluginWithManifest) {
-    context.logger.warn({ command: command.name }, `No plugin found for command`);
-    return;
-  }
-
   const plugin = pluginWithManifest.target;
-  const settings = pluginWithManifest.settings?.with;
-  const { manifest } = pluginWithManifest;
-  const workerUrl = getWorkerUrlFromManifest(manifest);
+  const settings = withKernelContextSettingsIfNeeded(pluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
+  const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
-  const ref = workerUrl ? workerUrl : plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
+  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin, worker: Boolean(workerUrl), command }, "Will attempt to call a plugin to answer the help request.");
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin.");
   try {
-    if (workerUrl) {
-      await dispatchWorker(workerUrl, await inputs.getInputs());
+    if (!isGithubPluginObject) {
+      await dispatchWorker(plugin, await inputs.getInputs());
     } else {
-      await dispatchWorkflow(context, {
+      const baseInputs = (await inputs.getInputs()) as Record<string, string>;
+      const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
+      const runUrl = await dispatchWorkflowWithRunUrl(context, {
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
-        ref: ref,
-        inputs: await inputs.getInputs(),
+        ref,
+        inputs: workflowInputs,
       });
+      await updateRequestCommentRunUrl(context, runUrl);
     }
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");

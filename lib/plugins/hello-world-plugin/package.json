@@ -1,0 +1,24 @@
+{
+  "name": "hello-world-plugin",
+  "version": "1.0.0",
+  "description": "A simple hello world plugin for testing",
+  "type": "module",
+  "main": "dist/worker.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "bun run server.ts",
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@ubiquity-os/plugin-sdk": "3.8.1",
+    "@ubiquity-os/ubiquity-os-logger": "^1.4.0",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.0",
+    "typescript": "^5.0.0"
+  },
+  "trustedDependencies": [
+    "@swc/core"
+  ]
+}

@@ -68,6 +68,8 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+!.github/actions/llm-call/dist/
+!.github/actions/llm-call/dist/*
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
@@ -78,6 +80,9 @@ dist
 # vuepress v2.x temp and cache directory
 .temp
 # Docusaurus cache and generated files
+
+# Local kernel test-command cache
+.test-cache/config.*.yml
 .docusaurus
 # Serverless directories
 .serverless/
@@ -95,8 +100,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.\*
-# wrangler project
+# env files
 .dev.vars
+.env
 .wrangler/
 # yarn v4
 .pnp.*
@@ -121,3 +127,6 @@ junit.xml
 *.pem
 test-dashboard.md
 local.settings.json
+
+.tmp/
+docs/

@@ -1,1 +1,1 @@
-bun commitlint --edit "$1"
+deno task commitlint --edit "$1"

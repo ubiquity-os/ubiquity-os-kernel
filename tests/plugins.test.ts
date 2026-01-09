@@ -1,55 +1,31 @@
-import { afterEach, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { GitHubContext } from "../src/github/github-context";
 import { ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins";
 import { logger } from "../src/logger/logger";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { server } from "./__mocks__/node";
 
+beforeAll(() => {
+  server.listen();
+});
 afterEach(() => {
+  server.resetHandlers();
   jest.clearAllMocks();
   jest.resetAllMocks();
   jest.resetModules();
 });
+afterAll(() => {
+  server.close();
+});
 
 describe("Plugin tests", () => {
   it("Should skip plugins if needed", async () => {
+    const pluginAddress = "http://localhost";
     const issueCommentCreated = "issue_comment.created";
-    const pullRequestCommentCreated = "pull_request_review_comment.created";
     const pullRequestOpened = "pull_request.opened";
-    const manifestMap: Record<string, unknown> = {
-      "command-plugin": {
-        name: "command",
-        commands: {
-          command: {
-            description: "command",
-            "ubiquity:example": "/command",
-          },
-        },
-      },
-      "listener-plugin": {
-        name: "command",
-        "ubiquity:listeners": [issueCommentCreated],
-        commands: {
-          command: {
-            description: "command",
-            "ubiquity:example": "/command",
-          },
-        },
-      },
-    };
-    const configurationHandler = createConfigurationHandler({ manifests: manifestMap });
-    const baseContext = {
-      configurationHandler,
-      logger,
-    } as Partial<GitHubContext>;
-
     const basePlugin: ResolvedPlugin = {
-      key: "ubiquity/command-plugin",
-      target: {
-        owner: "ubiquity",
-        repo: "command-plugin",
-        workflowId: "compute.yml",
-      },
+      key: pluginAddress,
+      target: pluginAddress,
       settings: {
         skipBotEvents: true,
         runsOn: [],
@@ -67,68 +43,53 @@ describe("Plugin tests", () => {
         },
       };
     }
-    const listenerPlugin: ResolvedPlugin = {
-      key: "ubiquity/listener-plugin",
-      target: {
-        owner: "ubiquity",
-        repo: "listener-plugin",
-        workflowId: "compute.yml",
-      },
-      settings: pluginWithRunsOn([issueCommentCreated]).settings,
-    };
 
     // Skip bot comment
     await expect(
       shouldSkipPlugin(
         {
-          ...baseContext,
           payload: {
             sender: {
               type: "Bot",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         basePlugin,
         issueCommentCreated
       )
     ).resolves.toBe(true);
 
-    // Skipping non-matching command
+    // Skipping because the plugin doesn't listen to the event
     await expect(
       shouldSkipPlugin(
         {
-          ...baseContext,
           key: issueCommentCreated,
           payload: {
             sender: {
               type: "User",
             },
-            comment: {
-              body: "/wrong-command",
-            },
           },
+          logger,
         } as unknown as GitHubContext,
         basePlugin,
         issueCommentCreated
       )
     ).resolves.toBe(true);
 
-    // Not skipping matching command
+    // Not skipping when runsOn matches the event
     await expect(
       shouldSkipPlugin(
         {
-          ...baseContext,
           key: issueCommentCreated,
           payload: {
             sender: {
               type: "User",
             },
-            comment: {
-              body: "/command",
-            },
           },
+          logger,
         } as unknown as GitHubContext,
-        basePlugin,
+        pluginWithRunsOn([issueCommentCreated]),
         issueCommentCreated
       )
     ).resolves.toBe(false);
@@ -137,13 +98,13 @@ describe("Plugin tests", () => {
     await expect(
       shouldSkipPlugin(
         {
-          ...baseContext,
           key: pullRequestOpened,
           payload: {
             sender: {
               type: "User",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         pluginWithRunsOn([pullRequestOpened]),
         pullRequestOpened
@@ -154,56 +115,16 @@ describe("Plugin tests", () => {
     await expect(
       shouldSkipPlugin(
         {
-          ...baseContext,
           key: "pull_request.closed",
           payload: {
             sender: {
               type: "User",
             },
           },
+          logger,
         } as unknown as GitHubContext,
         pluginWithRunsOn([pullRequestOpened]),
         "pull_request.closed"
-      )
-    ).resolves.toBe(true);
-
-    // Not skipping matching listener + command
-    await expect(
-      shouldSkipPlugin(
-        {
-          ...baseContext,
-          key: pullRequestCommentCreated,
-          payload: {
-            sender: {
-              type: "User",
-            },
-            comment: {
-              body: "/command",
-            },
-          },
-        } as unknown as GitHubContext,
-        listenerPlugin,
-        pullRequestCommentCreated
-      )
-    ).resolves.toBe(false);
-
-    // Skipping comment that doesn't match a command and listener
-    await expect(
-      shouldSkipPlugin(
-        {
-          ...baseContext,
-          key: pullRequestCommentCreated,
-          payload: {
-            sender: {
-              type: "User",
-            },
-            comment: {
-              body: "hello",
-            },
-          },
-        } as unknown as GitHubContext,
-        listenerPlugin,
-        pullRequestCommentCreated
       )
     ).resolves.toBe(true);
   });

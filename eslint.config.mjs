@@ -5,16 +5,17 @@ import sonarjs from "eslint-plugin-sonarjs";
 import checkFile from "eslint-plugin-check-file";
 
 export default tsEslint.config({
+  files: ["**/*.ts", "**/*.tsx"],
   plugins: {
     "@typescript-eslint": tsEslint.plugin,
     "check-file": checkFile,
   },
-  ignores: [".github/knip.ts", "**/.wrangler/**", "jest.config.ts", ".husky/**", "dist/**"],
+  ignores: ["jest.config.ts", ".husky/**", "dist/**", "**/dist/**", "**/*.js", "lib/**", "!lib/plugins/hello-world-plugin/**"],
   extends: [eslint.configs.recommended, ...tsEslint.configs.recommended, sonarjs.configs.recommended],
   languageOptions: {
     parser: tsEslint.parser,
     parserOptions: {
-      project: ["./tsconfig.json"],
+      project: ["./tsconfig.eslint.json"],
     },
   },
   rules: {
@@ -92,7 +93,7 @@ export default tsEslint.config({
       },
       {
         selector: "variable",
-        format: ["strictCamelCase", "UPPER_CASE"],
+        format: ["strictCamelCase", "UPPER_CASE", "snake_case"],
         leadingUnderscore: "allow",
         trailingUnderscore: "allow",
       },
@@ -111,7 +112,28 @@ export default tsEslint.config({
         selector: "variable",
         types: ["boolean"],
         format: ["StrictPascalCase"],
-        prefix: ["is", "should", "has", "can", "did", "will", "does"],
+        prefix: [
+          "is",
+          "should",
+          "has",
+          "can",
+          "did",
+          "will",
+          "does",
+          "use",
+          "allow",
+          "enable",
+          "disable",
+          "show",
+          "hide",
+          "include",
+          "exclude",
+          "require",
+          "skip",
+          "force",
+          "auto",
+          "need",
+        ],
       },
       {
         selector: "variableLike",
