@@ -38,6 +38,10 @@ function warnOnce(logger: LoggerLike | undefined, key: string, message: string) 
   logger.warn(message);
 }
 
+function sanitizeInListValue(value: string): string {
+  return value.replace(/["\\]/g, "");
+}
+
 export function getVectorDbConfig(logger?: LoggerLike): VectorDbConfig | null {
   const rawUrl = getEnvValue("UOS_VECTOR_DB_URL") ?? getEnvValue("SUPABASE_URL");
   const rawKey =
@@ -133,7 +137,7 @@ export async function fetchVectorDocuments(config: VectorDbConfig, ids: string[]
   const select = buildSelectFields(options.includeEmbedding === true);
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
-    const inList = chunk.map((id) => `"${encodeURIComponent(id.replace(/"/g, ""))}"`).join(",");
+    const inList = chunk.map((id) => `"${encodeURIComponent(sanitizeInListValue(id))}"`).join(",");
     const url = buildRestUrl(config, `/rest/v1/documents?id=in.(${inList})&select=${select}`);
     const res = await fetch(url, { headers: buildHeaders(config) });
     if (!res.ok) continue;
@@ -157,7 +161,7 @@ export async function fetchVectorDocumentsByParentId(
   const params: string[] = [];
   params.push(`parent_id=eq.${encodeURIComponent(parent)}`);
   if (options.docTypes && options.docTypes.length > 0) {
-    const inList = options.docTypes.map((docType) => `"${encodeURIComponent(docType.replace(/"/g, ""))}"`).join(",");
+    const inList = options.docTypes.map((docType) => `"${encodeURIComponent(sanitizeInListValue(docType))}"`).join(",");
     params.push(`doc_type=in.(${inList})`);
   }
   const select = buildSelectFields(options.includeEmbedding === true);

@@ -42,13 +42,28 @@ async function addReactionEyes(context: GitHubContext<"pull_request_review_comme
 async function postReplyInReviewThread(context: GitHubContext<"pull_request_review_comment.created">, body: string) {
   const message = body.trim();
   if (!message) return;
-  await context.octokit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies", {
-    owner: context.payload.repository.owner.login,
-    repo: context.payload.repository.name,
-    pull_number: context.payload.pull_request.number,
-    comment_id: context.payload.comment.id,
-    body: message,
-  });
+  try {
+    await context.octokit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies", {
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
+      pull_number: context.payload.pull_request.number,
+      comment_id: context.payload.comment.id,
+      body: message,
+    });
+  } catch (error) {
+    context.logger.error(
+      {
+        err: error,
+        pullRequest: context.payload.pull_request.number,
+        commentId: context.payload.comment.id,
+      },
+      "Failed to post reply in review thread"
+    );
+  }
+}
+
+function hasLabels(value: unknown): value is { labels?: unknown } {
+  return typeof value === "object" && value !== null && "labels" in value;
 }
 
 type ReviewThreadComment = {
@@ -278,7 +293,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
 
   const commands = describeCommands(manifests);
   const recentComments = await getReviewThreadCommentsForRouter(context, 10);
-  const labels = getIssueLabelNames((context.payload.pull_request as unknown as { labels?: unknown }).labels);
+  const labels = getIssueLabelNames(hasLabels(context.payload.pull_request) ? context.payload.pull_request.labels : undefined);
   const issueBody = truncateForRouter(context.payload.pull_request.body);
   const conversation = await resolveConversationKeyForContext(context, context.logger);
   const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
