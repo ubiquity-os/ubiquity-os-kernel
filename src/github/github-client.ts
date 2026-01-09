@@ -1,11 +1,11 @@
+import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/core";
-import { requestLog } from "@octokit/plugin-request-log";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { requestLog } from "@octokit/plugin-request-log";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
 import { RequestOptions } from "@octokit/types";
-import { createAppAuth } from "@octokit/auth-app";
 
 const sharedOptions = {
   throttle: {

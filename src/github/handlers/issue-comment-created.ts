@@ -236,22 +236,19 @@ export function parseSlashCommandParameters(
 
 async function dispatchSlashCommand(context: GitHubContext<"issue_comment.created">, invocation: SlashCommandInvocation) {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
-    context.logger.warn(`No installation found, cannot invoke command`);
+    context.logger.warn(`No installation found, cannot route slash command`);
     return;
   }
 
-  const requested = invocation.name.toLowerCase();
-  if (requested === "help") {
-    await postHelpCommand(context);
-    return;
-  }
-
+  const slashCommandName = invocation.name;
   const config = await getConfig(context);
   if (!config) {
     context.logger.debug("No configuration was found");
     return;
   }
-  const matches: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; resolvedCommandName: string }[] = [];
+
+  const isBotAuthor = context.payload.comment.user?.type !== "User";
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -261,49 +258,38 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
-
+    if (isBotAuthor && pluginSettings?.skipBotEvents) {
+      continue;
+    }
     const manifest = await getManifest(context, target);
     if (!manifest?.commands) continue;
-
-    const resolvedCommandName =
-      Object.keys(manifest.commands).find((name) => name.toLowerCase() === requested) ?? (manifest.commands[invocation.name] ? invocation.name : null);
-    if (!resolvedCommandName) continue;
-
-    matches.push({
-      target,
-      settings: pluginSettings,
-      manifest,
-      resolvedCommandName,
-    });
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
   }
 
-  if (!matches.length) {
-    context.logger.warn({ command: invocation.name }, "No plugin found for slash command");
+  let matchedPluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
+  for (let i = pluginsWithManifest.length - 1; i >= 0; i--) {
+    const candidate = pluginsWithManifest[i];
+    if (candidate?.manifest?.commands?.[slashCommandName] !== undefined) {
+      matchedPluginWithManifest = candidate;
+      break;
+    }
+  }
+
+  if (!matchedPluginWithManifest) {
+    context.logger.debug({ slashCommandName }, "No plugin found for slash command.");
     return;
   }
 
-  if (matches.length > 1) {
-    context.logger.warn(
-      { command: invocation.name, plugins: matches.map((m) => m.manifest.name) },
-      "Multiple plugins matched slash command; using the last match"
-    );
-  }
+  const commandSpec = matchedPluginWithManifest.manifest.commands?.[slashCommandName];
+  const parameters = parseSlashCommandParameters(slashCommandName, invocation.rawArgs, commandSpec?.parameters, context);
 
-  const match = matches[matches.length - 1];
-  if (!match) return;
+  const command = {
+    name: slashCommandName,
+    parameters,
+  };
 
-  const manifestCommand = match.manifest.commands?.[match.resolvedCommandName];
-  const parameters = parseSlashCommandParameters(match.resolvedCommandName, invocation.rawArgs, manifestCommand?.parameters, context);
-  const command = { name: match.resolvedCommandName, parameters };
-
-  const isBotAuthor = context.payload.comment.user?.type !== "User";
-  if (isBotAuthor && match.settings?.skipBotEvents) {
-    context.logger.debug({ plugin: match.target, command: match.resolvedCommandName }, "Skipping slash command dispatch from bot author");
-    return;
-  }
-
-  const plugin = match.target;
-  const settings = withKernelContextSettingsIfNeeded(match.settings?.with, plugin, context.eventHandler.environment);
+  const plugin = matchedPluginWithManifest.target;
+  const settings = withKernelContextSettingsIfNeeded(matchedPluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
   const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
@@ -311,7 +297,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject, command }, "Will attempt to call a plugin for slash command.");
+  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch slash command plugin.");
   try {
     if (!isGithubPluginObject) {
       await dispatchWorker(plugin, await inputs.getInputs());
@@ -322,7 +308,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
         owner: plugin.owner,
         repository: plugin.repo,
         workflowId: plugin.workflowId,
-        ref: ref,
+        ref,
         inputs: workflowInputs,
       });
       await updateRequestCommentRunUrl(context, runUrl);
@@ -332,18 +318,17 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 }
 
-export type CommandDescriptor = Readonly<{
+function truncateForRouter(text: string): string {
+  if (text.length <= 1000) return text;
+  return `${text.slice(0, 500)}\n...\n${text.slice(-500)}`;
+}
+
+type CommandDescriptor = {
   name: string;
   description: string;
   example: string;
-  parameters?: unknown;
-}>;
-
-export function truncateForRouter(value: unknown, maxChars = 8000): string {
-  const text = typeof value === "string" ? value : "";
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[truncated]`;
-}
+  parameters: unknown;
+};
 
 function getAgentTaskFromParameters(parameters: unknown): string | null {
   if (typeof parameters !== "object" || parameters === null) return null;

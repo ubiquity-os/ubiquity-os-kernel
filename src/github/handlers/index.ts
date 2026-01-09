@@ -7,7 +7,7 @@ import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { ResolvedPlugin, getManifest, getPluginsForEvent, getWorkerUrlFromManifest } from "../utils/plugins.ts";
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
@@ -240,7 +240,7 @@ async function emitKernelPluginErrorEvent({
   triggeringAuthToken,
 }: {
   context: GitHubContext;
-  config: Awaited<ReturnType<typeof getConfig>>;
+  config: PluginConfiguration;
   failingPluginEntry: ResolvedPlugin;
   failingRef: string;
   failingStateId: string;
@@ -248,18 +248,13 @@ async function emitKernelPluginErrorEvent({
   triggeringInstallationId: number;
   triggeringAuthToken: string;
 }) {
-  if (context.key === KERNEL_PLUGIN_ERROR_EVENT_NAME) return;
-  if (isDaemonHotfixPlugin(failingPluginEntry)) return;
-
   const subscribers = await getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
   if (!subscribers.length) return;
 
   let targetRepo: { owner: string; repo: string } | null = null;
-  const failingTarget = failingPluginEntry.target;
-  if (isGithubPlugin(failingTarget)) {
-    targetRepo = { owner: failingTarget.owner, repo: failingTarget.repo };
-  } else {
-    const settingsWith = failingPluginEntry.settings?.with;
+  const failingSettings = failingPluginEntry.settings;
+  if (failingSettings && typeof failingSettings === "object") {
+    const settingsWith = failingSettings.with;
     if (settingsWith && typeof settingsWith === "object") {
       targetRepo = parseOwnerRepo((settingsWith as { sourceRepo?: unknown }).sourceRepo);
     }
@@ -457,19 +452,23 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
   for (const pluginEntry of resolvedPlugins) {
     const plugin = pluginEntry.target;
     const settings = pluginEntry.settings;
-    const isGithubPluginObject = isGithubPlugin(plugin);
     context.logger.debug({ plugin: pluginEntry.key }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
-    const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
+    const manifest = await getManifest(context, plugin);
+    const workerUrl = getWorkerUrlFromManifest(manifest);
+    const ref = workerUrl ? workerUrl : (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo)));
     const token = await eventHandler.getToken(event.payload.installation.id);
     const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      context.logger.debug({ plugin: pluginEntry.key }, "Dispatching event");
-      if (!isGithubPluginObject) {
-        await dispatchWorker(plugin, await inputs.getInputs());
+      context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, "Dispatching event");
+      if (workerUrl) {
+        const res = await dispatchWorker(workerUrl, await inputs.getInputs());
+        if (res.status >= 300) {
+          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl }, "Error response on dispatch event");
+        }
       } else {
         const baseInputs = (await inputs.getInputs()) as Record<string, string>;
         const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => eventHandler.getKernelPublicKeyPem());
@@ -496,4 +495,12 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       });
     }
   }
+}
+
+async function safeJson(response: Response) {
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return response.json();
+  }
+  return await response.text();
 }

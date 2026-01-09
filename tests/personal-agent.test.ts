@@ -6,6 +6,7 @@ import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { logger } from "../src/logger/logger";
 import { db } from "./__mocks__/db";
 import { server } from "./__mocks__/node";
+import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
 const commentCreateEvent = "issue_comment.created";
@@ -128,5 +129,6 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
       logger: logger,
     } as unknown as GitHubEventHandler,
     llm: "",
+    configurationHandler: createConfigurationHandler() as unknown as GitHubContext<"issue_comment.created">["configurationHandler"],
   };
 }

@@ -1,4 +1,4 @@
-# @ubiquity-os/ubiquity-os-kernel
+@ubiquity-os/ubiquity-os-kernel
 
 The kernel is designed to:
 
@@ -77,14 +77,12 @@ Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml
    - Ensure the app is subscribed to all events with the following permissions:
 
      Repository permissions:
-
      - Actions: Read & Write
      - Contents: Read & Write
      - Issues: Read & Write
      - Pull Requests: Read & Write
 
      Organization permissions:
-
      - Members: Read only
 
 2. **Set repository secrets (required):**
