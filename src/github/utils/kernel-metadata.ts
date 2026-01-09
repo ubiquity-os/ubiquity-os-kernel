@@ -14,11 +14,8 @@ declare const Deno: {
 };
 
 const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../../../../..", "../../../../../..", "../../../../../../.."];
-const VERSION_FILES = ["deno.json", "package.json"];
-
 const COMMIT_HASH_LEN = 7;
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
-let cachedKernelVersion: string | null = null;
 
 const getEnvValue = (key: string): string | undefined => {
   if (typeof Deno !== "undefined") {
@@ -55,32 +52,6 @@ const readTextFile = async (path: string): Promise<string | null> => {
   } catch {
     return null;
   }
-};
-
-const parseVersionFromJson = (content: string): string | null => {
-  try {
-    const parsed = JSON.parse(content) as { version?: unknown };
-    const version = typeof parsed.version === "string" ? parsed.version.trim() : "";
-    return version || null;
-  } catch {
-    return null;
-  }
-};
-
-const readVersionFromConfigs = async (): Promise<string | null> => {
-  for (const root of ROOT_SEARCH_PATHS) {
-    for (const file of VERSION_FILES) {
-      const content = await readTextFile(`${root}/${file}`);
-      if (!content) {
-        continue;
-      }
-      const version = parseVersionFromJson(content);
-      if (version) {
-        return version;
-      }
-    }
-  }
-  return null;
 };
 
 const toShortCommitHash = (value: string | undefined | null): string | null => {
@@ -162,28 +133,6 @@ const runGitCommand = async (args: string): Promise<string | null> => {
   }
   return null;
 };
-
-export async function getKernelVersion(): Promise<string> {
-  if (cachedKernelVersion) {
-    return cachedKernelVersion;
-  }
-
-  const envVersion = getEnvValue("UOS_KERNEL_VERSION") ?? getEnvValue("npm_package_version") ?? getEnvValue("PACKAGE_VERSION");
-  const trimmedEnvVersion = envVersion?.trim();
-  if (trimmedEnvVersion) {
-    cachedKernelVersion = trimmedEnvVersion;
-    return trimmedEnvVersion;
-  }
-
-  const configVersion = await readVersionFromConfigs();
-  if (configVersion) {
-    cachedKernelVersion = configVersion;
-    return configVersion;
-  }
-
-  cachedKernelVersion = "0.0.0";
-  return cachedKernelVersion;
-}
 
 export async function getKernelCommit(): Promise<string> {
   const envHash = toShortCommitHash(getEnvValue("GIT_REVISION") ?? getEnvValue("GITHUB_SHA"));

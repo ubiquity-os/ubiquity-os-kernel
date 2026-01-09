@@ -10,7 +10,7 @@ import { GitHubEventHandler } from "./github/github-event-handler.ts";
 import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
-import { getKernelVersion } from "./github/utils/kernel-metadata.ts";
+import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
 import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
@@ -26,8 +26,8 @@ app.use(async (c: Context, next) => {
 });
 
 app.get("/", async (c) => {
-  const version = await getKernelVersion();
-  return c.text(`Welcome to UbiquityOS kernel version ${version}`);
+  const commit = await getKernelCommit();
+  return c.text(`Welcome to UbiquityOS kernel (${commit})`);
 });
 
 app.get("/x25519_public_key", async (ctx: Context) => {

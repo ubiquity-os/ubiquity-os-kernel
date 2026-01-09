@@ -6,7 +6,7 @@ import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config";
-import { getKernelCommit, getKernelVersion } from "../utils/kernel-metadata";
+import { getKernelCommit } from "../utils/kernel-metadata";
 import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins";
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch";
@@ -131,7 +131,6 @@ async function tryGetRepoInstallationId(eventHandler: GitHubEventHandler, owner:
 }
 
 type KernelMetadata = {
-  version: string;
   commit: string;
 };
 
@@ -280,7 +279,6 @@ async function emitKernelPluginErrorEvent({
   const authToken = targetInstallationId ? await context.eventHandler.getToken(targetInstallationId) : triggeringAuthToken;
 
   const kernelMeta = {
-    version: await getKernelVersion(),
     commit: await getKernelCommit(),
   };
   const requestId = readRequestIdFromLogger(context.logger);
