@@ -1,3 +1,4 @@
+import { logger } from "../../logger/logger.ts";
 import { getKvClient, type KvKey } from "./kv-client.ts";
 
 const inMemoryExpiryMsByKey = new Map<string, number>();
@@ -61,7 +62,11 @@ export async function shouldSkipDuplicateCommentEvent(
       markLocal(keyString, nowMs + ttlMs);
       return true;
     }
-    await kv.set(key, { seenAt: new Date(nowMs).toISOString() }, { expireIn: ttlMs });
+    try {
+      await kv.set(key, { seenAt: new Date(nowMs).toISOString() }, { expireIn: ttlMs });
+    } catch (error) {
+      logger.warn({ err: error, owner, repo, eventName, commentId }, "Failed to persist comment dedupe marker");
+    }
   }
 
   markLocal(keyString, nowMs + ttlMs);

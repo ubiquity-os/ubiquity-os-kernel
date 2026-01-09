@@ -41,7 +41,7 @@ function warnOnce(logger: LoggerLike | undefined, key: string, message: string) 
 }
 
 function sanitizeInListValue(value: string): string {
-  return value.replace(/["\\]/g, "");
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 const FETCH_TIMEOUT_MS = 10_000;

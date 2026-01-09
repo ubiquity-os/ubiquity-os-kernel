@@ -62,6 +62,18 @@ type IssueComment = {
   };
 };
 
+type CommandPayload = {
+  stateId: string;
+  eventName: string;
+  eventPayload: string;
+  settings: string;
+  authToken: string;
+  ubiquityKernelToken?: string;
+  ref: string;
+  command: string;
+  signature: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
