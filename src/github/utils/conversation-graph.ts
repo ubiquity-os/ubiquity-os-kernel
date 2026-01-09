@@ -1,6 +1,6 @@
 import { UndirectedGraph } from "graphology";
-import { GitHubContext } from "../github-context";
-import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "./kv-client";
+import { GitHubContext } from "../github-context.ts";
+import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "./kv-client.ts";
 
 type ConversationNodeType = "Issue" | "PullRequest";
 type ReferenceKind = ConversationNodeType | "Unknown";

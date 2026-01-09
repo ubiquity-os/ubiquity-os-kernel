@@ -1,4 +1,4 @@
-import { GitHubContext } from "../github-context";
+import { GitHubContext } from "../github-context.ts";
 
 const RUN_LOGS_LABEL = "Run logs:";
 const RUN_LOGS_LINE_REGEX = /^\s*Run logs:\s*.*(?:\r?\n)?/gim;

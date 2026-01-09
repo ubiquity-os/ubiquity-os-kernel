@@ -21,9 +21,9 @@ const SUMMARY_MAX_CHARS = 1_200;
 const IN_MEMORY_MAX_ENTRIES = 250;
 const LIST_PAGE_SIZE = 200;
 
-import type { KvKey, KvLike, LoggerLike } from "./kv-client";
-import { getKvClient } from "./kv-client";
-import { getEnvValue } from "./env";
+import type { KvKey, KvLike, LoggerLike } from "./kv-client.ts";
+import { getKvClient } from "./kv-client.ts";
+import { getEnvValue } from "./env.ts";
 
 const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;

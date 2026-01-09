@@ -3,8 +3,8 @@ import { Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
-import { GitHubContext } from "../github-context";
-import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
+import { GitHubContext } from "../github-context.ts";
+import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 
 const _manifestCache: Record<string, Manifest> = {};
 const kernelManifestSchema = T.Object({

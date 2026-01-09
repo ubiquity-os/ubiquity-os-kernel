@@ -1,21 +1,21 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
-import { GitHubContext } from "../github-context";
-import { PluginInput } from "../types/plugin";
-import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
-import { getAgentMemorySnippet } from "../utils/agent-memory";
-import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
-import { getConfig } from "../utils/config";
-import { getManifest } from "../utils/plugins";
-import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
-import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
-import { postHelpCommand } from "./help-command";
-import { dispatchInternalAgent } from "./internal-agent";
-import { buildRouterPrompt } from "./router-prompt";
-import { callPersonalAgent } from "./personal-agent";
-import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
-import { resolveConversationKeyForContext } from "../utils/conversation-graph";
-import { buildConversationContext } from "../utils/conversation-context";
-import { getRouterDecision } from "./router-decision";
+import { GitHubContext } from "../github-context.ts";
+import { PluginInput } from "../types/plugin.ts";
+import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
+import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
+import { getConfig } from "../utils/config.ts";
+import { getManifest } from "../utils/plugins.ts";
+import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
+import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch.ts";
+import { postHelpCommand } from "./help-command.ts";
+import { dispatchInternalAgent } from "./internal-agent.ts";
+import { buildRouterPrompt } from "./router-prompt.ts";
+import { callPersonalAgent } from "./personal-agent.ts";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
+import { buildConversationContext } from "../utils/conversation-context.ts";
+import { getRouterDecision } from "./router-decision.ts";
 
 type SlashCommandInvocation = {
   name: string;

@@ -2,10 +2,17 @@ import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
 import { Buffer } from "node:buffer";
-import { GitHubContext } from "../github-context";
-import { GithubPlugin, PluginConfiguration, PluginSettings, configSchema, configSchemaValidator, parsePluginIdentifier } from "../types/plugin-configuration";
-import { tryGetInstallationIdForOwner } from "./marketplace-auth";
-import { getManifest } from "./plugins";
+import { GitHubContext } from "../github-context.ts";
+import {
+  GithubPlugin,
+  PluginConfiguration,
+  PluginSettings,
+  configSchema,
+  configSchemaValidator,
+  parsePluginIdentifier,
+} from "../types/plugin-configuration.ts";
+import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
+import { getManifest } from "./plugins.ts";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";

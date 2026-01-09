@@ -1,5 +1,5 @@
-import { GitHubContext } from "../github-context";
-import { createKernelAttestationToken } from "./kernel-attestation";
+import { GitHubContext } from "../github-context.ts";
+import { createKernelAttestationToken } from "./kernel-attestation.ts";
 
 type ChatCompletion = Readonly<{
   choices?: Array<{

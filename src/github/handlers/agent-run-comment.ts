@@ -1,6 +1,6 @@
-import { GitHubContext } from "../github-context";
-import { upsertAgentRunMemory } from "../utils/agent-memory";
-import { resolveConversationKeyForContext } from "../utils/conversation-graph";
+import { GitHubContext } from "../github-context.ts";
+import { upsertAgentRunMemory } from "../utils/agent-memory.ts";
+import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 
 const botLoginCache = new Map<number, string>();
 

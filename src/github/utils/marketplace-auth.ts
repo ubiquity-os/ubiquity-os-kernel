@@ -1,4 +1,4 @@
-import { GitHubEventHandler } from "../github-event-handler";
+import { GitHubEventHandler } from "../github-event-handler.ts";
 
 function normalizeOwner(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

@@ -1,5 +1,5 @@
-import { GitHubContext } from "../github-context";
-import { callUbqAiRouter } from "../utils/ai-router";
+import { GitHubContext } from "../github-context.ts";
+import { callUbqAiRouter } from "../utils/ai-router.ts";
 
 export type RouterDecision =
   | { action: "help" }

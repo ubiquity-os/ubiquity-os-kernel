@@ -1,12 +1,12 @@
-import { GitHubContext } from "../github-context";
-import { PluginInput } from "../types/plugin";
-import { getAgentMemorySnippet } from "../utils/agent-memory";
-import { getConfigPathCandidatesForEnvironment } from "../utils/config";
-import { resolveConversationKeyForContext } from "../utils/conversation-graph";
-import { buildConversationContext } from "../utils/conversation-context";
-import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth";
-import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
-import { dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
+import { GitHubContext } from "../github-context.ts";
+import { PluginInput } from "../types/plugin.ts";
+import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
+import { getConfigPathCandidatesForEnvironment } from "../utils/config.ts";
+import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
+import { buildConversationContext } from "../utils/conversation-context.ts";
+import { isPrivilegedAuthorAssociation, tryGetInstallationTokenForOwner } from "../utils/marketplace-auth.ts";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+import { dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch.ts";
 
 type InternalAgentContext = GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">;
 

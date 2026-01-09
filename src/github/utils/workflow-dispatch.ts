@@ -1,5 +1,5 @@
-import { customOctokit } from "../github-client";
-import { GitHubContext } from "../github-context";
+import { customOctokit } from "../github-client.ts";
+import { GitHubContext } from "../github-context.ts";
 
 interface WorkflowDispatchOptions {
   owner: string;

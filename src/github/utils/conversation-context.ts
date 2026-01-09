@@ -1,6 +1,6 @@
-import { GitHubContext } from "../github-context";
-import { ConversationNode, ConversationKeyResult, listConversationNodesForKey } from "./conversation-graph";
-import { callUbqAiRouter } from "./ai-router";
+import { GitHubContext } from "../github-context.ts";
+import { ConversationNode, ConversationKeyResult, listConversationNodesForKey } from "./conversation-graph.ts";
+import { callUbqAiRouter } from "./ai-router.ts";
 import {
   fetchVectorDocument,
   fetchVectorDocuments,
@@ -9,7 +9,7 @@ import {
   findSimilarIssues,
   getVectorDbConfig,
   VectorDocument,
-} from "./vector-db";
+} from "./vector-db.ts";
 
 const DEFAULT_MAX_ITEMS = 10;
 const DEFAULT_MAX_CHARS = 4000;

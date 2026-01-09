@@ -1,5 +1,5 @@
-import type { LoggerLike } from "./kv-client";
-import { getEnvValue } from "./env";
+import type { LoggerLike } from "./kv-client.ts";
+import { getEnvValue } from "./env.ts";
 
 type VectorDbConfig = Readonly<{
   url: string;

@@ -1,5 +1,5 @@
-import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration";
-import { getConfigPathCandidatesForEnvironment } from "./config";
+import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration.ts";
+import { getConfigPathCandidatesForEnvironment } from "./config.ts";
 
 const WORKFLOW_KERNEL_KEY_OVERRIDE_OWNERS = new Set(["ubiquity-os", "ubiquity-os-marketplace", "0x4007-ubiquity-os"]);
 

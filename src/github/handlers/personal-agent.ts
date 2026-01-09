@@ -1,8 +1,8 @@
-import { tokenOctokit } from "../github-client";
-import { GitHubContext } from "../github-context";
-import { PluginInput } from "../types/plugin";
-import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
-import { getEnvValue } from "../utils/env";
+import { tokenOctokit } from "../github-client.ts";
+import { GitHubContext } from "../github-context.ts";
+import { PluginInput } from "../types/plugin.ts";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+import { getEnvValue } from "../utils/env.ts";
 
 function getErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;

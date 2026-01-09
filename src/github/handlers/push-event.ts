@@ -3,10 +3,10 @@ import { ValueErrorType } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
 import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
-import { GitHubContext } from "../github-context";
-import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
-import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config";
-import { getManifest } from "../utils/plugins";
+import { GitHubContext } from "../github-context.ts";
+import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
+import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config.ts";
+import { getManifest } from "../utils/plugins.ts";
 
 function encodePointerSegment(segment: string) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");

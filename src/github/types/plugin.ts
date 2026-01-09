@@ -1,7 +1,7 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
-import { GitHubEventHandler } from "../github-event-handler";
-import { createKernelAttestationToken } from "../utils/kernel-attestation";
+import { GitHubEventHandler } from "../github-event-handler.ts";
+import { createKernelAttestationToken } from "../utils/kernel-attestation.ts";
 
 type RepositoryPayload = {
   repository?: {

@@ -1,7 +1,7 @@
 import { EmitterWebhookEvent as WebhookEvent, EmitterWebhookEventName as WebhookEventName } from "@octokit/webhooks";
-import { logger as pinoLogger } from "../logger/logger";
-import { customOctokit } from "./github-client";
-import { GitHubEventHandler } from "./github-event-handler";
+import { logger as pinoLogger } from "../logger/logger.ts";
+import { customOctokit } from "./github-client.ts";
+import { GitHubEventHandler } from "./github-event-handler.ts";
 
 export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEventName> {
   public key: WebhookEventName;

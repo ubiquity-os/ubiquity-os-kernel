@@ -1,4 +1,4 @@
-import { getKvClient, type KvKey } from "./kv-client";
+import { getKvClient, type KvKey } from "./kv-client.ts";
 
 const inMemoryExpiryMsByKey = new Map<string, number>();
 

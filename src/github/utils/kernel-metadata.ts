@@ -10,7 +10,7 @@ declare const Deno: {
   };
 };
 
-import { getEnvValue } from "./env";
+import { getEnvValue } from "./env.ts";
 
 const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../../../../..", "../../../../../..", "../../../../../../.."];
 const COMMIT_HASH_LEN = 7;

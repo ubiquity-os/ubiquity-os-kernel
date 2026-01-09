@@ -1,8 +1,8 @@
-import { GitHubContext } from "../github-context";
-import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration";
-import { getConfig } from "../utils/config";
-import { getManifest } from "../utils/plugins";
-import { getKernelCommit } from "../utils/kernel-metadata";
+import { GitHubContext } from "../github-context.ts";
+import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { getConfig } from "../utils/config.ts";
+import { getManifest } from "../utils/plugins.ts";
+import { getKernelCommit } from "../utils/kernel-metadata.ts";
 
 type CommandRow = {
   key: string;

@@ -1,4 +1,4 @@
-import { getEnvValue } from "./env";
+import { getEnvValue } from "./env.ts";
 
 type KvKey = ReadonlyArray<unknown>;
 
