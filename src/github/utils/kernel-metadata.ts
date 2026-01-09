@@ -107,6 +107,7 @@ async function runGitCommand(args: string[]): Promise<string | null> {
       if (code === 0) {
         return new TextDecoder().decode(stdout).trim();
       }
+      return null;
     } else {
       // Node.js fallback
       const { execFileSync } = await import("child_process");
