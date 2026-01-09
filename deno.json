@@ -57,7 +57,6 @@
     "hono/request-id": "npm:hono@4.9.1/request-id",
     "hono/utils/http-status": "npm:hono@4.9.1/utils/http-status",
     "js-yaml": "npm:js-yaml@4.1.0",
-    "libsodium-wrappers": "npm:libsodium-wrappers@0.7.15",
     "lint-staged": "npm:lint-staged@15.2.7",
     "pino": "npm:pino@9.0.0",
     "pino-pretty": "npm:pino-pretty@13.1.1",

@@ -43,25 +43,17 @@ function sanitizeInListValue(value: string): string {
 }
 
 export function getVectorDbConfig(logger?: LoggerLike): VectorDbConfig | null {
-  const rawUrl = getEnvValue("UOS_VECTOR_DB_URL") ?? getEnvValue("SUPABASE_URL");
-  const rawKey =
-    getEnvValue("UOS_VECTOR_DB_KEY") ?? getEnvValue("SUPABASE_SERVICE_ROLE_KEY") ?? getEnvValue("SUPABASE_KEY") ?? getEnvValue("SUPABASE_ANON_KEY");
-  const projectId = getEnvValue("SUPABASE_PROJECT_ID");
+  const rawUrl = getEnvValue("SUPABASE_URL");
+  const anonKey = getEnvValue("SUPABASE_ANON_KEY");
+  const rawKey = anonKey;
   const urlCandidate = rawUrl?.trim() ?? "";
-  const projectIdValue = projectId?.trim() ?? "";
   let url = "";
   if (urlCandidate) {
     url = urlCandidate.replace(/\/+$/, "");
-  } else if (projectIdValue) {
-    url = `https://${projectIdValue}.supabase.co`;
   }
   const key = rawKey?.trim() ?? "";
   if (!url || !key) {
-    warnOnce(
-      logger,
-      "vector-db-missing-config",
-      "Vector DB disabled: missing Supabase URL/key. Set UOS_VECTOR_DB_URL/UOS_VECTOR_DB_KEY or SUPABASE_URL + SUPABASE_*_KEY (or SUPABASE_PROJECT_ID)."
-    );
+    warnOnce(logger, "vector-db-missing-config", "Vector DB disabled: missing Supabase URL/key. Set SUPABASE_URL and SUPABASE_ANON_KEY.");
     return null;
   }
   return { url, key };

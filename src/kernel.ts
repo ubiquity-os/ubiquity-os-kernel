@@ -31,16 +31,6 @@ app.get("/", async (c) => {
   return c.text(`Welcome to UbiquityOS kernel (${commit})`);
 });
 
-app.get("/x25519_public_key", async (ctx: Context) => {
-  if (!ctx.env.X25519_PRIVATE_KEY) {
-    return ctx.text("No key available", 500);
-  }
-  const sodium = await import("libsodium-wrappers"); // we have to import dynamically: https://github.com/jedisct1/libsodium/pull/1401
-  await sodium.ready;
-  const binaryPrivate = sodium.from_base64(ctx.env.X25519_PRIVATE_KEY, sodium.base64_variants.URLSAFE_NO_PADDING);
-  return ctx.text(sodium.default.crypto_scalarmult_base(binaryPrivate, "base64"));
-});
-
 app.post("/internal/agent/refresh-token", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;

@@ -54,9 +54,7 @@ Agent context selection:
 
 Vector DB configuration (Supabase):
 
-- Set `UOS_VECTOR_DB_URL` and `UOS_VECTOR_DB_KEY`, or
-- Set `SUPABASE_URL` plus `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY` for read-only access).
-- `SUPABASE_PROJECT_ID` can be used to derive the URL when `SUPABASE_URL` is not set.
+- Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 Conversation graph CLI (debug/preview):
 

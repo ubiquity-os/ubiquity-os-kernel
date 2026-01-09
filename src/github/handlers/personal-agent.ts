@@ -2,7 +2,6 @@ import { tokenOctokit } from "../github-client.ts";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
-import { getEnvValue } from "../utils/env.ts";
 
 function getErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
@@ -33,6 +32,25 @@ async function getDefaultBranchWithToken(octokit: InstanceType<typeof tokenOctok
   return repo.data.default_branch;
 }
 
+async function getInstallationTokenForRepo(context: GitHubContext, owner: string, repository: string): Promise<string | null> {
+  try {
+    const appOctokit = context.eventHandler.getUnauthenticatedOctokit();
+    const installation = await appOctokit.rest.apps.getRepoInstallation({ owner, repo: repository });
+    return await context.eventHandler.getToken(installation.data.id);
+  } catch (error) {
+    context.logger.warn(
+      {
+        err: error,
+        owner,
+        repo: repository,
+        status: getErrorStatus(error),
+      },
+      "Failed to mint installation token for personal-agent repo"
+    );
+    return null;
+  }
+}
+
 export async function callPersonalAgent(context: GitHubContext<"issue_comment.created">) {
   const { logger, payload } = context;
 
@@ -57,10 +75,10 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
   logger.debug({ owner, personalAgentOwner, comment: body }, `Comment received`);
 
   try {
-    const patToken = getEnvValue("UOS_PERSONAL_AGENT_PAT")?.trim();
-    if (!patToken) {
-      logger.error({ owner, repo, commentId, personalAgentOwner }, "Missing UOS_PERSONAL_AGENT_PAT; cannot dispatch personal agent");
-      throw new Error("Missing UOS_PERSONAL_AGENT_PAT");
+    const installationToken = await getInstallationTokenForRepo(context, personalAgentOwner, personalAgentRepo);
+    if (!installationToken) {
+      logger.error({ owner, repo, commentId, personalAgentOwner }, "Missing installation token; cannot dispatch personal agent");
+      return;
     }
 
     logger.info(
@@ -74,9 +92,9 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
       "Dispatching personal-agent workflow"
     );
 
-    const octokit = createTokenOctokit(context, patToken);
+    const octokit = createTokenOctokit(context, installationToken);
     const defaultBranch = await getDefaultBranchWithToken(octokit, personalAgentOwner, personalAgentRepo);
-    const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, patToken, defaultBranch, null);
+    const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, installationToken, defaultBranch, null);
 
     await octokit.rest.actions.createWorkflowDispatch({
       owner: personalAgentOwner,
