@@ -46,7 +46,20 @@ const CLOSING_PAGE_SIZE = 50;
 const OUTBOUND_COMMENT_LIMIT = 30;
 const OUTBOUND_REFERENCE_LIMIT = 25;
 
+const ALIAS_CACHE_MAX_SIZE = 1000;
 const aliasCache = new Map<string, string>();
+
+function cacheAlias(key: string, value: string): void {
+  if (aliasCache.has(key)) {
+    aliasCache.delete(key);
+  } else if (aliasCache.size >= ALIAS_CACHE_MAX_SIZE) {
+    const oldestKey = aliasCache.keys().next().value;
+    if (typeof oldestKey === "string") {
+      aliasCache.delete(oldestKey);
+    }
+  }
+  aliasCache.set(key, value);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -563,7 +576,11 @@ async function getSubjectNode(context: GitHubContext): Promise<ConversationNode 
 }
 
 async function resolveAliasKey(kv: KvLike, key: string): Promise<string> {
-  if (aliasCache.has(key)) return aliasCache.get(key) ?? key;
+  if (aliasCache.has(key)) {
+    const cached = aliasCache.get(key) ?? key;
+    cacheAlias(key, cached);
+    return cached;
+  }
   let current = key;
   for (let i = 0; i < MAX_ALIAS_DEPTH; i += 1) {
     const { value } = await kv.get(aliasKey(current));
@@ -571,7 +588,7 @@ async function resolveAliasKey(kv: KvLike, key: string): Promise<string> {
     if (!next) break;
     current = next;
   }
-  aliasCache.set(key, current);
+  cacheAlias(key, current);
   return current;
 }
 

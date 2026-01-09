@@ -39,8 +39,7 @@ export async function updateRequestCommentRunUrl(
   context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">,
   runUrl: string | null | undefined
 ): Promise<void> {
-  const trimmedUrl = runUrl?.trim();
-  if (!trimmedUrl) return;
+  const trimmedUrl = runUrl?.trim() ?? "";
 
   const comment = context.payload.comment;
   if (!comment?.body || !comment.id) return;
@@ -51,8 +50,13 @@ export async function updateRequestCommentRunUrl(
     const block = match[0];
     const before = comment.body.slice(0, match.index);
     const after = comment.body.slice(match.index + block.length);
-    const updatedBlock = upsertRunLogsInAgentBlock(block, trimmedUrl);
-    updatedBody = `${stripVisibleRunLogsLines(before)}${updatedBlock}${stripVisibleRunLogsLines(after)}`;
+    if (trimmedUrl) {
+      const updatedBlock = upsertRunLogsInAgentBlock(block, trimmedUrl);
+      updatedBody = `${stripVisibleRunLogsLines(before)}${updatedBlock}${stripVisibleRunLogsLines(after)}`;
+    } else {
+      const cleanedBlock = block.replace(RUN_LOGS_LINE_REGEX, "");
+      updatedBody = `${stripVisibleRunLogsLines(before)}${cleanedBlock}${stripVisibleRunLogsLines(after)}`;
+    }
   } else {
     updatedBody = stripVisibleRunLogsLines(comment.body);
   }

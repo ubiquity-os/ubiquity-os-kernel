@@ -5,6 +5,7 @@ import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plug
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { getEnvValue } from "./env.ts";
 
 const _manifestCache: Record<string, Manifest> = {};
 const kernelManifestSchema = T.Object({
@@ -26,8 +27,9 @@ function isManifestCacheEnabled(context: GitHubContext) {
     return false;
   }
 
-  const disableCache = typeof process !== "undefined" ? process.env.UOS_DISABLE_MANIFEST_CACHE : undefined;
-  return !disableCache || !["1", "true", "yes"].includes(disableCache.toLowerCase());
+  const disableCache = getEnvValue("UOS_DISABLE_MANIFEST_CACHE");
+  if (!disableCache) return true;
+  return !["1", "true", "yes"].includes(disableCache.toLowerCase());
 }
 
 function formatPluginTarget(target: string | GithubPlugin) {
@@ -121,6 +123,19 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
     const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
     try {
       const result = await fetch(manifestUrl, { signal: controller.signal });
+      if (!result.ok) {
+        const body = await result.text().catch(() => "");
+        context.logger.error(
+          {
+            manifestUrl,
+            status: result.status,
+            statusText: result.statusText,
+            body: body.slice(0, 500),
+          },
+          "Could not find a manifest for Worker"
+        );
+        return null;
+      }
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
       if (useCache) {
