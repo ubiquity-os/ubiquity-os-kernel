@@ -5,7 +5,6 @@ import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/pl
 import { getAgentMemorySnippet } from "../utils/agent-memory";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe";
 import { getConfig } from "../utils/config";
-import { callUbqAiRouter } from "../utils/ai-router";
 import { getManifest } from "../utils/plugins";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings";
 import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch";
@@ -16,6 +15,7 @@ import { callPersonalAgent } from "./personal-agent";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph";
 import { buildConversationContext } from "../utils/conversation-context";
+import { getRouterDecision } from "./router-decision";
 
 type SlashCommandInvocation = {
   name: string;
@@ -332,13 +332,6 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 }
 
-export type RouterDecision =
-  | { action: "help" }
-  | { action: "ignore" }
-  | { action: "reply"; reply: string }
-  | { action: "command"; command: { name: string; parameters?: unknown } }
-  | { action: "agent"; task?: string };
-
 export type CommandDescriptor = Readonly<{
   name: string;
   description: string;
@@ -350,31 +343,6 @@ export function truncateForRouter(value: unknown, maxChars = 8000): string {
   const text = typeof value === "string" ? value : "";
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}\n\n[truncated]`;
-}
-
-function stripCodeFences(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith("```")) return trimmed;
-  return trimmed
-    .replace(/^```[a-zA-Z0-9_-]*\s*/, "")
-    .replace(/```$/, "")
-    .trim();
-}
-
-export function tryParseRouterDecision(raw: string): RouterDecision | null {
-  const cleaned = stripCodeFences(raw);
-  try {
-    return JSON.parse(cleaned) as RouterDecision;
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) return null;
-    try {
-      return JSON.parse(cleaned.slice(start, end + 1)) as RouterDecision;
-    } catch {
-      return null;
-    }
-  }
 }
 
 function getAgentTaskFromParameters(parameters: unknown): string | null {
@@ -524,30 +492,22 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     replyActionDescription: "post a comment",
   });
 
-  let raw: string;
-  try {
-    raw = await callUbqAiRouter(context, prompt, {
-      repositoryOwner: context.payload.repository.owner.login,
-      repositoryName: context.payload.repository.name,
-      issueNumber: context.payload.issue.number,
-      issueTitle: context.payload.issue.title,
-      issueBody,
-      isPullRequest: Boolean(context.payload.issue.pull_request),
-      labels,
-      recentComments,
-      agentMemory,
-      conversationContext,
-      author: context.payload.comment.user?.login,
-      comment: context.payload.comment.body,
-    });
-  } catch (error) {
-    context.logger.error({ err: error }, "Router call failed; ignoring mention");
-    return;
-  }
-
-  context.logger.debug({ raw }, "Router output");
-
-  const decision = tryParseRouterDecision(raw);
+  const routerResult = await getRouterDecision(context, prompt, {
+    repositoryOwner: context.payload.repository.owner.login,
+    repositoryName: context.payload.repository.name,
+    issueNumber: context.payload.issue.number,
+    issueTitle: context.payload.issue.title,
+    issueBody,
+    isPullRequest: Boolean(context.payload.issue.pull_request),
+    labels,
+    recentComments,
+    agentMemory,
+    conversationContext,
+    author: context.payload.comment.user?.login,
+    comment: context.payload.comment.body,
+  });
+  if (!routerResult) return;
+  const { raw, decision } = routerResult;
   if (!decision) {
     await postReply(context, raw);
     return;

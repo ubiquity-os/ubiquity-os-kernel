@@ -23,6 +23,7 @@ const LIST_PAGE_SIZE = 200;
 
 import type { KvKey, KvLike, LoggerLike } from "./kv-client";
 import { getKvClient } from "./kv-client";
+import { getEnvValue } from "./env";
 
 const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
@@ -60,16 +61,6 @@ function clampText(value: string, maxChars: number): string {
   if (!text) return "";
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}...`;
-}
-
-function getEnvValue(key: string): string | undefined {
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env[key];
-    if (value !== undefined) return value;
-  }
-  const deno = (globalThis as { Deno?: { env?: { get?: (key: string) => string | undefined } } }).Deno;
-  if (deno?.env?.get) return deno.env.get(key);
-  return undefined;
 }
 
 function normalizeBase64(input: string): string | null {

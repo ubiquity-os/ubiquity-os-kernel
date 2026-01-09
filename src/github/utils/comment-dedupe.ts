@@ -1,40 +1,6 @@
-type KvKey = ReadonlyArray<unknown>;
-
-type KvGetResult = Readonly<{ value: unknown }>;
-
-type KvSetOptions = Readonly<{ expireIn?: number }>;
-
-type KvLike = Readonly<{
-  get: (key: KvKey) => Promise<KvGetResult>;
-  set: (key: KvKey, value: unknown, options?: KvSetOptions) => Promise<unknown>;
-}>;
+import { getKvClient, type KvKey } from "./kv-client";
 
 const inMemoryExpiryMsByKey = new Map<string, number>();
-let kvPromise: Promise<KvLike | null> | null = null;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function looksLikeKvLike(value: unknown): value is KvLike {
-  if (!isRecord(value)) return false;
-  return typeof value.get === "function" && typeof value.set === "function";
-}
-
-async function getKv(): Promise<KvLike | null> {
-  if (kvPromise) return kvPromise;
-  kvPromise = (async () => {
-    const deno = (globalThis as unknown as { Deno?: { openKv?: () => Promise<unknown> } }).Deno;
-    if (!deno || typeof deno.openKv !== "function") return null;
-    try {
-      const kv = await deno.openKv();
-      return looksLikeKvLike(kv) ? kv : null;
-    } catch {
-      return null;
-    }
-  })();
-  return kvPromise;
-}
 
 function buildInMemoryKey(owner: string, repo: string, eventName: string, commentId: number): string {
   return `${owner}/${repo}/${eventName}/${commentId}`;
@@ -80,7 +46,7 @@ export async function shouldSkipDuplicateCommentEvent(
 
   if (hasUnexpiredLocalMark(keyString, nowMs)) return true;
 
-  const kv = await getKv();
+  const kv = await getKvClient();
   if (kv) {
     const key = buildKvKey(owner, repo, eventName, commentId);
     const existing = await kv.get(key);

@@ -1,9 +1,6 @@
 // Deno won't necessarily be here, which is why we forward declare it
 // eslint-disable-next-line @typescript-eslint/naming-convention
 declare const Deno: {
-  env: {
-    get(key: string): string | undefined;
-  };
   readTextFile(path: string): Promise<string>;
   Command: new (
     command: string,
@@ -13,29 +10,11 @@ declare const Deno: {
   };
 };
 
+import { getEnvValue } from "./env";
+
 const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../../../../..", "../../../../../..", "../../../../../../.."];
 const COMMIT_HASH_LEN = 7;
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
-
-const getEnvValue = (key: string): string | undefined => {
-  if (typeof Deno !== "undefined") {
-    try {
-      const value = Deno.env.get(key);
-      if (value) {
-        return value;
-      }
-    } catch {
-      // ignore env access errors
-    }
-  }
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env[key];
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
-};
 
 const readTextFile = async (path: string): Promise<string | null> => {
   if (typeof Deno !== "undefined") {

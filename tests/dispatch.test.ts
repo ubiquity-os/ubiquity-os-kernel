@@ -172,9 +172,6 @@ describe("handleEvent", () => {
       APP_WEBHOOK_SECRET: secret,
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
-      OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
-      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
 
     const app = (await import("../src/kernel")).app;

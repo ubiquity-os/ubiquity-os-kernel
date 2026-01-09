@@ -1,3 +1,5 @@
+import { getEnvValue } from "./env";
+
 type KvKey = ReadonlyArray<unknown>;
 
 type KvGetResult = Readonly<{ value: unknown }>;
@@ -26,16 +28,6 @@ type LoggerLike = Readonly<{
 }>;
 
 let kvClientPromise: Promise<KvLike | null> | null = null;
-
-function getEnvValue(key: string): string | undefined {
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env[key];
-    if (value !== undefined) return value;
-  }
-  const deno = (globalThis as { Deno?: { env?: { get?: (key: string) => string | undefined } } }).Deno;
-  if (deno?.env?.get) return deno.env.get(key);
-  return undefined;
-}
 
 function resolveKvUrl(): string | null {
   const raw = getEnvValue("UOS_AGENT_MEMORY_URL");

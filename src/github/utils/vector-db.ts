@@ -1,4 +1,5 @@
 import type { LoggerLike } from "./kv-client";
+import { getEnvValue } from "./env";
 
 type VectorDbConfig = Readonly<{
   url: string;
@@ -35,16 +36,6 @@ function warnOnce(logger: LoggerLike | undefined, key: string, message: string) 
   if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
   warned.add(key);
   logger.warn(message);
-}
-
-function getEnvValue(key: string): string | undefined {
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env[key];
-    if (value !== undefined) return value;
-  }
-  const deno = (globalThis as { Deno?: { env?: { get?: (key: string) => string | undefined } } }).Deno;
-  if (deno?.env?.get) return deno.env.get(key);
-  return undefined;
 }
 
 export function getVectorDbConfig(logger?: LoggerLike): VectorDbConfig | null {

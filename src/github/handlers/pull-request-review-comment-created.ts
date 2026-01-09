@@ -15,14 +15,13 @@ import {
   getIssueLabelNames,
   parseSlashCommandParameters,
   truncateForRouter,
-  tryParseRouterDecision,
 } from "./issue-comment-created";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph";
 import { buildConversationContext } from "../utils/conversation-context";
-import { callUbqAiRouter } from "../utils/ai-router";
 import { dispatchInternalAgent } from "./internal-agent";
 import { buildRouterPrompt } from "./router-prompt";
+import { getRouterDecision } from "./router-decision";
 
 async function addReactionEyes(context: GitHubContext<"pull_request_review_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -298,30 +297,22 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     replyActionDescription: "post a reply in the review thread",
   });
 
-  let raw: string;
-  try {
-    raw = await callUbqAiRouter(context, prompt, {
-      repositoryOwner: context.payload.repository.owner.login,
-      repositoryName: context.payload.repository.name,
-      issueNumber: context.payload.pull_request.number,
-      issueTitle: context.payload.pull_request.title,
-      issueBody,
-      isPullRequest: true,
-      labels,
-      recentComments,
-      agentMemory,
-      conversationContext,
-      author: context.payload.comment.user?.login,
-      comment: context.payload.comment.body,
-    });
-  } catch (error) {
-    context.logger.error({ err: error }, "Router call failed; ignoring mention");
-    return;
-  }
-
-  context.logger.debug({ raw }, "Router output");
-
-  const decision = tryParseRouterDecision(raw);
+  const routerResult = await getRouterDecision(context, prompt, {
+    repositoryOwner: context.payload.repository.owner.login,
+    repositoryName: context.payload.repository.name,
+    issueNumber: context.payload.pull_request.number,
+    issueTitle: context.payload.pull_request.title,
+    issueBody,
+    isPullRequest: true,
+    labels,
+    recentComments,
+    agentMemory,
+    conversationContext,
+    author: context.payload.comment.user?.login,
+    comment: context.payload.comment.body,
+  });
+  if (!routerResult) return;
+  const { raw, decision } = routerResult;
   if (!decision) {
     await postReplyInReviewThread(context, raw);
     return;

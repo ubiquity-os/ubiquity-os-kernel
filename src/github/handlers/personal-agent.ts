@@ -2,6 +2,7 @@ import { tokenOctokit } from "../github-client";
 import { GitHubContext } from "../github-context";
 import { PluginInput } from "../types/plugin";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url";
+import { getEnvValue } from "../utils/env";
 
 function getErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
@@ -9,23 +10,6 @@ function getErrorStatus(error: unknown): number | null {
   if (typeof status === "number" && Number.isFinite(status)) return status;
   const responseStatus = (error as { response?: { status?: unknown } }).response?.status;
   if (typeof responseStatus === "number" && Number.isFinite(responseStatus)) return responseStatus;
-  return null;
-}
-
-function getEnvValue(key: string): string | null {
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env[key];
-    if (value) return value;
-  }
-  const deno = (globalThis as { Deno?: { env?: { get?: (name: string) => string | undefined } } }).Deno;
-  if (deno?.env?.get) {
-    try {
-      const value = deno.env.get(key);
-      if (value) return value;
-    } catch {
-      return null;
-    }
-  }
   return null;
 }
 

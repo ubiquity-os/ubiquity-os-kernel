@@ -58,7 +58,6 @@ const TEST_PRIVATE_KEY = "test-private-key";
 const TEST_WEBHOOK_SECRET = "test-secret";
 const TEST_MODEL_NAME = "test-model";
 const TEST_MODEL = TEST_MODEL_NAME;
-
 // Helper to create fake event
 function createFakeEvent(org: string, repo: string, commentBody: string): EmitterWebhookEvent {
   return {
