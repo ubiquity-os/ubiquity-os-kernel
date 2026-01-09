@@ -39,31 +39,33 @@ const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../..
 const COMMIT_HASH_LEN = 7;
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
 
-const readTextFile = (path: string): string | null => {
+function readTextFile(path: string): string | null {
   try {
     return readFileSync(path, "utf8");
   } catch {
     return null;
   }
-};
+}
 
-const toShortCommitHash = (value: string | undefined | null): string | null => {
+function toShortCommitHash(value: string | undefined | null): string | null {
   const trimmed = value?.trim();
   if (!trimmed || !COMMIT_HASH_RE.test(trimmed)) {
     return null;
   }
   return trimmed.slice(0, COMMIT_HASH_LEN);
-};
+}
 
-const parseGitDirFromDotGitFile = (content: string): string | null => {
+function parseGitDirFromDotGitFile(content: string): string | null {
   const firstLine = (content.split(/\r?\n/, 1)[0] ?? "").trim();
   const match = firstLine.match(/^gitdir:\s*(.+)\s*$/i);
   return match?.[1]?.trim() ?? null;
-};
+}
 
-const isAbsolutePath = (path: string): boolean => path.startsWith("/") || path.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(path);
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || path.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(path);
+}
 
-const readGitHeadShortRevision = (gitDir: string): string | null => {
+function readGitHeadShortRevision(gitDir: string): string | null {
   const head = readTextFile(`${gitDir}/HEAD`);
   if (!head) {
     return null;
@@ -106,9 +108,9 @@ const readGitHeadShortRevision = (gitDir: string): string | null => {
   }
 
   return null;
-};
+}
 
-const getCommitHashForTest = (): string => {
+function getCommitHashForTest(): string {
   const envHash = toShortCommitHash(process.env.GIT_REVISION ?? process.env.GITHUB_SHA);
   if (envHash) {
     return envHash;
@@ -139,18 +141,20 @@ const getCommitHashForTest = (): string => {
   }
 
   return "unknown";
-};
+}
 
 let expectedCommitHash = "";
 let expectedHelpFooter = "";
 const EXPECTED_COMMAND_RESPONSE_MARKER = '\n\n<!-- "commentKind": "command-response" -->';
 
 let nextCommentId = 1000;
-const makeComment = (body: string) => ({
-  ...baseComment,
-  id: nextCommentId++,
-  body,
-});
+function makeComment(body: string) {
+  return {
+    ...baseComment,
+    id: nextCommentId++,
+    body,
+  };
+}
 
 type LlmRequestPayload = {
   messages?: Array<{ role?: string; content?: unknown }>;

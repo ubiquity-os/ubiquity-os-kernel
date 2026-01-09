@@ -16,7 +16,7 @@ const ROOT_SEARCH_PATHS = [".", "..", "../..", "../../..", "../../../..", "../..
 const COMMIT_HASH_LEN = 7;
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
 
-const readTextFile = async (path: string): Promise<string | null> => {
+async function readTextFile(path: string): Promise<string | null> {
   if (typeof Deno !== "undefined") {
     try {
       return await Deno.readTextFile(path);
@@ -31,25 +31,27 @@ const readTextFile = async (path: string): Promise<string | null> => {
   } catch {
     return null;
   }
-};
+}
 
-const toShortCommitHash = (value: string | undefined | null): string | null => {
+function toShortCommitHash(value: string | undefined | null): string | null {
   const trimmed = value?.trim();
   if (!trimmed || !COMMIT_HASH_RE.test(trimmed)) {
     return null;
   }
   return trimmed.slice(0, COMMIT_HASH_LEN);
-};
+}
 
-const parseGitDirFromDotGitFile = (content: string): string | null => {
+function parseGitDirFromDotGitFile(content: string): string | null {
   const firstLine = (content.split(/\r?\n/, 1)[0] ?? "").trim();
   const match = firstLine.match(/^gitdir:\s*(.+)\s*$/i);
   return match?.[1]?.trim() ?? null;
-};
+}
 
-const isAbsolutePath = (path: string): boolean => path.startsWith("/") || path.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(path);
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || path.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(path);
+}
 
-const readGitHeadShortRevision = async (gitDir: string): Promise<string | null> => {
+async function readGitHeadShortRevision(gitDir: string): Promise<string | null> {
   const head = await readTextFile(`${gitDir}/HEAD`);
   if (!head) {
     return null;
@@ -92,9 +94,9 @@ const readGitHeadShortRevision = async (gitDir: string): Promise<string | null> 
   }
 
   return null;
-};
+}
 
-const runGitCommand = async (args: string): Promise<string | null> => {
+async function runGitCommand(args: string): Promise<string | null> {
   try {
     if (typeof Deno !== "undefined") {
       const command = new Deno.Command("git", { args: args.split(" ") });
@@ -111,7 +113,7 @@ const runGitCommand = async (args: string): Promise<string | null> => {
     return null;
   }
   return null;
-};
+}
 
 export async function getKernelCommit(): Promise<string> {
   const envHash = toShortCommitHash(getEnvValue("GIT_REVISION") ?? getEnvValue("GITHUB_SHA"));

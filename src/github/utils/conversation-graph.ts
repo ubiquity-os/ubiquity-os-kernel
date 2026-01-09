@@ -585,7 +585,9 @@ function pickCanonicalNode(nodes: ConversationNode[]): ConversationNode {
 }
 
 function compareNodes(a: ConversationNode, b: ConversationNode): number {
-  const typeRank = (node: ConversationNode) => (node.type === "Issue" ? 0 : 1);
+  function typeRank(node: ConversationNode): number {
+    return node.type === "Issue" ? 0 : 1;
+  }
   const rankDiff = typeRank(a) - typeRank(b);
   if (rankDiff !== 0) return rankDiff;
   const aTime = Date.parse(a.createdAt);
