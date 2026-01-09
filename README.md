@@ -36,6 +36,10 @@ deno task dev
 
 `deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
 
+For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
+
+Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, `command-config`: https://github.com/ubiquity-os-marketplace/command-config).
+
 ## Conversation Graph and Agent Context
 
 The kernel builds a conversation graph for each issue/PR event so the agent can answer with context that spans linked threads.

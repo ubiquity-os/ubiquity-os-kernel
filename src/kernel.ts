@@ -101,6 +101,15 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
 app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const missingEnv: string[] = [];
+    const aiBaseUrl = requireEnvValue(env.UOS_AI_BASE_URL, "UOS_AI_BASE_URL", missingEnv);
+    const agentOwner = requireEnvValue(env.UOS_AGENT_OWNER, "UOS_AGENT_OWNER", missingEnv);
+    const agentRepo = requireEnvValue(env.UOS_AGENT_REPO, "UOS_AGENT_REPO", missingEnv);
+    const agentWorkflow = requireEnvValue(env.UOS_AGENT_WORKFLOW, "UOS_AGENT_WORKFLOW", missingEnv);
+    const agentRef = normalizeOptionalEnvValue(env.UOS_AGENT_REF);
+    if (missingEnv.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+    }
     const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
     const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
     const request = ctx.req;
@@ -113,14 +122,14 @@ app.post("/", async (ctx: Context) => {
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
       llm: "gpt-5.2-chat-latest",
-      aiBaseUrl: env.UOS_AI_BASE_URL,
+      aiBaseUrl,
       kernelRefreshUrl,
       kernelRefreshIntervalSeconds,
       agent: {
-        owner: env.UOS_AGENT_OWNER,
-        repo: env.UOS_AGENT_REPO,
-        workflowId: env.UOS_AGENT_WORKFLOW,
-        ref: env.UOS_AGENT_REF,
+        owner: agentOwner,
+        repo: agentRepo,
+        workflowId: agentWorkflow,
+        ref: agentRef,
       },
       logger: ctx.var.logger,
     });
@@ -182,4 +191,17 @@ function parseOptionalNumber(value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeOptionalEnvValue(value?: string): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed ? trimmed : undefined;
+}
+
+function requireEnvValue(value: string | undefined, name: string, missing: string[]): string {
+  const normalized = normalizeOptionalEnvValue(value) ?? "";
+  if (!normalized) {
+    missing.push(name);
+  }
+  return normalized;
 }

@@ -48,6 +48,26 @@ const OUTBOUND_REFERENCE_LIMIT = 25;
 
 const ALIAS_CACHE_MAX_SIZE = 1000;
 const aliasCache = new Map<string, string>();
+const conversationLocks = new Map<string, Promise<void>>();
+
+async function withConversationLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = conversationLocks.get(key) ?? Promise.resolve();
+  let release: (() => void) | undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const pending = previous.then(() => current);
+  conversationLocks.set(key, pending);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release?.();
+    if (conversationLocks.get(key) === pending) {
+      conversationLocks.delete(key);
+    }
+  }
+}
 
 function cacheAlias(key: string, value: string): void {
   if (aliasCache.has(key)) {
@@ -686,75 +706,77 @@ export async function resolveConversationKeyForContext(context: GitHubContext, l
   const subject = await getSubjectNode(context);
   if (!subject) return null;
 
-  const snapshot = (await fetchConversationSnapshot(context, subject.id)) ?? { root: subject, linked: [] };
-  const outbound = await fetchOutboundReferences(context, snapshot.root);
-  const linked = dedupeNodes([...snapshot.linked, ...outbound]);
-  const graph = buildGraph(snapshot.root, linked);
-  const nodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as ConversationNode);
+  return await withConversationLock(subject.id, async () => {
+    const snapshot = (await fetchConversationSnapshot(context, subject.id)) ?? { root: subject, linked: [] };
+    const outbound = await fetchOutboundReferences(context, snapshot.root);
+    const linked = dedupeNodes([...snapshot.linked, ...outbound]);
+    const graph = buildGraph(snapshot.root, linked);
+    const nodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as ConversationNode);
 
-  const kv = await getKvClient(logger ?? context.logger);
-  if (!kv) {
-    return { key: snapshot.root.id, root: snapshot.root, linked: snapshot.linked };
-  }
-
-  const candidateNodes: ConversationNode[] = [...nodes];
-  const existingKeys = new Set<string>();
-
-  for (const node of nodes) {
-    const record = await getNodeRecord(kv, node.id);
-    if (record) {
-      const resolvedKey = await resolveAliasKey(kv, record.key);
-      existingKeys.add(resolvedKey);
-      candidateNodes.push({
-        id: record.id,
-        type: record.type,
-        createdAt: record.createdAt,
-        url: record.url,
-        owner: record.owner,
-        repo: record.repo,
-        number: record.number,
-        title: record.title,
-      });
+    const kv = await getKvClient(logger ?? context.logger);
+    if (!kv) {
+      return { key: snapshot.root.id, root: snapshot.root, linked: snapshot.linked };
     }
-  }
 
-  for (const key of existingKeys) {
-    const record = await getNodeRecord(kv, key);
-    if (record) {
-      candidateNodes.push({
-        id: record.id,
-        type: record.type,
-        createdAt: record.createdAt,
-        url: record.url,
-        owner: record.owner,
-        repo: record.repo,
-        number: record.number,
-        title: record.title,
-      });
+    const candidateNodes: ConversationNode[] = [...nodes];
+    const existingKeys = new Set<string>();
+
+    for (const node of nodes) {
+      const record = await getNodeRecord(kv, node.id);
+      if (record) {
+        const resolvedKey = await resolveAliasKey(kv, record.key);
+        existingKeys.add(resolvedKey);
+        candidateNodes.push({
+          id: record.id,
+          type: record.type,
+          createdAt: record.createdAt,
+          url: record.url,
+          owner: record.owner,
+          repo: record.repo,
+          number: record.number,
+          title: record.title,
+        });
+      }
     }
-  }
 
-  const canonical = pickCanonicalNode(dedupeNodes(candidateNodes));
-  const canonicalKey = canonical.id;
-
-  if (!graph.hasNode(canonicalKey)) {
-    graph.addNode(canonicalKey, canonical);
-  }
-
-  for (const key of existingKeys) {
-    const resolvedKey = await resolveAliasKey(kv, key);
-    if (resolvedKey !== canonicalKey) {
-      await mergeKeys(kv, resolvedKey, canonicalKey);
+    for (const key of existingKeys) {
+      const record = await getNodeRecord(kv, key);
+      if (record) {
+        candidateNodes.push({
+          id: record.id,
+          type: record.type,
+          createdAt: record.createdAt,
+          url: record.url,
+          owner: record.owner,
+          repo: record.repo,
+          number: record.number,
+          title: record.title,
+        });
+      }
     }
-  }
 
-  for (const node of nodes) {
-    await persistNode(kv, node, canonicalKey);
-  }
+    const canonical = pickCanonicalNode(dedupeNodes(candidateNodes));
+    const canonicalKey = canonical.id;
 
-  await persistNode(kv, canonical, canonicalKey);
+    if (!graph.hasNode(canonicalKey)) {
+      graph.addNode(canonicalKey, canonical);
+    }
 
-  return { key: canonicalKey, root: snapshot.root, linked };
+    for (const key of existingKeys) {
+      const resolvedKey = await resolveAliasKey(kv, key);
+      if (resolvedKey !== canonicalKey) {
+        await mergeKeys(kv, resolvedKey, canonicalKey);
+      }
+    }
+
+    for (const node of nodes) {
+      await persistNode(kv, node, canonicalKey);
+    }
+
+    await persistNode(kv, canonical, canonicalKey);
+
+    return { key: canonicalKey, root: snapshot.root, linked };
+  });
 }
 
 export async function listConversationNodesForKey(context: GitHubContext, key: string, limit = 40, logger?: LoggerLike): Promise<ConversationNode[]> {
