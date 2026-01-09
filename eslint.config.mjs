@@ -10,15 +10,7 @@ export default tsEslint.config({
     "@typescript-eslint": tsEslint.plugin,
     "check-file": checkFile,
   },
-  ignores: [
-    "jest.config.ts",
-    ".husky/**",
-    "dist/**",
-    "**/dist/**",
-    "**/*.js",
-    "lib/**",
-    "!lib/plugins/hello-world-plugin/**",
-  ],
+  ignores: ["jest.config.ts", ".husky/**", "dist/**", "**/dist/**", "**/*.js", "lib/**", "!lib/plugins/hello-world-plugin/**"],
   extends: [eslint.configs.recommended, ...tsEslint.configs.recommended, sonarjs.configs.recommended],
   languageOptions: {
     parser: tsEslint.parser,

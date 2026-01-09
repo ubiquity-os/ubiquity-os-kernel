@@ -55,11 +55,6 @@ jobs:
           if [ -z "${{ secrets.APP_ID }}" ]; then echo "Missing required secret: APP_ID" >&2; exit 1; fi
           if [ -z "${{ secrets.APP_PRIVATE_KEY }}" ]; then echo "Missing required secret: APP_PRIVATE_KEY" >&2; exit 1; fi
 
-      - uses: ubiquity-os/deno-plugin-adapter@main
-        id: adapter
-        with:
-          pluginEntry: "./adapters/server"
-
       - uses: ubiquity-os/deno-deploy@main
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
@@ -81,5 +76,5 @@ jobs:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
-          entrypoint: ${{ steps.adapter.outputs.entrypoint }}
+          entrypoint: src/kernel.ts
           project_name: ${{ secrets.DENO_PROJECT_NAME || steps.deno.outputs.project_name }}
