@@ -99,20 +99,24 @@ export async function handleAgentRunCommentEdited(context: EditedCommentContext,
   const repo = context.payload.repository.name;
   const conversation = await resolveConversationKeyForContext(context, context.logger);
 
-  await upsertAgentRunMemory({
-    owner,
-    repo,
-    scopeKey: conversation?.key,
-    entry: {
-      kind: "agent_run",
-      stateId: parsed.stateId,
-      status: parsed.status,
-      issueNumber,
-      updatedAt: parsed.updatedAt,
-      runUrl: parsed.runUrl,
-      prUrl: parsed.prUrl,
-      summary: parsed.summary,
-    },
-    logger: context.logger,
-  });
+  try {
+    await upsertAgentRunMemory({
+      owner,
+      repo,
+      scopeKey: conversation?.key,
+      entry: {
+        kind: "agent_run",
+        stateId: parsed.stateId,
+        status: parsed.status,
+        issueNumber,
+        updatedAt: parsed.updatedAt,
+        runUrl: parsed.runUrl,
+        prUrl: parsed.prUrl,
+        summary: parsed.summary,
+      },
+      logger: context.logger,
+    });
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to persist agent run memory (non-fatal)");
+  }
 }

@@ -259,6 +259,9 @@ async function applyCommandResponsePolicy(context: GitHubContext<"issue_comment.
 
   const previous = findPreviousCommandResponseComment(comments, commentNodeId);
   if (previous && !previous.isMinimized) {
+    if (commentNodeId && !isCurrentMinimized) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
     await minimizeComment(context, previous.id);
   }
 }

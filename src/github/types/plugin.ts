@@ -27,11 +27,13 @@ function readFiniteNumber(value: unknown): number | null {
 
 function extractRepoContext(payload: unknown): { owner: string; repo: string; installationId: number | null } {
   const maybePayload = payload as RepositoryPayload;
-  return {
-    owner: readString(maybePayload.repository?.owner?.login),
-    repo: readString(maybePayload.repository?.name),
-    installationId: readFiniteNumber(maybePayload.installation?.id),
-  };
+  const owner = readString(maybePayload.repository?.owner?.login);
+  const repo = readString(maybePayload.repository?.name);
+  const installationId = readFiniteNumber(maybePayload.installation?.id);
+  if (!owner || !repo) {
+    throw new Error(`Missing repository context for plugin input (owner="${owner}", repo="${repo}")`);
+  }
+  return { owner, repo, installationId };
 }
 
 export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
@@ -91,7 +93,6 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
     const signature = await this.eventHandler.signPayload(JSON.stringify(signableInputs));
     return {
       ...signableInputs,
-      ubiquityKernelToken,
       signature,
     };
   }

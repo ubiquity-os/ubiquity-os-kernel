@@ -1,6 +1,7 @@
 import { GitHubContext } from "../github-context.ts";
 import { ConversationNode, ConversationKeyResult, listConversationNodesForKey } from "./conversation-graph.ts";
 import { callUbqAiRouter } from "./ai-router.ts";
+import type { LoggerLike } from "./kv-client.ts";
 import {
   fetchVectorDocument,
   fetchVectorDocuments,
@@ -426,7 +427,8 @@ function buildNodeFromDocument(doc: VectorDocument): ConversationNode | null {
   const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
   if (!payload) return null;
   const repository = isRecord(payload.repository) ? payload.repository : null;
-  const owner = isRecord(repository?.owner) ? String(repository.owner.login || "").trim() : "";
+  const ownerObj = isRecord(repository?.owner) ? repository.owner : null;
+  const owner = typeof ownerObj?.login === "string" ? ownerObj.login.trim() : "";
   const repo = typeof repository?.name === "string" ? repository.name : "";
   const issue = isRecord(payload.issue) ? payload.issue : null;
   const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
@@ -472,7 +474,8 @@ function buildDescriptorFromDocument(doc: VectorDocument): DocumentDescriptor | 
   const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
   if (!payload) return null;
   const repository = isRecord(payload.repository) ? payload.repository : null;
-  const owner = isRecord(repository?.owner) ? String(repository.owner.login || "").trim() : "";
+  const ownerObj = isRecord(repository?.owner) ? repository.owner : null;
+  const owner = typeof ownerObj?.login === "string" ? ownerObj.login.trim() : "";
   const repo = typeof repository?.name === "string" ? repository.name : "";
   if (!owner || !repo) return null;
 
@@ -590,23 +593,35 @@ function getDocumentTimestamp(doc: VectorDocument): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function findSimilarForDocument(config: ReturnType<typeof getVectorDbConfig>, doc: VectorDocument): Promise<{ id: string; similarity: number }[]> {
+async function findSimilarForDocument(
+  config: ReturnType<typeof getVectorDbConfig>,
+  doc: VectorDocument,
+  logger?: LoggerLike
+): Promise<{ id: string; similarity: number }[]> {
   if (!config) return [];
   const embedding = Array.isArray(doc.embedding) ? doc.embedding : [];
   if (embedding.length === 0) return [];
   const [issueResults, commentResults] = await Promise.all([
-    findSimilarIssues(config, {
-      currentId: doc.id,
-      embedding,
-      threshold: DEFAULT_SIMILARITY_THRESHOLD,
-      topK: DEFAULT_SIMILARITY_TOP_K,
-    }),
-    findSimilarComments(config, {
-      currentId: doc.id,
-      embedding,
-      threshold: DEFAULT_SIMILARITY_THRESHOLD,
-      topK: DEFAULT_SIMILARITY_TOP_K,
-    }),
+    findSimilarIssues(
+      config,
+      {
+        currentId: doc.id,
+        embedding,
+        threshold: DEFAULT_SIMILARITY_THRESHOLD,
+        topK: DEFAULT_SIMILARITY_TOP_K,
+      },
+      logger
+    ),
+    findSimilarComments(
+      config,
+      {
+        currentId: doc.id,
+        embedding,
+        threshold: DEFAULT_SIMILARITY_THRESHOLD,
+        topK: DEFAULT_SIMILARITY_TOP_K,
+      },
+      logger
+    ),
   ]);
   const combined = [...issueResults, ...commentResults];
   combined.sort((a, b) => b.similarity - a.similarity);
@@ -813,7 +828,8 @@ export async function buildConversationContext(
     const explicitDocs = await fetchVectorDocuments(
       config,
       explicitNodes.map((node) => node.id),
-      { includeEmbedding: true }
+      { includeEmbedding: true },
+      params.context.logger
     );
     for (const doc of explicitDocs) {
       docMap.set(doc.id, doc);
@@ -824,7 +840,7 @@ export async function buildConversationContext(
 
   if (config) {
     const seedDocs: VectorDocument[] = [];
-    const rootDoc = await fetchVectorDocument(config, params.conversation.root.id);
+    const rootDoc = await fetchVectorDocument(config, params.conversation.root.id, params.context.logger);
     if (rootDoc) {
       docMap.set(rootDoc.id, rootDoc);
       graphDocIds.add(rootDoc.id);
@@ -842,11 +858,16 @@ export async function buildConversationContext(
 
     const commentSeedLimit = Math.max(DEFAULT_MAX_COMMENTS, maxComments);
     const commentDocsByNode = await mapWithConcurrency(threadNodes, DEFAULT_VECTOR_CONCURRENCY, async (node) => {
-      const comments = await fetchVectorDocumentsByParentId(config, node.id, {
-        includeEmbedding: true,
-        maxPerParent: commentSeedLimit,
-        docTypes: COMMENT_DOC_TYPES,
-      });
+      const comments = await fetchVectorDocumentsByParentId(
+        config,
+        node.id,
+        {
+          includeEmbedding: true,
+          maxPerParent: commentSeedLimit,
+          docTypes: COMMENT_DOC_TYPES,
+        },
+        params.context.logger
+      );
       return { nodeId: node.id, comments };
     });
     for (const entry of commentDocsByNode) {
@@ -868,7 +889,7 @@ export async function buildConversationContext(
     const similarityById = new Map<string, { similarity: number; sources: Set<string> }>();
     const seedDocsList = [...seedMap.values()];
     const similarityResults = await mapWithConcurrency(seedDocsList, DEFAULT_VECTOR_CONCURRENCY, async (doc) => {
-      const matches = await findSimilarForDocument(config, doc);
+      const matches = await findSimilarForDocument(config, doc, params.context.logger);
       return { docId: doc.id, matches };
     });
     for (const result of similarityResults) {
@@ -886,7 +907,7 @@ export async function buildConversationContext(
 
     const candidateIds = [...similarityById.keys()];
     if (candidateIds.length > 0) {
-      const candidateDocs = await fetchVectorDocuments(config, candidateIds);
+      const candidateDocs = await fetchVectorDocuments(config, candidateIds, undefined, params.context.logger);
       for (const doc of candidateDocs) {
         docMap.set(doc.id, doc);
       }

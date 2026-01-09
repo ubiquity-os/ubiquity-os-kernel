@@ -343,12 +343,16 @@ function getAgentTaskFromParameters(parameters: unknown): string | null {
 async function postReply(context: GitHubContext<"issue_comment.created">, body: string) {
   const message = body.trim();
   if (!message) return;
-  await context.octokit.rest.issues.createComment({
-    body: message,
-    issue_number: context.payload.issue.number,
-    owner: context.payload.repository.owner.login,
-    repo: context.payload.repository.name,
-  });
+  try {
+    await context.octokit.rest.issues.createComment({
+      body: message,
+      issue_number: context.payload.issue.number,
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
+    });
+  } catch (error) {
+    context.logger.warn({ err: error, issueNumber: context.payload.issue.number }, "Failed to post reply (non-fatal)");
+  }
 }
 
 export function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
@@ -495,7 +499,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   if (!routerResult) return;
   const { raw, decision } = routerResult;
   if (!decision) {
-    await postReply(context, raw);
+    const rawSnippet = String(raw ?? "");
+    const trimmedSnippet = rawSnippet.length > 500 ? `${rawSnippet.slice(0, 500)}...` : rawSnippet;
+    context.logger.warn({ raw: trimmedSnippet }, "Failed to parse router decision");
+    await postReply(context, "I couldn't understand that request. Try `@ubiquityos help`.");
     return;
   }
 

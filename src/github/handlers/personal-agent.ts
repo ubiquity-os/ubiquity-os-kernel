@@ -2,6 +2,7 @@ import { tokenOctokit } from "../github-client.ts";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+import { toOctokitLogMeta } from "../utils/octokit-log.ts";
 
 function getErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
@@ -19,10 +20,22 @@ function createTokenOctokit(context: GitHubContext, token: string) {
     },
     auth: token,
     log: {
-      debug: (msg: string, info?: unknown) => context.logger.github({ info }, msg),
-      info: (msg: string, info?: unknown) => context.logger.github({ info }, msg),
-      warn: (msg: string, info?: unknown) => context.logger.github({ info }, msg),
-      error: (msg: string, info?: unknown) => context.logger.github({ info }, msg),
+      debug: (msg: string, info?: unknown) => {
+        const meta = toOctokitLogMeta(info);
+        context.logger.github(meta ? { info: meta } : {}, msg);
+      },
+      info: (msg: string, info?: unknown) => {
+        const meta = toOctokitLogMeta(info);
+        context.logger.github(meta ? { info: meta } : {}, msg);
+      },
+      warn: (msg: string, info?: unknown) => {
+        const meta = toOctokitLogMeta(info);
+        context.logger.github(meta ? { info: meta } : {}, msg);
+      },
+      error: (msg: string, info?: unknown) => {
+        const meta = toOctokitLogMeta(info);
+        context.logger.github(meta ? { info: meta } : {}, msg);
+      },
     },
   });
 }
@@ -103,7 +116,6 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
       ref: defaultBranch,
       inputs: await pluginInput.getInputs(),
     });
-    await updateRequestCommentRunUrl(context, null);
   } catch (error) {
     logger.error(
       {
@@ -117,6 +129,12 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
       "Error dispatching personal-agent workflow"
     );
     return;
+  }
+
+  try {
+    await updateRequestCommentRunUrl(context, null);
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to update request comment run URL");
   }
 
   logger.info(`Successfully sent the comment to ${personalAgentOwner}/${personalAgentRepo}`);

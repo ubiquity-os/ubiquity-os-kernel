@@ -168,7 +168,6 @@ beforeAll(async () => {
 afterEach(() => {
   server.resetHandlers();
   jest.clearAllMocks();
-  jest.resetAllMocks();
   jest.resetModules();
 });
 afterAll(() => {

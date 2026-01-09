@@ -48,6 +48,7 @@ describe("Personal Agent tests", () => {
     );
     expect(infoSpy).toHaveBeenNthCalledWith(1, `Successfully sent the comment to test_acc2/personal-agent`);
     expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
+    expect(context.octokit.rest.repos.getCollaboratorPermissionLevel).toHaveBeenCalled();
   });
 
   it("Should ignore irrelevant comments", async () => {
@@ -95,9 +96,9 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
         get: () => ({
           data: { default_branch: "main" },
         }),
-        getCollaboratorPermissionLevel: () => ({
+        getCollaboratorPermissionLevel: jest.fn(() => ({
           data: { role_name: "admin" },
-        }),
+        })),
       },
     },
   };

@@ -94,7 +94,9 @@ function parseNodeRecord(value: unknown): ConversationNodeRecord | null {
   if (!isRecord(value)) return null;
   const id = normalizeString(value.id);
   const key = normalizeString(value.key);
-  const type = normalizeString(value.type) as ConversationNodeType;
+  const typeRaw = normalizeString(value.type);
+  if (typeRaw !== "Issue" && typeRaw !== "PullRequest") return null;
+  const type = typeRaw as ConversationNodeType;
   const createdAt = normalizeString(value.createdAt);
   const url = normalizeString(value.url);
   const owner = normalizeString(value.owner);

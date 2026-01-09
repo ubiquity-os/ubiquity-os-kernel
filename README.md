@@ -2,7 +2,7 @@
 
 The kernel is designed to:
 
-- Interface with plugins (GitHub Actions) for longer running processes.
+- Interface with plugins (GitHub Actions) for longer-running processes.
 - Run on Deno Deploy.
 
 ## Environment Variables
@@ -10,13 +10,13 @@ The kernel is designed to:
 Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (plus the non-secret `APP_ID`).
 
 - **`APP_PRIVATE_KEY`**
-  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}. Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.env` file:
+  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from [https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}](https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}). Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.env` file:
 
   ```sh
   echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .env
   ```
 
-  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
+  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command. On Windows, run the command via WSL or Git Bash.
 
 - **`APP_WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
@@ -140,7 +140,7 @@ The kernel supports 2 types of plugins:
 How to run a "hello-world" plugin locally:
 
 1. Run `deno task dev` to spin up the kernel
-2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
+2. Run `bun run plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
    ```yml
    plugins:

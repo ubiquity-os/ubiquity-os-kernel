@@ -1,6 +1,7 @@
 import { getKvClient, type KvKey } from "./kv-client.ts";
 
 const inMemoryExpiryMsByKey = new Map<string, number>();
+const MAX_IN_MEMORY_ENTRIES = 2000;
 
 function buildInMemoryKey(owner: string, repo: string, eventName: string, commentId: number): string {
   return `${owner}/${repo}/${eventName}/${commentId}`;
@@ -20,6 +21,11 @@ function hasUnexpiredLocalMark(key: string, nowMs: number): boolean {
 
 function markLocal(key: string, expiresAtMs: number) {
   inMemoryExpiryMsByKey.set(key, expiresAtMs);
+  while (inMemoryExpiryMsByKey.size > MAX_IN_MEMORY_ENTRIES) {
+    const oldestKey = inMemoryExpiryMsByKey.keys().next().value;
+    if (!oldestKey) break;
+    inMemoryExpiryMsByKey.delete(oldestKey);
+  }
 }
 
 export async function shouldSkipDuplicateCommentEvent(

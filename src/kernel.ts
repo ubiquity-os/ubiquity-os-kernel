@@ -112,7 +112,7 @@ app.post("/", async (ctx: Context) => {
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      llm: "gpt-5.2",
+      llm: "gpt-5.2-chat-latest",
       aiBaseUrl: env.UOS_AI_BASE_URL,
       kernelRefreshUrl,
       kernelRefreshIntervalSeconds,

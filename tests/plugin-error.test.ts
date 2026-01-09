@@ -14,6 +14,15 @@ jest.mock("@octokit/auth-app", () => ({
 
 const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
 const PLUGIN_ERROR_EVENT = "kernel.plugin_error";
+const WORKFLOW_DISPATCH_MODULE = "../src/github/utils/workflow-dispatch";
+const TEST_OWNER = "test-user";
+const TEST_REPO = "test-repo";
+const TEST_REPO_FULL_NAME = `${TEST_OWNER}/${TEST_REPO}`;
+const TEST_SECRET = "test-secret";
+const TEST_DELIVERY_ID = "mocked_delivery_id";
+const TEST_SERVER_URL = "http://localhost:8080";
+const TEST_EVENT_NAME = "issues";
+const TEST_TRIGGER_EVENT = "issues.opened";
 
 jest.mock(PLUGIN_INPUT_MODULE, () => {
   const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>(PLUGIN_INPUT_MODULE);
@@ -57,8 +66,8 @@ afterAll(() => {
 describe(PLUGIN_ERROR_EVENT, () => {
   const failingPluginUrl = "https://failing-plugin.internal";
   const hotfixPluginUrl = "https://daemon-hotfix.internal";
-  const orgConfigUrl = "https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml";
-  const repoConfigUrl = "https://api.github.com/repos/test-user/test-repo/contents/.github%2F.ubiquity-os.config.yml";
+  const orgConfigUrl = `https://api.github.com/repos/${TEST_OWNER}/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml`;
+  const repoConfigUrl = `https://api.github.com/repos/${TEST_OWNER}/${TEST_REPO}/contents/.github%2F.ubiquity-os.config.yml`;
 
   beforeEach(() => {
     const yamlContent = ["plugins:", `  ${failingPluginUrl}: {}`, `  ${hotfixPluginUrl}: {}`, ""].join("\n");
@@ -118,8 +127,8 @@ describe(PLUGIN_ERROR_EVENT, () => {
       customOctokit: jest.fn().mockReturnValue(new Octokit()),
     }));
 
-    jest.doMock("../src/github/utils/workflow-dispatch", () => ({
-      ...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
+    jest.doMock(WORKFLOW_DISPATCH_MODULE, () => ({
+      ...(jest.requireActual(WORKFLOW_DISPATCH_MODULE) as object),
       dispatchWorker,
       dispatchWorkflow: jest.fn(),
     }));
@@ -131,23 +140,23 @@ describe(PLUGIN_ERROR_EVENT, () => {
       },
       sender: {
         type: "User",
-        login: "test-user",
+        login: TEST_OWNER,
       },
       issue: {
         number: 123,
       },
       repository: {
         id: 123456,
-        name: "test-repo",
-        full_name: "test-user/test-repo",
+        name: TEST_REPO,
+        full_name: TEST_REPO_FULL_NAME,
         owner: {
-          login: "test-user",
+          login: TEST_OWNER,
           id: 654321,
         },
       },
     };
 
-    const secret = "test-secret";
+    const secret = TEST_SECRET;
     const payloadString = JSON.stringify(payload);
     const signature = calculateSignature(payloadString, secret);
 
@@ -161,12 +170,12 @@ describe(PLUGIN_ERROR_EVENT, () => {
       };
 
       const app = (await import("../src/kernel")).app;
-      const res = await app.request("http://localhost:8080", {
+      const res = await app.request(TEST_SERVER_URL, {
         method: "POST",
         headers: {
-          "x-github-event": "issues",
+          "x-github-event": TEST_EVENT_NAME,
           "x-hub-signature-256": signature,
-          "x-github-delivery": "mocked_delivery_id",
+          "x-github-delivery": TEST_DELIVERY_ID,
           "content-type": "application/json",
         },
         body: payloadString,
@@ -181,8 +190,103 @@ describe(PLUGIN_ERROR_EVENT, () => {
       expect(pluginError.event).toBe(PLUGIN_ERROR_EVENT);
       expect(pluginError.plugin.type).toBe("http");
       expect(pluginError.plugin.id).toBe(failingPluginUrl);
-      expect(pluginError.trigger.githubEvent).toBe("issues.opened");
-      expect(pluginError.trigger.repo).toBe("test-user/test-repo");
+      expect(pluginError.trigger.githubEvent).toBe(TEST_TRIGGER_EVENT);
+      expect(pluginError.trigger.repo).toBe(TEST_REPO_FULL_NAME);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it(`dispatches ${PLUGIN_ERROR_EVENT} when a kernel handler throws`, async () => {
+    jest.resetModules();
+    const dispatchWorker = jest.fn().mockResolvedValue("ok");
+    const getPluginsForEvent = jest
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("Kernel handler blew up");
+      })
+      .mockResolvedValueOnce([
+        {
+          key: hotfixPluginUrl,
+          target: hotfixPluginUrl,
+          settings: {},
+        },
+      ]);
+
+    jest.doMock("../src/github/github-client", () => ({
+      customOctokit: jest.fn().mockReturnValue(new Octokit()),
+    }));
+
+    jest.doMock(WORKFLOW_DISPATCH_MODULE, () => ({
+      ...(jest.requireActual(WORKFLOW_DISPATCH_MODULE) as object),
+      dispatchWorker,
+      dispatchWorkflow: jest.fn(),
+    }));
+
+    jest.doMock("../src/github/utils/plugins", () => ({
+      ...(jest.requireActual("../src/github/utils/plugins") as object),
+      getPluginsForEvent,
+    }));
+
+    const payload = {
+      action: "opened",
+      installation: {
+        id: 1,
+      },
+      sender: {
+        type: "User",
+        login: TEST_OWNER,
+      },
+      issue: {
+        number: 123,
+      },
+      repository: {
+        id: 123456,
+        name: TEST_REPO,
+        full_name: TEST_REPO_FULL_NAME,
+        owner: {
+          login: TEST_OWNER,
+          id: 654321,
+        },
+      },
+    };
+
+    const secret = TEST_SECRET;
+    const payloadString = JSON.stringify(payload);
+    const signature = calculateSignature(payloadString, secret);
+
+    const originalEnv = { ...process.env };
+    try {
+      process.env = {
+        ENVIRONMENT: "production",
+        APP_WEBHOOK_SECRET: secret,
+        APP_ID: "1",
+        APP_PRIVATE_KEY: "1234",
+      };
+
+      const app = (await import("../src/kernel")).app;
+      const res = await app.request(TEST_SERVER_URL, {
+        method: "POST",
+        headers: {
+          "x-github-event": TEST_EVENT_NAME,
+          "x-hub-signature-256": signature,
+          "x-github-delivery": TEST_DELIVERY_ID,
+          "content-type": "application/json",
+        },
+        body: payloadString,
+      });
+
+      expect(res).toBeTruthy();
+      expect(dispatchWorker).toHaveBeenCalledTimes(1);
+
+      const [, hotfixInputs] = dispatchWorker.mock.calls[0];
+      expect(hotfixInputs.eventName).toBe(PLUGIN_ERROR_EVENT);
+      const pluginError = JSON.parse(String(hotfixInputs.eventPayload));
+      expect(pluginError.error.category).toBe("kernel");
+      expect(pluginError.plugin.type).toBe("kernel");
+      expect(pluginError.plugin.id).toBe("ubiquity-os/ubiquity-os-kernel");
+      expect(pluginError.trigger.githubEvent).toBe(TEST_TRIGGER_EVENT);
+      expect(pluginError.trigger.repo).toBe(TEST_REPO_FULL_NAME);
     } finally {
       process.env = originalEnv;
     }

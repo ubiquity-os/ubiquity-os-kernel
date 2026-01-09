@@ -7,12 +7,27 @@ import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
 
-const _manifestCache: Record<string, Manifest> = {};
+const MAX_MANIFEST_CACHE_SIZE = 100;
+const manifestCache = new Map<string, Manifest>();
 const kernelManifestSchema = T.Object({
   ...(sdkManifestSchema.properties as unknown as TProperties),
   // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
   "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
 });
+
+function readManifestCache(key: string): Manifest | null {
+  return manifestCache.get(key) ?? null;
+}
+
+function setManifestCache(key: string, manifest: Manifest) {
+  if (manifestCache.has(key)) {
+    manifestCache.delete(key);
+  } else if (manifestCache.size >= MAX_MANIFEST_CACHE_SIZE) {
+    const oldestKey = manifestCache.keys().next().value;
+    if (oldestKey) manifestCache.delete(oldestKey);
+  }
+  manifestCache.set(key, manifest);
+}
 
 export type ResolvedPlugin = {
   key: string;
@@ -84,11 +99,12 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
-async function fetchActionManifest(context: GitHubContext<"issue_comment.created">, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
+async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
-  if (useCache && _manifestCache[manifestKey]) {
-    return _manifestCache[manifestKey];
+  if (useCache) {
+    const cached = readManifestCache(manifestKey);
+    if (cached) return cached;
   }
   try {
     const controller = new AbortController();
@@ -106,7 +122,7 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
         const contentParsed = JSON.parse(content);
         const manifest = decodeManifest(context, contentParsed);
         if (useCache) {
-          _manifestCache[manifestKey] = manifest;
+          setManifestCache(manifestKey, manifest);
         }
         return manifest;
       }
@@ -121,8 +137,9 @@ async function fetchActionManifest(context: GitHubContext<"issue_comment.created
 
 async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
   const useCache = isManifestCacheEnabled(context);
-  if (useCache && _manifestCache[url]) {
-    return _manifestCache[url];
+  if (useCache) {
+    const cached = readManifestCache(url);
+    if (cached) return cached;
   }
   const manifestUrl = `${url}/manifest.json`;
   try {
@@ -146,7 +163,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
       if (useCache) {
-        _manifestCache[url] = manifest;
+        setManifestCache(url, manifest);
       }
       return manifest;
     } finally {

@@ -13,6 +13,8 @@ import { getConfigPathCandidatesForEnvironment } from "../src/github/utils/confi
 
 loadEnv({ path: ".env" });
 
+const MOCK_TOKEN = "mock-token";
+
 interface PluginManifest {
   name: string;
   commands?: Record<
@@ -64,15 +66,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-async function runCommand(command: string, args: string[]): Promise<string> {
+async function runCommand(command: string, args: string[], timeoutMs = 30_000): Promise<string> {
   const proc = Bun.spawn([command, ...args], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    const msg = stderr.trim() || stdout.trim() || `Command failed with exit code ${exitCode}`;
-    throw new Error(`${command} ${args.join(" ")}\n${msg}`);
+  let hasTimedOut = false;
+  const timeout = setTimeout(() => {
+    hasTimedOut = true;
+    proc.kill();
+  }, timeoutMs);
+  try {
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    const exitCode = await proc.exited;
+    if (hasTimedOut) {
+      throw new Error(`${command} ${args.join(" ")}\nCommand timed out after ${timeoutMs}ms`);
+    }
+    if (exitCode !== 0) {
+      const msg = stderr.trim() || stdout.trim() || `Command failed with exit code ${exitCode}`;
+      throw new Error(`${command} ${args.join(" ")}\n${msg}`);
+    }
+    return stdout;
+  } finally {
+    clearTimeout(timeout);
   }
-  return stdout;
 }
 
 async function ghApiJson<T = unknown>(endpoint: string, args: string[] = []): Promise<T> {
@@ -196,7 +210,9 @@ async function downloadGitHubFileRaw(octokit: MinimalOctokit, { owner, repo, pat
       path,
       mediaType: { format: "raw" },
     });
-    return typeof data === "string" ? data : String(data);
+    if (typeof data === "string") return data;
+    console.log(`⚠️  Unexpected response for ${owner}/${repo}/${path}; expected raw string.`);
+    return null;
   } catch (error: unknown) {
     if (getErrorStatus(error) === 404) return null;
     throw error;
@@ -286,10 +302,17 @@ if (!existsSync(CACHE_DIR)) {
 // Load cached config
 function loadCachedConfig(configPath: string): PluginConfiguration | null {
   try {
-    if (existsSync(configPath)) {
-      const data = readFileSync(configPath, "utf8");
-      return YAML.load(data) as PluginConfiguration;
+    if (!existsSync(configPath)) {
+      return null;
     }
+    const data = readFileSync(configPath, "utf8");
+    const parsed = YAML.load(data);
+    const normalized = normalizePluginConfiguration(parsed);
+    if (!normalized) {
+      console.log(`⚠️  Cached config at ${configPath} is invalid; ignoring.`);
+      return null;
+    }
+    return normalized;
   } catch (error) {
     console.log(`⚠️  Failed to load cached config: ${error}`);
   }
@@ -365,7 +388,8 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
     // Get authenticated octokit for the installation
     const authenticatedOctokit = eventHandler.getAuthenticatedOctokit(installation.id);
 
-    // Create a mock GitHubContext like the kernel uses
+    // WARNING: This mock context is tightly coupled to kernel internals.
+    // If getConfig() or GitHubContext requirements change, update this stub.
     const mockContext = {
       octokit: authenticatedOctokit,
       eventHandler: eventHandler,
@@ -418,7 +442,8 @@ async function fetchPluginManifest(url: string): Promise<PluginManifest | null> 
     const response = await fetch(`${url}/manifest.json`);
     if (!response.ok) return null;
     return await response.json();
-  } catch {
+  } catch (error) {
+    console.log(`⚠️  Failed to fetch manifest from ${url}: ${error}`);
     return null;
   }
 }
@@ -495,9 +520,12 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
   }
 
   const githubToken = (process.env.GITHUB_TOKEN ?? String()).trim();
-  const authToken = installationToken || githubToken || "mock-token";
+  const authToken = installationToken || githubToken || MOCK_TOKEN;
   if (!installationToken && githubToken) {
     console.log("🔑 Using GITHUB_TOKEN for auth");
+  }
+  if (authToken === MOCK_TOKEN) {
+    console.log("⚠️  Using mock token; plugin calls may return unauthorized responses.");
   }
 
   const stateId = "test-state-id";
@@ -507,7 +535,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
     signPayloadFn = (payload: string) => signPayload(payload, privateKey);
   }
   let ubiquityKernelToken: string | undefined;
-  if (authToken !== "mock-token" && signPayloadFn) {
+  if (authToken !== MOCK_TOKEN && signPayloadFn) {
     const { createKernelAttestationToken } = await import("../src/github/utils/kernel-attestation");
     ubiquityKernelToken = await createKernelAttestationToken({
       sign: signPayloadFn,

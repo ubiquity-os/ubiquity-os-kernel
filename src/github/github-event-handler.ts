@@ -3,6 +3,7 @@ import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 import { logger } from "../logger/logger.ts";
 import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
+import { toOctokitLogMeta } from "./utils/octokit-log.ts";
 
 import { customOctokit } from "./github-client.ts";
 import { GitHubContext, SimplifiedContext } from "./github-context.ts";
@@ -110,10 +111,22 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        info: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        warn: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        error: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
       },
       auth: {
         appId: this._appId,
@@ -129,10 +142,22 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        info: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        warn: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        error: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
       },
       auth: {
         appId: this._appId,

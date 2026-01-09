@@ -66,6 +66,9 @@ async function readGitHeadShortRevision(gitDir: string): Promise<string | null> 
   if (!refPath) {
     return null;
   }
+  if (isAbsolutePath(refPath) || refPath.includes("..")) {
+    return null;
+  }
 
   const ref = await readTextFile(`${gitDir}/${refPath}`);
   if (ref) {
@@ -96,23 +99,22 @@ async function readGitHeadShortRevision(gitDir: string): Promise<string | null> 
   return null;
 }
 
-async function runGitCommand(args: string): Promise<string | null> {
+async function runGitCommand(args: string[]): Promise<string | null> {
   try {
     if (typeof Deno !== "undefined") {
-      const command = new Deno.Command("git", { args: args.split(" ") });
+      const command = new Deno.Command("git", { args });
       const { code, stdout } = await command.output();
       if (code === 0) {
         return new TextDecoder().decode(stdout).trim();
       }
     } else {
       // Node.js fallback
-      const { execSync } = await import("child_process");
-      return execSync(`git ${args}`, { encoding: "utf8" }).trim();
+      const { execFileSync } = await import("child_process");
+      return execFileSync("git", args, { encoding: "utf8" }).trim();
     }
   } catch {
     return null;
   }
-  return null;
 }
 
 export async function getKernelCommit(): Promise<string> {
@@ -122,7 +124,7 @@ export async function getKernelCommit(): Promise<string> {
   }
 
   try {
-    const gitHash = await runGitCommand("rev-parse --short HEAD");
+    const gitHash = await runGitCommand(["rev-parse", "--short", "HEAD"]);
     if (gitHash) {
       return gitHash.trim();
     }

@@ -102,7 +102,6 @@ dist
 .pnp.\*
 # env files
 .dev.vars
-.env
 .wrangler/
 # yarn v4
 .pnp.*

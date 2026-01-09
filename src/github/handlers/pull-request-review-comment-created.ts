@@ -359,6 +359,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  const task = String((decision as { task?: unknown }).task ?? "").trim() || afterMention || body;
+  if (decision.action !== "agent") return;
+  const task = String(decision.task ?? "").trim() || afterMention || body;
   await dispatchInternalAgent(context, task, { postReply: (reply) => postReplyInReviewThread(context, reply) });
 }
