@@ -44,7 +44,14 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
     return true;
   }
   const runsOn = plugin.settings?.runsOn;
-  return Array.isArray(runsOn) && runsOn.length > 0 && !runsOn.includes(event);
+  if (Array.isArray(runsOn)) {
+    if (runsOn.length === 0) {
+      context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because runsOn is empty");
+      return true;
+    }
+    return !runsOn.includes(event);
+  }
+  return false;
 }
 
 export async function getPluginsForEvent(
