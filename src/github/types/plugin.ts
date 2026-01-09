@@ -1,6 +1,5 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
-import { CommandCall } from "../../types/command";
 import { GitHubEventHandler } from "../github-event-handler";
 import { createKernelAttestationToken } from "../utils/kernel-attestation";
 
@@ -15,6 +14,8 @@ type RepositoryPayload = {
     id?: unknown;
   };
 };
+
+type CommandCall = { name: string; parameters: unknown } | null;
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : "";
