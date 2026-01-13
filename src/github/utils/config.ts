@@ -1,4 +1,3 @@
-import { emitterEventNames, type EmitterWebhookEventName } from "@octokit/webhooks";
 import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
@@ -432,8 +431,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
 
     if (manifest) {
       if (!runsOn.length) {
-        const manifestListeners = manifest["ubiquity:listeners"] ?? [];
-        runsOn = manifestListeners.filter((event): event is EmitterWebhookEventName => emitterEventNames.includes(event as EmitterWebhookEventName));
+        runsOn = manifest["ubiquity:listeners"] ?? [];
       }
       if (shouldSkipBotEvents === undefined) {
         shouldSkipBotEvents = manifest.skipBotEvents ?? true;
