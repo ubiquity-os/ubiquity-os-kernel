@@ -69,18 +69,17 @@ async function postRouterErrorReply(context: GitHubContext, body: string) {
   }
 
   const comment = payload.comment as { id: number } | undefined;
-  if (!comment) {
+  if (!comment || !comment.id) {
     context.logger.info({ key: context.key }, "Router error handler skipped: no comment in payload");
     return;
   }
 
-  const issue = payload.issue as { number: number } | undefined;
-  const pullRequest = payload.pull_request as { number: number } | undefined;
-
   try {
     // PR Review Comment (reply to specific thread)
-    if (pullRequest?.number && context.name === "pull_request_review_comment") {
-      await context.octokit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies", {
+    // API: POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies
+    const pullRequest = payload.pull_request as { number: number } | undefined;
+    if (context.name === "pull_request_review_comment" && pullRequest?.number) {
+      await context.octokit.rest.pulls.createReplyForReviewComment({
         owner,
         repo,
         pull_number: pullRequest.number,
@@ -91,7 +90,9 @@ async function postRouterErrorReply(context: GitHubContext, body: string) {
     }
 
     // Issue OR Pull Request top-level comment (issue_comment event)
-    if (issue?.number) {
+    // API: POST /repos/{owner}/{repo}/issues/{issue_number}/comments
+    const issue = payload.issue as { number: number } | undefined;
+    if (context.name === "issue_comment" && issue?.number) {
       await context.octokit.rest.issues.createComment({
         owner,
         repo,
@@ -101,7 +102,7 @@ async function postRouterErrorReply(context: GitHubContext, body: string) {
       return;
     }
 
-    context.logger.warn({ key: context.key }, "Router error handler could not determine reply target");
+    context.logger.warn({ key: context.key, name: context.name }, "Router error handler could not determine reply target");
   } catch (replyError) {
     context.logger.warn({ err: replyError }, "Failed to post router error reply (non-fatal)");
   }
