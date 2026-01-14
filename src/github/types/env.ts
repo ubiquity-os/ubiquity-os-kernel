@@ -13,6 +13,8 @@ export const envSchema = T.Object({
   UOS_AGENT_REF: T.Optional(T.String()),
   // Router model endpoint.
   UOS_AI_BASE_URL: T.String({ minLength: 1, default: "https://ai-ubq-fi.deno.dev" }),
+  // Optional bypass token for AI router.
+  UOS_AI_TOKEN: T.Optional(T.String()),
   // Optional external KV for agent run memory (expects /kv endpoint).
   UOS_AGENT_MEMORY_URL: T.Optional(T.String({ minLength: 1 })),
   // Base64-encoded 32-byte key for AES-256-GCM at-rest encryption.
@@ -36,6 +38,7 @@ declare global {
       UOS_AGENT_WORKFLOW?: string;
       UOS_AGENT_REF?: string;
       UOS_AI_BASE_URL?: string;
+      UOS_AI_TOKEN?: string;
       UOS_AGENT_MEMORY_URL?: string;
       UOS_AGENT_MEMORY_KEY?: string;
       SUPABASE_URL?: string;

@@ -13,6 +13,7 @@ import {
 } from "../types/plugin-configuration.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
 import { getManifest } from "./plugins.ts";
+import { isPlainObject } from "./helpers.ts";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
@@ -246,23 +247,53 @@ async function loadConfigSource(
   return { config, imports, errors, rawData, source };
 }
 
-function decodeConfiguration(
+function normalizePluginSettings(overrides?: PluginConfiguration["plugins"]): PluginConfiguration["plugins"] {
+  if (!overrides) return {};
+  const normalized: Record<string, PluginSettings> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    normalized[key] = normalizePluginSettingsValue(value);
+  }
+  return normalized;
+}
+
+function normalizePluginSettingsValue(value: PluginSettings): PluginSettings {
+  if (value === null) return null;
+  const normalized: Partial<PluginSettings> = isPlainObject(value) ? { ...(value as Record<string, unknown>) } : {};
+  if (!isPlainObject(normalized.with)) {
+    normalized.with = {};
+  }
+  if (!Array.isArray(normalized.runsOn)) {
+    normalized.runsOn = [];
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "skipBotEvents") && typeof normalized.skipBotEvents !== "boolean") {
+    delete normalized.skipBotEvents;
+  }
+  return normalized as PluginSettings;
+}
+
+export function decodeConfiguration(
   context: GitHubContext,
   location: ConfigLocation,
   config: PluginConfiguration
 ): { config: PluginConfiguration | null; errors: ValueError[] | null } {
   context.logger.debug({ owner: location.owner, repository: location.repo }, "Decoding configuration");
   try {
-    const configSchemaWithDefaults = Value.Default(configSchema, config) as Readonly<unknown>;
-    const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
-    const errorList = errors ? [...errors] : null;
-    if (errorList !== null) {
+    const errors = configSchemaValidator.testReturningErrors(config);
+    if (errors) {
+      const errorList = [...errors];
       for (const error of errorList) {
         context.logger.error({ err: error }, "Configuration validation error");
       }
+      return { config: null, errors: errorList };
     }
-    const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
-    return { config: stripImports(decodedConfig), errors: errorList };
+
+    const defaultConfig = Value.Clone(Value.Create(configSchema)) as PluginConfiguration;
+    const configWithDefaults: PluginConfiguration = {
+      ...defaultConfig,
+      ...config,
+      plugins: normalizePluginSettings(config.plugins),
+    };
+    return { config: stripImports(configWithDefaults), errors: null };
   } catch (error) {
     context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
     return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };
@@ -374,7 +405,7 @@ function mergeConfigurations(configuration1: PluginConfiguration, configuration2
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
-  const defaultConfiguration = stripImports(Value.Decode(configSchema, Value.Default(configSchema, {})));
+  const defaultConfiguration = stripImports(Value.Clone(Value.Create(configSchema)));
   if (!("repository" in payload) || !payload.repository) {
     context.logger.warn("Repository is not defined");
     return defaultConfiguration;

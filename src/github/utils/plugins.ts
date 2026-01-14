@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
+import { isPlainObject } from "./helpers.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
 const manifestCache = new Map<string, Manifest>();
@@ -51,6 +52,25 @@ function formatPluginTarget(target: string | GithubPlugin) {
   return typeof target === "string"
     ? target
     : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+}
+
+export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
+  if (!isPlainObject(defaults) || !isPlainObject(overrides)) {
+    return (overrides ?? defaults) as T;
+  }
+  const result: Record<string, unknown> = { ...defaults };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      continue;
+    }
+    const defaultValue = (defaults as Record<string, unknown>)[key];
+    if (isPlainObject(defaultValue) && isPlainObject(value)) {
+      result[key] = mergeWithDefaults(defaultValue, value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result as T;
 }
 
 export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
@@ -176,13 +196,13 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
 }
 
 function decodeManifest(context: GitHubContext, manifest: unknown) {
-  const errors = [...Value.Errors(kernelManifestSchema, manifest)];
+  const manifestWithDefaults = mergeWithDefaults(Value.Create(kernelManifestSchema), manifest);
+  const errors = [...Value.Errors(kernelManifestSchema, manifestWithDefaults)];
   if (errors.length) {
     for (const error of errors) {
-      context.logger.error({ error }, "Manifest validation error");
+      context.logger.warn({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }
-  const defaultManifest = Value.Default(kernelManifestSchema, manifest);
-  return defaultManifest as Manifest;
+  return manifestWithDefaults as Manifest;
 }

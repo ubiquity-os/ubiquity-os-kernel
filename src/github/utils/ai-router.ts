@@ -29,28 +29,31 @@ export async function callUbqAiRouter(
   options: Readonly<{ timeoutMs?: number; model?: string }> = {}
 ): Promise<string> {
   const payload = context.payload as Record<string, unknown>;
-  const installation = (payload.installation as { id?: number } | undefined) ?? null;
-  if (!installation?.id) {
-    throw new Error("Missing installation id");
-  }
+  const installationId = (payload.installation as { id?: number })?.id;
   const repository = payload.repository as { owner?: { login?: string }; name?: string } | undefined;
-  const owner = repository?.owner?.login ?? "";
-  const repo = repository?.name ?? "";
-  if (!owner || !repo) {
-    throw new Error("Missing repository owner/name");
+  const owner = repository?.owner?.login;
+  const repo = repository?.name;
+
+  if (!installationId || !owner || !repo) {
+    throw new Error("Missing installation id or repository owner/name from context payload");
   }
 
-  const installationId = installation.id;
-  const token = await context.eventHandler.getToken(installationId);
-  const kernelToken = await createKernelAttestationToken({
-    sign: (payloadToSign) => context.eventHandler.signPayload(payloadToSign),
-    owner,
-    repo,
-    installationId,
-    authToken: token,
-    stateId: crypto.randomUUID(),
-    ttlSeconds: 120,
-  });
+  const aiToken = context.eventHandler.aiToken;
+
+  const token = aiToken ? aiToken : await context.eventHandler.getToken(installationId);
+  let kernelToken: string | undefined = undefined;
+
+  if (!aiToken) {
+    kernelToken = await createKernelAttestationToken({
+      sign: (payloadToSign) => context.eventHandler.signPayload(payloadToSign),
+      owner,
+      repo,
+      installationId,
+      authToken: token,
+      stateId: crypto.randomUUID(),
+      ttlSeconds: 120,
+    });
+  }
 
   const payloadBody = {
     model: options.model ?? context.eventHandler.llm,
@@ -72,7 +75,7 @@ export async function callUbqAiRouter(
     "X-GitHub-Owner": owner,
     "X-GitHub-Repo": repo,
     "X-GitHub-Installation-Id": String(installationId),
-    "X-Ubiquity-Kernel-Token": kernelToken,
+    ...(kernelToken ? { "X-Ubiquity-Kernel-Token": kernelToken } : {}),
   };
 
   const baseUrl = normalizeBaseUrl(context.eventHandler.aiBaseUrl);
@@ -93,8 +96,25 @@ export async function callUbqAiRouter(
       if (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text)) {
         context.logger.warn({ status: response.status }, "Router endpoint blocked");
       }
-      const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
-      throw new Error(`${endpoint} -> ${response.status} ${snippet}`);
+      let snippet = text;
+      try {
+        const obj = JSON.parse(text);
+        if (obj?.error?.message) {
+          try {
+            // Check if the message itself is a stringified JSON (common in our error handling)
+            obj.error.message = JSON.parse(obj.error.message);
+          } catch {
+            // Not JSON, leave message as is
+          }
+        }
+        snippet = JSON.stringify(obj, null, 2);
+      } catch {
+        // Not JSON or failed to parse, keep as is
+      }
+
+      const error = new Error(`${endpoint} -> ${response.status}\n${snippet}`);
+      (error as Error & { status: number }).status = response.status;
+      throw error;
     }
 
     const data = (await response.json()) as ChatCompletion;
@@ -105,7 +125,11 @@ export async function callUbqAiRouter(
     return content;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Router error: ${message}`);
+    const routerError = new Error(`Router error: ${message}`);
+    if (error instanceof Error && "status" in error) {
+      (routerError as Error & { status: number }).status = (error as { status: number }).status;
+    }
+    throw routerError;
   } finally {
     clearTimeout(timeout);
   }
