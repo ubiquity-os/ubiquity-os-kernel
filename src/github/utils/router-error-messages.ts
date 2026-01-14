@@ -21,6 +21,9 @@ export function getStatusPhrase(status: number): string {
 }
 
 function pickRandomEntry<T>(entries: readonly T[]): T {
+  if (entries.length === 0) {
+    throw new Error("pickRandomEntry: empty array");
+  }
   return entries[Math.floor(Math.random() * entries.length)];
 }
 

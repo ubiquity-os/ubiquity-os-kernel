@@ -685,7 +685,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
         const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
         context.logger.debug({ plugin: pluginEntry.key, worker: isWorker }, "Dispatching event");
         const res = await dispatchWorker(plugin, await inputs.getInputs());
-        if (res.status >= 300) {
+        if (res?.status >= 300) {
           context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl: plugin }, "Error response on dispatch event");
         }
       } else {

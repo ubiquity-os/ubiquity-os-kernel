@@ -57,28 +57,50 @@ export async function getRouterDecision(
 async function postRouterErrorReply(context: GitHubContext, body: string) {
   const message = body.trim();
   if (!message) return;
-  const owner = context.payload.repository.owner.login;
-  const repo = context.payload.repository.name;
+
+  const payload = context.payload as Record<string, unknown>;
+  const repository = payload.repository as { owner?: { login?: string }; name?: string } | undefined;
+  const owner = repository?.owner?.login;
+  const repo = repository?.name;
+
+  if (!owner || !repo) {
+    context.logger.warn({ key: context.key }, "Router error handler could not determine repository");
+    return;
+  }
+
+  const comment = payload.comment as { id: number } | undefined;
+  if (!comment) {
+    context.logger.info({ key: context.key }, "Router error handler skipped: no comment in payload");
+    return;
+  }
+
+  const issue = payload.issue as { number: number } | undefined;
+  const pullRequest = payload.pull_request as { number: number } | undefined;
+
   try {
-    if ("issue" in context.payload && context.payload.issue) {
-      await context.octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: context.payload.issue.number,
-        body: message,
-      });
-      return;
-    }
-    if ("pull_request" in context.payload && context.payload.pull_request && context.payload.comment?.id) {
+    // PR Review Comment (reply to specific thread)
+    if (pullRequest?.number && context.name === "pull_request_review_comment") {
       await context.octokit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies", {
         owner,
         repo,
-        pull_number: context.payload.pull_request.number,
-        comment_id: context.payload.comment.id,
+        pull_number: pullRequest.number,
+        comment_id: comment.id,
         body: message,
       });
       return;
     }
+
+    // Issue OR Pull Request top-level comment (issue_comment event)
+    if (issue?.number) {
+      await context.octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issue.number,
+        body: message,
+      });
+      return;
+    }
+
     context.logger.warn({ key: context.key }, "Router error handler could not determine reply target");
   } catch (replyError) {
     context.logger.warn({ err: replyError }, "Failed to post router error reply (non-fatal)");

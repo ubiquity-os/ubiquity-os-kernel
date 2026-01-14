@@ -29,18 +29,14 @@ export async function callUbqAiRouter(
   options: Readonly<{ timeoutMs?: number; model?: string }> = {}
 ): Promise<string> {
   const payload = context.payload as Record<string, unknown>;
-  const installation = (payload.installation as { id?: number } | undefined) ?? null;
-  if (!installation?.id) {
-    throw new Error("Missing installation id");
-  }
+  const installationId = (payload.installation as { id?: number })?.id;
   const repository = payload.repository as { owner?: { login?: string }; name?: string } | undefined;
-  const owner = repository?.owner?.login ?? "";
-  const repo = repository?.name ?? "";
-  if (!owner || !repo) {
-    throw new Error("Missing repository owner/name");
-  }
+  const owner = repository?.owner?.login;
+  const repo = repository?.name;
 
-  const installationId = installation.id;
+  if (!installationId || !owner || !repo) {
+    throw new Error("Missing installation id or repository owner/name from context payload");
+  }
   const token = await context.eventHandler.getToken(installationId);
   const kernelToken = await createKernelAttestationToken({
     sign: (payloadToSign) => context.eventHandler.signPayload(payloadToSign),

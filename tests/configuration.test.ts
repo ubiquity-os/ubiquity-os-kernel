@@ -2,14 +2,15 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/glob
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { config } from "dotenv";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { parsePluginIdentifier } from "../src/github/types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig, getConfigFullPathForEnvironment } from "../src/github/utils/config";
-import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins";
-import { logger } from "../src/logger/logger";
-import { server } from "./__mocks__/node";
-import "./__mocks__/webhooks";
+import { Buffer } from "node:buffer";
+import { GitHubContext } from "../src/github/github-context.ts";
+import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
+import { parsePluginIdentifier } from "../src/github/types/plugin-configuration.ts";
+import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig, getConfigFullPathForEnvironment } from "../src/github/utils/config.ts";
+import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
+import { logger } from "../src/logger/logger.ts";
+import { server } from "./__mocks__/node.ts";
+import "./__mocks__/webhooks.ts";
 
 config({ path: ".env" });
 
@@ -118,6 +119,7 @@ describe("Configuration tests", () => {
       withRef: {
         name: "plugin",
         short_name: "plugin",
+        homepage_url: "",
         commands: {
           command: {
             description: "description",
@@ -132,6 +134,7 @@ describe("Configuration tests", () => {
       withoutRef: {
         name: "plugin-no-ref",
         short_name: "plugin-no-ref",
+        homepage_url: "",
         commands: {
           command: {
             description: "description",

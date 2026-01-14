@@ -36,12 +36,20 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     const instigator = "repository" in this.payload ? this.payload.repository?.html_url : undefined;
     this.logger = logger.child({ name: this.key, instigator });
     let issueAuthor: string | undefined;
-    if ("comment" in this.payload && this.payload.comment?.user?.login) {
-      issueAuthor = this.payload.comment.user.login;
-    } else if ("issue" in this.payload && this.payload.issue?.user?.login) {
-      issueAuthor = this.payload.issue.user.login;
-    } else if ("sender" in this.payload && this.payload.sender?.login) {
-      issueAuthor = this.payload.sender.login;
+    const payload = this.payload as Record<string, unknown>;
+    const comment = payload.comment as { user?: { login: string } } | undefined;
+    const issue = payload.issue as { user?: { login: string } } | undefined;
+    const pullRequest = payload.pull_request as { user?: { login: string } } | undefined;
+    const sender = payload.sender as { login: string } | undefined;
+
+    if (comment?.user?.login) {
+      issueAuthor = comment.user.login;
+    } else if (issue?.user?.login) {
+      issueAuthor = issue.user.login;
+    } else if (pullRequest?.user?.login) {
+      issueAuthor = pullRequest.user.login;
+    } else if (sender?.login) {
+      issueAuthor = sender.login;
     }
     this.issueAuthor = issueAuthor;
   }

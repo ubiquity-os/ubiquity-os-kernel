@@ -261,7 +261,7 @@ function normalizePluginSettings(overrides?: PluginConfiguration["plugins"]): Pl
 
 function normalizePluginSettingsValue(value: PluginSettings): PluginSettings {
   if (value === null) return null;
-  const normalized = isPlainObject(value) ? { ...value } : {};
+  const normalized: Partial<PluginSettings> = isPlainObject(value) ? { ...(value as Record<string, unknown>) } : {};
   if (!isPlainObject(normalized.with)) {
     normalized.with = {};
   }
