@@ -30,11 +30,7 @@ export default tsEslint.config(
       "@typescript-eslint": tsEslint.plugin,
       "check-file": checkFile,
     },
-    extends: [
-      eslint.configs.recommended,
-      ...tsEslint.configs.recommended,
-      sonarjs.configs.recommended,
-    ],
+    extends: [eslint.configs.recommended, ...tsEslint.configs.recommended, sonarjs.configs.recommended],
     languageOptions: {
       parser: tsEslint.parser,
       parserOptions: {
@@ -169,5 +165,5 @@ export default tsEslint.config(
         },
       ],
     },
-  },
+  }
 );

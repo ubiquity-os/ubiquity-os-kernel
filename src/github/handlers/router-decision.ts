@@ -59,8 +59,8 @@ export async function postRouterErrorReply(context: GitHubContext, body: string)
   if (!message) return;
 
   const payload = context.payload as Record<string, unknown>;
-  const repository = payload.repository as Record<string, unknown> | undefined;
-  const owner = (repository?.owner as Record<string, unknown> | undefined)?.login as string | undefined;
+  const repository = payload.repository as { owner?: { login: string }; name?: string } | undefined;
+  const owner = repository?.owner?.login;
   const repo = repository?.name;
 
   if (!owner || !repo) {
@@ -71,8 +71,10 @@ export async function postRouterErrorReply(context: GitHubContext, body: string)
   // 1. Threaded Review Comment (highest priority)
   // Check both context name and key prefix to be robust
   const isReviewComment = context.name === "pull_request_review_comment" || context.key?.startsWith("pull_request_review_comment");
-  const pullNumber = payload.pull_request?.number || payload.issue?.number;
-  const commentId = payload.comment?.id;
+  const pullNumber = ((payload.pull_request as { number?: number } | undefined)?.number || (payload.issue as { number?: number } | undefined)?.number) as
+    | number
+    | undefined;
+  const commentId = (payload.comment as { id?: number } | undefined)?.id;
 
   try {
     if (isReviewComment && pullNumber && commentId) {
