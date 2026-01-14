@@ -37,16 +37,23 @@ export async function callUbqAiRouter(
   if (!installationId || !owner || !repo) {
     throw new Error("Missing installation id or repository owner/name from context payload");
   }
-  const token = await context.eventHandler.getToken(installationId);
-  const kernelToken = await createKernelAttestationToken({
-    sign: (payloadToSign) => context.eventHandler.signPayload(payloadToSign),
-    owner,
-    repo,
-    installationId,
-    authToken: token,
-    stateId: crypto.randomUUID(),
-    ttlSeconds: 120,
-  });
+
+  const aiToken = context.eventHandler.aiToken;
+
+  const token = aiToken ? aiToken : await context.eventHandler.getToken(installationId);
+  let kernelToken: string | undefined = undefined;
+
+  if (!aiToken) {
+    kernelToken = await createKernelAttestationToken({
+      sign: (payloadToSign) => context.eventHandler.signPayload(payloadToSign),
+      owner,
+      repo,
+      installationId,
+      authToken: token,
+      stateId: crypto.randomUUID(),
+      ttlSeconds: 120,
+    });
+  }
 
   const payloadBody = {
     model: options.model ?? context.eventHandler.llm,
@@ -68,7 +75,7 @@ export async function callUbqAiRouter(
     "X-GitHub-Owner": owner,
     "X-GitHub-Repo": repo,
     "X-GitHub-Installation-Id": String(installationId),
-    "X-Ubiquity-Kernel-Token": kernelToken,
+    ...(kernelToken ? { "X-Ubiquity-Kernel-Token": kernelToken } : {}),
   };
 
   const baseUrl = normalizeBaseUrl(context.eventHandler.aiBaseUrl);

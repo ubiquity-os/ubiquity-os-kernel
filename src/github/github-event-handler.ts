@@ -14,6 +14,7 @@ export type Options = {
   privateKey: string;
   llm: string;
   aiBaseUrl?: string;
+  aiToken?: string;
   kernelRefreshUrl?: string;
   kernelRefreshIntervalSeconds?: number;
   agent?: {
@@ -38,6 +39,7 @@ export class GitHubEventHandler {
   private readonly _appId: number;
   public readonly llm: string;
   public readonly aiBaseUrl: string;
+  public readonly aiToken?: string;
   public readonly kernelRefreshUrl: string;
   public readonly kernelRefreshIntervalSeconds?: number;
   public readonly agent: {
@@ -55,6 +57,7 @@ export class GitHubEventHandler {
     this._webhookSecret = options.webhookSecret;
     this.llm = options.llm;
     this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
+    this.aiToken = options.aiToken;
     this.kernelRefreshUrl = options.kernelRefreshUrl ?? "";
     this.kernelRefreshIntervalSeconds = options.kernelRefreshIntervalSeconds;
     this.agent = {

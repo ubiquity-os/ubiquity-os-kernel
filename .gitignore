@@ -129,3 +129,5 @@ local.settings.json
 
 .tmp/
 docs/
+
+.env.pi

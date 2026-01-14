@@ -107,6 +107,7 @@ app.post("/", async (ctx: Context) => {
     const env = getEnvWithDefaults(ctx);
     const missingEnv: string[] = [];
     const aiBaseUrl = requireEnvValue(env.UOS_AI_BASE_URL, "UOS_AI_BASE_URL", missingEnv);
+    const aiToken = normalizeOptionalEnvValue(env.UOS_AI_TOKEN);
     const agentOwner = requireEnvValue(env.UOS_AGENT_OWNER, "UOS_AGENT_OWNER", missingEnv);
     const agentRepo = requireEnvValue(env.UOS_AGENT_REPO, "UOS_AGENT_REPO", missingEnv);
     const agentWorkflow = requireEnvValue(env.UOS_AGENT_WORKFLOW, "UOS_AGENT_WORKFLOW", missingEnv);
@@ -127,6 +128,7 @@ app.post("/", async (ctx: Context) => {
       privateKey: env.APP_PRIVATE_KEY,
       llm: "gpt-5.2-chat-latest",
       aiBaseUrl,
+      aiToken,
       kernelRefreshUrl,
       kernelRefreshIntervalSeconds,
       agent: {
