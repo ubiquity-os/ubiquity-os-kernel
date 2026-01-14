@@ -26,27 +26,6 @@ jobs:
       - name: Init plugin-sdk submodule
         run: git submodule update --init --depth 1 lib/plugin-sdk
 
-      - name: Compute Deno Deploy project name
-        id: deno
-        run: |
-          set -euo pipefail
-
-          owner="${GITHUB_REPOSITORY%%/*}"
-          repo="${GITHUB_REPOSITORY#*/}"
-
-          project="$repo"
-          if [ "$owner" != "ubiquity-os" ]; then
-            project="${repo}-${owner}"
-          fi
-
-          # Deno Deploy project names are lowercase and typically limited to [a-z0-9-].
-          project="$(printf "%s" "$project" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-')"
-          project="${project#-}"
-          project="${project%-}"
-
-          echo "project_name=$project" >> "$GITHUB_OUTPUT"
-          echo "Computed project_name=$project"
-
       - name: Validate required secrets
         run: |
           set -euo pipefail
@@ -77,4 +56,3 @@ jobs:
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
           entrypoint: src/kernel.ts
-          project_name: ${{ secrets.DENO_PROJECT_NAME || steps.deno.outputs.project_name }}
