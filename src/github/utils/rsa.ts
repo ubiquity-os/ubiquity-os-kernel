@@ -1,5 +1,8 @@
 export function normalizeMultilineSecret(value: string): string {
-  const trimmed = value.trim();
+  let trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
   if (!trimmed.includes("\n") && trimmed.includes("\\n")) {
     return trimmed.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
   }
