@@ -9,6 +9,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
+    timeout-minutes: 20
     environment: ${{ (github.event.ref == 'refs/heads/main' || github.ref == 'refs/heads/main' || github.event.workflow_run.head_branch == 'main') && 'main' || 'development' }}
     permissions:
       contents: write
@@ -22,24 +23,58 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: ubiquity-os/deno-plugin-adapter@main
-        id: adapter
-        with:
-          pluginEntry: "./adapters/server"
+      - name: Init plugin-sdk submodule
+        run: git submodule update --init --depth 1 lib/plugin-sdk
+
+      - name: Compute Deno Deploy project name
+        id: deno
+        run: |
+          set -euo pipefail
+
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repo="${GITHUB_REPOSITORY#*/}"
+
+          project="$repo"
+          if [ "$owner" != "ubiquity-os" ]; then
+            project="${repo}-${owner}"
+          fi
+
+          # Deno Deploy project names are lowercase and typically limited to [a-z0-9-].
+          project="$(printf "%s" "$project" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-')"
+          project="${project#-}"
+          project="${project%-}"
+
+          echo "project_name=$project" >> "$GITHUB_OUTPUT"
+          echo "Computed project_name=$project"
+
+      - name: Validate required secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.DENO_DEPLOY_TOKEN }}" ]; then echo "Missing required secret: DENO_DEPLOY_TOKEN" >&2; exit 1; fi
+          if [ -z "${{ secrets.APP_WEBHOOK_SECRET }}" ]; then echo "Missing required secret: APP_WEBHOOK_SECRET" >&2; exit 1; fi
+          if [ -z "${{ secrets.APP_ID }}" ]; then echo "Missing required secret: APP_ID" >&2; exit 1; fi
+          if [ -z "${{ secrets.APP_PRIVATE_KEY }}" ]; then echo "Missing required secret: APP_PRIVATE_KEY" >&2; exit 1; fi
 
       - uses: ubiquity-os/deno-deploy@main
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
-          OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'development' }}
+          UOS_AGENT_OWNER: ${{ secrets.UOS_AGENT_OWNER || github.repository_owner }}
+          UOS_AGENT_REPO: ${{ secrets.UOS_AGENT_REPO || github.event.repository.name }}
+          UOS_AGENT_WORKFLOW: ${{ secrets.UOS_AGENT_WORKFLOW || 'agent.yml' }}
+          UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
+          UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL || '' }}
+          UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY || '' }}
+          UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || '' }}
           NODE_ENV: "production"
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
-          entrypoint: ${{ steps.adapter.outputs.entrypoint }}
-          project_name: ${{ secrets.DENO_PROJECT_NAME }}
+          entrypoint: src/kernel.ts
+          project_name: ${{ secrets.DENO_PROJECT_NAME || steps.deno.outputs.project_name }}

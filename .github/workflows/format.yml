@@ -12,15 +12,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
         with:
-          node-version: "20.10.0"
+          deno-version: v2.x
 
-      - uses: oven-sh/setup-bun@v1
+      - name: Run prettier
+        run: deno task fmt:check
 
-      - name: Install deps
-        run: bun i
-
-      - name: Run checks
-        run: bun format
+      - name: Run eslint
+        run: deno task lint

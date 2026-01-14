@@ -12,8 +12,10 @@ jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
 }));
 
-jest.mock("../src/github/types/plugin", () => {
-  const originalModule: typeof import("../src/github/types/plugin") = jest.requireActual("../src/github/types/plugin");
+const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
+
+jest.mock(PLUGIN_INPUT_MODULE, () => {
+  const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>(PLUGIN_INPUT_MODULE);
 
   return {
     ...originalModule,
@@ -39,6 +41,8 @@ function calculateSignature(payload: string, secret: string) {
 }
 
 const issueCommentCreatedEvent = "issue_comment.created";
+const FOO_COMMAND = "foo";
+const PLUGIN_NAME = "plugin";
 
 beforeAll(() => {
   server.listen();
@@ -53,55 +57,43 @@ afterAll(() => {
 describe("handleEvent", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
+      http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
-          content: Buffer.from(
-            JSON.stringify({
-              name: "plugin",
-              short_name: "plugin-a",
-              homepage_url: "https://plugin-a.internal",
-              "ubiquity:listeners": [issueCommentCreatedEvent],
-              commands: {
-                foo: {
-                  description: "foo command",
-                  "ubiquity:example": "/foo bar",
-                },
-                bar: {
-                  description: "bar command",
-                  "ubiquity:example": "/bar foo",
-                },
-              },
-            })
-          ).toString("base64"),
-          encoding: "base64",
+          name: PLUGIN_NAME,
+          short_name: "plugin-a",
+          "ubiquity:listeners": [issueCommentCreatedEvent],
+          commands: {
+            [FOO_COMMAND]: {
+              description: "foo command",
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquity:example": "/bar foo",
+            },
+          },
         })
       ),
-      http.get("https://api.github.com/repos/ubiquity-os/plugin-b/contents/manifest.json", () =>
+      http.get("https://plugin-b.internal/manifest.json", () =>
         HttpResponse.json({
-          content: Buffer.from(
-            JSON.stringify({
-              name: "plugin",
-              short_name: "plugin-b",
-              homepage_url: "https://plugin-b.internal",
-              "ubiquity:listeners": [issueCommentCreatedEvent],
-              commands: {
-                foo: {
-                  description: "foo command",
-                  "ubiquity:example": "/foo bar",
-                },
-                bar: {
-                  description: "bar command",
-                  "ubiquity:example": "/bar foo",
-                },
-              },
-            })
-          ).toString("base64"),
-          encoding: "base64",
+          name: PLUGIN_NAME,
+          short_name: "plugin-b",
+          "ubiquity:listeners": [issueCommentCreatedEvent],
+          commands: {
+            [FOO_COMMAND]: {
+              description: "foo command",
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquity:example": "/bar foo",
+            },
+          },
         })
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
         const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  ubiquity-os/plugin-a: {}\n  ubiquity-os/plugin-b: {}`;
+        const yamlContent = `plugins:\n  https://plugin-a.internal: {}\n  https://plugin-b.internal: {}`;
         if (acceptHeader === "application/vnd.github.v3.raw") {
           return HttpResponse.text(yamlContent);
         } else {
@@ -147,7 +139,12 @@ describe("handleEvent", () => {
         type: "User",
       },
       comment: {
+        id: 101,
         body: "/foo",
+        user: {
+          login: "test-user",
+          type: "User",
+        },
       },
       issue: {
         user: {
@@ -169,14 +166,12 @@ describe("handleEvent", () => {
     const payloadString = JSON.stringify(payload);
     const signature = calculateSignature(payloadString, secret);
 
+    const originalEnv = { ...process.env };
     process.env = {
       ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: secret,
       APP_ID: "1",
       APP_PRIVATE_KEY: "1234",
-      OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
-      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
 
     const app = (await import("../src/kernel")).app;
@@ -192,9 +187,10 @@ describe("handleEvent", () => {
     });
 
     expect(res).toBeTruthy();
-    // 2 calls means the execution didn't break
-    expect(dispatchWorker).toHaveBeenCalledTimes(2);
+    // Slash command dispatch should be attempted once; ensure execution didn't break.
+    expect(dispatchWorker).toHaveBeenCalledTimes(1);
 
     dispatchWorker.mockReset();
+    process.env = originalEnv;
   });
 });

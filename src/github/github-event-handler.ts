@@ -1,18 +1,27 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
-import OpenAI from "openai";
-import { logger } from "../logger/logger";
+import { logger } from "../logger/logger.ts";
+import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
+import { toOctokitLogMeta } from "./utils/octokit-log.ts";
 
-import { customOctokit } from "./github-client";
-import { GitHubContext, SimplifiedContext } from "./github-context";
+import { customOctokit } from "./github-client.ts";
+import { GitHubContext, SimplifiedContext } from "./github-context.ts";
 export type Options = {
-  environment: "production" | "development";
+  environment: string;
   webhookSecret: string;
   appId: string | number;
   privateKey: string;
-  llmClient: OpenAI;
   llm: string;
+  aiBaseUrl?: string;
+  kernelRefreshUrl?: string;
+  kernelRefreshIntervalSeconds?: number;
+  agent?: {
+    owner: string;
+    repo: string;
+    workflowId: string;
+    ref?: string;
+  };
   logger?: typeof logger;
 };
 
@@ -22,21 +31,38 @@ export class GitHubEventHandler {
   public onAny: Webhooks<SimplifiedContext>["onAny"];
   public onError: Webhooks<SimplifiedContext>["onError"];
 
-  readonly environment: "production" | "development";
+  readonly environment: string;
   private readonly _webhookSecret: string;
   private readonly _privateKey: string;
+  private _cachedKernelPublicKeyPem?: string;
   private readonly _appId: number;
-  private readonly _llmClient: OpenAI;
   public readonly llm: string;
+  public readonly aiBaseUrl: string;
+  public readonly kernelRefreshUrl: string;
+  public readonly kernelRefreshIntervalSeconds?: number;
+  public readonly agent: {
+    owner: string;
+    repo: string;
+    workflowId: string;
+    ref?: string;
+  };
   public readonly logger = logger;
 
   constructor(options: Options) {
     this.environment = options.environment;
-    this._privateKey = options.privateKey;
+    this._privateKey = normalizeMultilineSecret(options.privateKey);
     this._appId = Number(options.appId);
     this._webhookSecret = options.webhookSecret;
-    this._llmClient = options.llmClient;
     this.llm = options.llm;
+    this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
+    this.kernelRefreshUrl = options.kernelRefreshUrl ?? "";
+    this.kernelRefreshIntervalSeconds = options.kernelRefreshIntervalSeconds;
+    this.agent = {
+      owner: options.agent?.owner ?? "ubiquity-os",
+      repo: options.agent?.repo ?? "ubiquity-os-kernel",
+      workflowId: options.agent?.workflowId ?? "agent.yml",
+      ref: options.agent?.ref,
+    };
 
     if (options.logger) {
       this.logger = options.logger;
@@ -55,7 +81,7 @@ export class GitHubEventHandler {
       this.logger.github({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      this.logger.github({ err: error }, "Webhook error");
+      this.logger.github({ err: error, secret: this._webhookSecret.substring(0, 10) + "..." }, "Webhook error - check secret match");
     });
   }
 
@@ -63,13 +89,19 @@ export class GitHubEventHandler {
     return signPayload(payload, this._privateKey);
   }
 
+  async getKernelPublicKeyPem(): Promise<string> {
+    if (this._cachedKernelPublicKeyPem) return this._cachedKernelPublicKeyPem;
+    this._cachedKernelPublicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(this._privateKey);
+    return this._cachedKernelPublicKeyPem;
+  }
+
   transformEvent(event: EmitterWebhookEvent) {
     if ("installation" in event.payload && event.payload.installation?.id !== undefined) {
       const octokit = this.getAuthenticatedOctokit(event.payload.installation.id);
-      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
+      return new GitHubContext(this, event, octokit, this.logger);
     } else {
       const octokit = this.getUnauthenticatedOctokit();
-      return new GitHubContext(this, event, octokit, this._llmClient, this.logger);
+      return new GitHubContext(this, event, octokit, this.logger);
     }
   }
 
@@ -79,10 +111,22 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        info: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        warn: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        error: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
       },
       auth: {
         appId: this._appId,
@@ -98,10 +142,22 @@ export class GitHubEventHandler {
         fetch: fetch.bind(globalThis),
       },
       log: {
-        debug: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        info: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        warn: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
-        error: (msg: string, info?: unknown) => this.logger.github({ info }, msg),
+        debug: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        info: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        warn: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
+        error: (msg: string, info?: unknown) => {
+          const meta = toOctokitLogMeta(info);
+          this.logger.github(meta ? { info: meta } : {}, msg);
+        },
       },
       auth: {
         appId: this._appId,

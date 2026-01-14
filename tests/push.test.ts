@@ -15,7 +15,7 @@ jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
 
-config({ path: ".dev.vars" });
+config({ path: ".env" });
 
 const name = "ubiquity-os-kernel";
 

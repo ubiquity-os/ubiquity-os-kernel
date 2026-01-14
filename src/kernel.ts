@@ -2,17 +2,21 @@ import { emitterEventNames } from "@octokit/webhooks";
 import { WebhookEventName } from "@octokit/webhooks-types";
 import { Value } from "@sinclair/typebox/value";
 import { Context, Hono, HonoRequest } from "hono";
-import { getRuntimeKey, env as honoEnv } from "hono/adapter";
+import { env as honoEnv } from "hono/adapter";
 import { requestId } from "hono/request-id";
 import { ContentfulStatusCode } from "hono/utils/http-status";
-import OpenAI from "openai";
-import packageJson from "../package.json";
-import { GitHubEventHandler } from "./github/github-event-handler";
-import { bindHandlers } from "./github/handlers/index";
-import { Env, envSchema } from "./github/types/env";
-import { logger } from "./logger/logger";
+import { createAppAuth } from "@octokit/auth-app";
+import { GitHubEventHandler } from "./github/github-event-handler.ts";
+import { bindHandlers } from "./github/handlers/index.ts";
+import { Env, envSchema } from "./github/types/env.ts";
+import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
+import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
+import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
+import { logger } from "./logger/logger.ts";
+import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
 export const app = new Hono();
+export default app;
 
 app.use(requestId());
 app.use(async (c: Context, next) => {
@@ -22,48 +26,116 @@ app.use(async (c: Context, next) => {
   await next();
 });
 
-app.get("/", (c) => {
-  return c.text(`Welcome to UbiquityOS kernel version ${packageJson.version}`);
+app.get("/", async (c) => {
+  const commit = await getKernelCommit();
+  return c.text(`Welcome to UbiquityOS kernel (${commit})`);
 });
 
-app.get("/x25519_public_key", async (ctx: Context) => {
-  if (!ctx.env.X25519_PRIVATE_KEY) {
-    return ctx.text("No key available", 500);
+app.post("/internal/agent/refresh-token", async (ctx: Context) => {
+  try {
+    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const authHeader = ctx.req.header("authorization") ?? "";
+    const authToken = getBearerToken(authHeader);
+    if (!authToken) {
+      return ctx.json({ error: "Missing Authorization bearer token." }, 401);
+    }
+    if (!authToken.startsWith("gh")) {
+      return ctx.json({ error: "GitHub installation token required." }, 400);
+    }
+
+    const kernelToken = (ctx.req.header("x-ubiquity-kernel-token") ?? "").trim();
+    if (!kernelToken) {
+      return ctx.json({ error: "Missing X-Ubiquity-Kernel-Token." }, 401);
+    }
+
+    const owner = (ctx.req.header("x-github-owner") ?? "").trim();
+    const repo = (ctx.req.header("x-github-repo") ?? "").trim();
+    const installationIdRaw = (ctx.req.header("x-github-installation-id") ?? "").trim();
+    if (!owner || !repo || !installationIdRaw) {
+      return ctx.json({ error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id." }, 400);
+    }
+
+    const installationId = Number(installationIdRaw);
+    if (!Number.isFinite(installationId)) {
+      return ctx.json({ error: "Invalid X-GitHub-Installation-Id." }, 400);
+    }
+
+    const privateKey = normalizeMultilineSecret(env.APP_PRIVATE_KEY);
+    const publicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(privateKey);
+    const verification = await verifyKernelAttestationToken({
+      token: kernelToken,
+      publicKeyPem,
+      expected: {
+        owner,
+        repo,
+        installationId,
+        authToken,
+      },
+    });
+    if (!verification.ok) {
+      return ctx.json({ error: verification.error }, 401);
+    }
+
+    const auth = createAppAuth({ appId: Number(env.APP_ID), privateKey });
+    const refreshed = await auth({ type: "installation", installationId });
+    const refreshedKernelToken = await createKernelAttestationToken({
+      sign: (payload) => signPayload(payload, privateKey),
+      owner,
+      repo,
+      installationId,
+      authToken: refreshed.token,
+      stateId: verification.payload.state_id,
+      ttlSeconds: 60 * 60,
+    });
+
+    return ctx.json({
+      authToken: refreshed.token,
+      ubiquityKernelToken: refreshedKernelToken,
+      expiresAt: "expiresAt" in refreshed ? refreshed.expiresAt : null,
+    });
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
   }
-  const sodium = await import("libsodium-wrappers"); // we have to import dynamically: https://github.com/jedisct1/libsodium/pull/1401
-  await sodium.ready;
-  const binaryPrivate = sodium.from_base64(ctx.env.X25519_PRIVATE_KEY, sodium.base64_variants.URLSAFE_NO_PADDING);
-  return ctx.text(sodium.default.crypto_scalarmult_base(binaryPrivate, "base64"));
 });
 
 app.post("/", async (ctx: Context) => {
   try {
     const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const missingEnv: string[] = [];
+    const aiBaseUrl = requireEnvValue(env.UOS_AI_BASE_URL, "UOS_AI_BASE_URL", missingEnv);
+    const agentOwner = requireEnvValue(env.UOS_AGENT_OWNER, "UOS_AGENT_OWNER", missingEnv);
+    const agentRepo = requireEnvValue(env.UOS_AGENT_REPO, "UOS_AGENT_REPO", missingEnv);
+    const agentWorkflow = requireEnvValue(env.UOS_AGENT_WORKFLOW, "UOS_AGENT_WORKFLOW", missingEnv);
+    const agentRef = normalizeOptionalEnvValue(env.UOS_AGENT_REF);
+    if (missingEnv.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+    }
+    const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
+    const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
-    const llmClient = new OpenAI({
-      apiKey: env.OPENROUTER_API_KEY,
-      baseURL: env.OPENROUTER_BASE_URL,
-    });
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
-      llmClient,
-      llm: env.OPENROUTER_MODEL,
+      llm: "gpt-5.2-chat-latest",
+      aiBaseUrl,
+      kernelRefreshUrl,
+      kernelRefreshIntervalSeconds,
+      agent: {
+        owner: agentOwner,
+        repo: agentRepo,
+        workflowId: agentWorkflow,
+        ref: agentRef,
+      },
       logger: ctx.var.logger,
     });
     bindHandlers(eventHandler);
 
-    // if running in Cloudflare Worker, handle the webhook in the background and return a response immediately
-    if (getRuntimeKey() === "workerd") {
-      ctx.executionCtx.waitUntil(eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 }));
-    } else {
-      await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
-    }
+    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);
@@ -82,6 +154,13 @@ function handleUncaughtError(ctx: Context, error: unknown) {
     errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${error}`;
   }
   return ctx.json({ error: errorMessage }, status as ContentfulStatusCode);
+}
+
+function getBearerToken(authHeader: string): string {
+  const trimmed = authHeader.trim();
+  if (!trimmed) return "";
+  const match = /^Bearer\s+(.+)$/iu.exec(trimmed);
+  return match ? match[1].trim() : "";
 }
 
 function getEventName(request: HonoRequest): WebhookEventName {
@@ -106,4 +185,23 @@ function getId(request: HonoRequest): string {
     throw new Error(`Missing "x-github-delivery" header`);
   }
   return id;
+}
+
+function parseOptionalNumber(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeOptionalEnvValue(value?: string): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed ? trimmed : undefined;
+}
+
+function requireEnvValue(value: string | undefined, name: string, missing: string[]): string {
+  const normalized = normalizeOptionalEnvValue(value) ?? "";
+  if (!normalized) {
+    missing.push(name);
+  }
+  return normalized;
 }

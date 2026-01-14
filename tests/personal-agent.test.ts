@@ -10,6 +10,7 @@ import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
 const commentCreateEvent = "issue_comment.created";
+let nextCommentId = 1000;
 
 beforeAll(() => {
   server.listen();
@@ -17,11 +18,13 @@ beforeAll(() => {
 afterEach(() => {
   server.resetHandlers();
   jest.clearAllMocks();
+  jest.resetModules();
 });
 afterAll(() => server.close());
 
 describe("Personal Agent tests", () => {
   beforeEach(async () => {
+    nextCommentId = 1000;
     drop(db);
   });
 
@@ -45,6 +48,7 @@ describe("Personal Agent tests", () => {
     );
     expect(infoSpy).toHaveBeenNthCalledWith(1, `Successfully sent the comment to test_acc2/personal-agent`);
     expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
+    expect(context.octokit.rest.repos.getCollaboratorPermissionLevel).toHaveBeenCalled();
   });
 
   it("Should ignore irrelevant comments", async () => {
@@ -92,6 +96,9 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
         get: () => ({
           data: { default_branch: "main" },
         }),
+        getCollaboratorPermissionLevel: jest.fn(() => ({
+          data: { role_name: "admin" },
+        })),
       },
     },
   };
@@ -101,8 +108,16 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
     name: commentCreateEvent,
     payload: {
       action: "created",
-      repository: { owner: { login: "test_acc" } },
-      comment: { body: commentBody },
+      repository: { owner: { login: "test_acc" }, name: "ubiquity-os-kernel" },
+      installation: { id: 123456 },
+      comment: {
+        id: nextCommentId++,
+        body: commentBody,
+        user: {
+          login: "test_acc",
+          type: "User",
+        },
+      },
       issue: { user: { login: "test_acc2" }, number: 1 },
     } as GitHubContext<"issue_comment.created">["payload"],
     logger: logger,
@@ -114,7 +129,6 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
       getAuthenticatedOctokit: jest.fn().mockReturnValue(octokit),
       logger: logger,
     } as unknown as GitHubEventHandler,
-    openAi: {} as unknown as GitHubContext<"issue_comment.created">["openAi"],
     llm: "",
     configurationHandler: createConfigurationHandler() as unknown as GitHubContext<"issue_comment.created">["configurationHandler"],
   };

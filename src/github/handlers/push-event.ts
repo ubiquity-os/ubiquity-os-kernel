@@ -1,11 +1,12 @@
 import { Validator } from "@cfworker/json-schema";
-import { ValueError, ValueErrorType } from "@sinclair/typebox/value";
+import { ValueErrorType } from "@sinclair/typebox/value";
+import type { ValueError } from "@sinclair/typebox/value";
 import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
-import { GitHubContext } from "../github-context";
-import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../utils/config";
-import { getManifest } from "../utils/plugins";
+import { GitHubContext } from "../github-context.ts";
+import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
+import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config.ts";
+import { getManifest } from "../utils/plugins.ts";
 
 function encodePointerSegment(segment: string) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -47,7 +48,7 @@ function parseInstanceSegments(instanceLocation: string) {
 }
 
 function constructErrorBody(
-  errors: Iterable<ValueError> | (YAMLException | ValueError)[],
+  errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
   after: string,
@@ -60,7 +61,8 @@ function constructErrorBody(
       if (error instanceof YAMLError) {
         body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.linePos?.[0].line || 0}`);
       } else if (error instanceof YAMLException) {
-        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${error.mark.line || 0}`);
+        const mark = (error as YAMLException & { mark?: { line?: number } }).mark;
+        body.push(`> https://github.com/${repository.owner?.login}/${repository.name}/blob/${after}/${configPath}#L${mark?.line ?? 0}`);
       } else if (rawData) {
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
@@ -125,7 +127,7 @@ async function createCommitComment(
 }
 
 async function checkPluginConfigurations(context: GitHubContext<"push">, config: PluginConfiguration, rawData: string | null) {
-  const errors: (ValueError | YAMLException)[] = [];
+  const errors: (ValueError | YAML.YAMLError)[] = [];
   const doc = rawData ? YAML.parseDocument(rawData) : null;
 
   for (const [pluginKey, settings] of Object.entries(config.plugins)) {
@@ -170,16 +172,26 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
 export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
-  const configPath = context.eventHandler.environment === "production" ? CONFIG_FULL_PATH : DEV_CONFIG_FULL_PATH;
-  const didConfigurationFileChange = commits.some((commit) => commit.modified?.includes(configPath) || commit.added?.includes(configPath));
+  const configPathCandidates = getConfigPathCandidatesForEnvironment(context.eventHandler.environment);
+  let changedConfigPath: string | null = null;
+  for (const commit of commits) {
+    for (const path of configPathCandidates) {
+      if (commit.modified?.includes(path) || commit.added?.includes(path)) {
+        changedConfigPath = path;
+        break;
+      }
+    }
+    if (changedConfigPath) break;
+  }
 
-  if (!didConfigurationFileChange || !repository.owner) {
+  if (!changedConfigPath || !repository.owner) {
     return;
   }
 
   context.logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
-  const { config, errors: configurationErrors, rawData } = await context.configurationHandler.getConfigurationFromRepo(repository.owner.login, repository.name);
-  const errors: (ValueError | YAMLException)[] = [];
+
+  const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
+  const errors: (ValueError | YAML.YAMLError)[] = [];
   if (!configurationErrors && config) {
     errors.push(...(await checkPluginConfigurations(context, config, rawData)));
   } else if (configurationErrors) {
@@ -188,7 +200,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after, configPath));
+      body.push(...constructErrorBody(errors, rawData, repository, after, changedConfigPath));
       await createCommitComment(
         context,
         {

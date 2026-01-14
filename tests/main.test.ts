@@ -9,7 +9,6 @@ import { app } from "../src/kernel";
 import { logger } from "../src/logger/logger"; // has to be imported after the mocks
 import { server } from "./__mocks__/node";
 import "./__mocks__/webhooks";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -23,16 +22,13 @@ jest.mock("@octokit/core", () => ({
 }));
 
 const issueOpened = "issues.opened";
-const fooDescription = "foo command";
-const barDescription = "bar command";
-const fooExample = "/foo bar";
-const barExample = "/bar foo";
+const conversationRewardsRepo = "conversation-rewards";
 
 const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
 
-config({ path: ".dev.vars" });
+config({ path: ".env" });
 
 beforeAll(() => {
   server.listen();
@@ -47,46 +43,40 @@ afterAll(() => {
 describe("Worker tests", () => {
   beforeEach(() => {
     server.use(
-      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
+      http.get("https://plugin-a.internal/manifest.json", () =>
         HttpResponse.json({
-          content: Buffer.from(
-            JSON.stringify({
-              name: "plugin",
-              homepage_url: "https://plugin-a.internal",
-              commands: {
-                foo: {
-                  description: fooDescription,
-                  "ubiquity:example": fooExample,
-                },
-                bar: {
-                  description: barDescription,
-                  "ubiquity:example": barExample,
-                },
-              },
-            })
-          ).toString("base64"),
-          encoding: "base64",
+          name: "plugin",
+          short_name: "plugin",
+          commands: {
+            foo: {
+              description: "foo command",
+              "ubiquity:example": "/foo bar",
+            },
+            bar: {
+              description: "bar command",
+              "ubiquity:example": "/bar foo",
+            },
+          },
         })
       )
     );
   });
   it("Should fail on missing env variables", async () => {
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
+    const originalEnv = { ...process.env };
     process.env = {
       ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
-      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",
     });
     expect(res.status).toEqual(500);
     expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
-    consoleSpy.mockReset();
+    process.env = originalEnv;
+    consoleSpy.mockRestore();
   });
 
   describe("Configuration tests", () => {
@@ -105,7 +95,6 @@ describe("Worker tests", () => {
       expect(cfg).toBeTruthy();
     });
     it("Should generate a default configuration when the target repo does not contain one", async () => {
-      const configurationHandler = createConfigurationHandler({ configuration: { plugins: {} } });
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -126,30 +115,11 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
-        configurationHandler,
         logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
     });
     it("Should fill the config with defaults", async () => {
-      const configurationHandler = createConfigurationHandler({
-        configuration: {
-          plugins: {
-            "ubiquity-os/plugin-a": { with: {}, skipBotEvents: true, runsOn: [] },
-          },
-        },
-        manifests: {
-          "plugin-a": {
-            name: "plugin",
-            commands: {
-              foo: {
-                description: fooDescription,
-                "ubiquity:example": "/foo",
-              },
-            },
-          },
-        },
-      });
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -163,28 +133,11 @@ describe("Worker tests", () => {
         octokit: {
           rest: {
             repos: {
-              getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-                if (params?.path === "manifest.json") {
-                  return {
-                    data: {
-                      content: Buffer.from(
-                        JSON.stringify({
-                          name: "plugin",
-                          commands: {
-                            foo: {
-                              description: fooDescription,
-                              "ubiquity:example": "/foo",
-                            },
-                          },
-                        })
-                      ).toString("base64"),
-                    },
-                  };
-                }
+              getContent() {
                 return {
                   data: `
                   plugins:
-                    ubiquity-os/plugin-a: {}
+                    https://plugin-a.internal: {}
                   `,
                 };
               },
@@ -192,12 +145,11 @@ describe("Worker tests", () => {
           },
         },
         eventHandler: eventHandler,
-        configurationHandler,
         logger,
       } as unknown as GitHubContext);
       expect(cfg).toBeTruthy();
       expect(cfg.plugins).toEqual({
-        "ubiquity-os/plugin-a": {
+        "https://plugin-a.internal": {
           runsOn: [],
           skipBotEvents: true,
           with: {},
@@ -205,69 +157,54 @@ describe("Worker tests", () => {
       });
     });
     it("Should merge organization and repository configuration", async () => {
-      const configurationHandler = createConfigurationHandler({
-        configuration: {
-          plugins: {
-            "repo-3/plugin-3": {
-              with: {
-                setting1: false,
-              },
-              runsOn: [],
-              skipBotEvents: true,
+      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+        let data: string;
+        if (args.path === "manifest.json") {
+          data = `
+          {
+            "name": "plugin",
+            "short_name": "plugin",
+            "commands": {
+              "command": {
+                "description": "description",
+                "ubiquity:example": "/command"
+              }
+            }
+          }
+          `;
+        } else if (args.repo !== ".ubiquity-os") {
+          data = `
+          plugins:
+            repo-3/plugin-3:
+              with:
+                setting1: false
+            repo-1/plugin-1:
+              with:
+                setting2: true`;
+        } else {
+          data = `
+          plugins:
+            uses-1/plugin-1:
+              with:
+                settings1: 'enabled'
+            repo-1/plugin-1:
+              with:
+                setting1: false
+            repo-2/plugin-2:
+              with:
+                setting2: true`;
+        }
+
+        if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+          return {
+            data: {
+              content: Buffer.from(data).toString("base64"),
             },
-            "repo-1/plugin-1": {
-              with: {
-                setting2: true,
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-            "uses-1/plugin-1": {
-              with: {
-                settings1: "enabled",
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-            "repo-2/plugin-2": {
-              with: {
-                setting2: true,
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-          },
-        },
-        manifests: {
-          "plugin-3": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-          "plugin-1": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-          "plugin-2": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-        },
-      });
+          };
+        } else if (args.mediaType?.format === "raw") {
+          return { data };
+        }
+      }
       const cfg = await getConfig({
         key: issueOpened,
         name: issueOpened,
@@ -275,18 +212,17 @@ describe("Worker tests", () => {
         payload: {
           repository: {
             owner: { login: "ubiquity" },
-            name: "conversation-rewards",
+            name: conversationRewardsRepo,
           },
         } as unknown as GitHubContext<"issues.closed">["payload"],
         octokit: {
           rest: {
             repos: {
-              getContent: jest.fn(),
+              getContent,
             },
           },
         },
         eventHandler: eventHandler,
-        configurationHandler,
         logger,
       } as unknown as GitHubContext);
       expect(cfg.plugins).toMatchObject({
@@ -319,6 +255,90 @@ describe("Worker tests", () => {
           },
         },
       });
+    });
+    it("Should resolve imports before merging repo configuration", async () => {
+      const orgYaml = `
+      imports:
+        - ubiquity/shared-config
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org"
+      `;
+      const orgImportYaml = `
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org-import"
+        https://plugin-b.internal:
+          with:
+            enabled: true
+      `;
+      const repoYaml = `
+      imports:
+        - ubiquity/repo-shared
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "repo"
+      `;
+      const repoImportYaml = `
+      plugins:
+        https://plugin-c.internal:
+          with:
+            level: 2
+      `;
+
+      function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+        let data: string;
+        if (args.repo === ".ubiquity-os") {
+          data = orgYaml;
+        } else if (args.repo === conversationRewardsRepo) {
+          data = repoYaml;
+        } else if (args.repo === "shared-config") {
+          data = orgImportYaml;
+        } else if (args.repo === "repo-shared") {
+          data = repoImportYaml;
+        } else {
+          throw new Error("Not Found");
+        }
+
+        if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+          return {
+            data: {
+              content: Buffer.from(data).toString("base64"),
+            },
+          };
+        }
+        if (args.mediaType?.format === "raw") {
+          return { data };
+        }
+      }
+
+      const cfg = await getConfig({
+        key: issueOpened,
+        name: issueOpened,
+        id: "",
+        payload: {
+          repository: {
+            owner: { login: "ubiquity" },
+            name: conversationRewardsRepo,
+          },
+        } as unknown as GitHubContext<"issues.closed">["payload"],
+        octokit: {
+          rest: {
+            repos: {
+              getContent,
+            },
+          },
+        },
+        eventHandler: eventHandler,
+        logger,
+      } as unknown as GitHubContext);
+
+      expect(cfg.plugins["https://plugin-a.internal"]?.with).toEqual({ source: "repo" });
+      expect(cfg.plugins["https://plugin-b.internal"]?.with).toEqual({ enabled: true });
+      expect(cfg.plugins["https://plugin-c.internal"]?.with).toEqual({ level: 2 });
     });
   });
 });

@@ -1,7 +1,40 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
-import { CommandCall } from "../../types/command";
-import { GitHubEventHandler } from "../github-event-handler";
+import { GitHubEventHandler } from "../github-event-handler.ts";
+import { createKernelAttestationToken } from "../utils/kernel-attestation.ts";
+
+type RepositoryPayload = {
+  repository?: {
+    owner?: {
+      login?: unknown;
+    };
+    name?: unknown;
+  };
+  installation?: {
+    id?: unknown;
+  };
+};
+
+type CommandCall = { name: string; parameters: unknown } | null;
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function extractRepoContext(payload: unknown): { owner: string; repo: string; installationId: number | null } {
+  const maybePayload = payload as RepositoryPayload;
+  const owner = readString(maybePayload.repository?.owner?.login);
+  const repo = readString(maybePayload.repository?.name);
+  const installationId = readFiniteNumber(maybePayload.installation?.id);
+  if (!owner || !repo) {
+    throw new Error(`Missing repository context for plugin input (owner="${owner}", repo="${repo}")`);
+  }
+  return { owner, repo, installationId };
+}
 
 export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
   public eventHandler: GitHubEventHandler;
@@ -10,6 +43,7 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   public eventPayload: EmitterWebhookEvent<T>["payload"];
   public settings: unknown;
   public authToken: string;
+  public ubiquityKernelToken?: string;
   public ref: string;
   public command: CommandCall;
 
@@ -34,18 +68,31 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   }
 
   public async getInputs() {
-    const inputs = {
+    const { owner, repo, installationId } = extractRepoContext(this.eventPayload);
+
+    const ubiquityKernelToken = await createKernelAttestationToken({
+      sign: (payload) => this.eventHandler.signPayload(payload),
+      owner,
+      repo,
+      installationId,
+      authToken: this.authToken,
+      stateId: this.stateId,
+      ttlSeconds: 60 * 60,
+    });
+
+    const signableInputs = {
       stateId: this.stateId,
       eventName: this.eventName,
       eventPayload: compressString(JSON.stringify(this.eventPayload)),
       settings: JSON.stringify(this.settings),
       authToken: this.authToken,
+      ubiquityKernelToken,
       ref: this.ref,
       command: JSON.stringify(this.command),
     };
-    const signature = await this.eventHandler.signPayload(JSON.stringify(inputs));
+    const signature = await this.eventHandler.signPayload(JSON.stringify(signableInputs));
     return {
-      ...inputs,
+      ...signableInputs,
       signature,
     };
   }
