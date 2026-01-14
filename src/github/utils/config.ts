@@ -13,6 +13,7 @@ import {
 } from "../types/plugin-configuration.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
 import { getManifest } from "./plugins.ts";
+import { isPlainObject } from "./helpers.ts";
 
 export const CONFIG_FULL_PATH = ".github/.ubiquity-os.config.yml";
 export const DEV_CONFIG_FULL_PATH = ".github/.ubiquity-os.config.dev.yml";
@@ -246,10 +247,6 @@ async function loadConfigSource(
   return { config, imports, errors, rawData, source };
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizePluginSettings(overrides?: PluginConfiguration["plugins"]): PluginConfiguration["plugins"] {
   if (!overrides) return {};
   const normalized: Record<string, PluginSettings> = {};
@@ -274,27 +271,29 @@ function normalizePluginSettingsValue(value: PluginSettings): PluginSettings {
   return normalized as PluginSettings;
 }
 
-function decodeConfiguration(
+export function decodeConfiguration(
   context: GitHubContext,
   location: ConfigLocation,
   config: PluginConfiguration
 ): { config: PluginConfiguration | null; errors: ValueError[] | null } {
   context.logger.debug({ owner: location.owner, repository: location.repo }, "Decoding configuration");
   try {
+    const errors = configSchemaValidator.testReturningErrors(config);
+    if (errors) {
+      const errorList = [...errors];
+      for (const error of errorList) {
+        context.logger.error({ err: error }, "Configuration validation error");
+      }
+      return { config: null, errors: errorList };
+    }
+
     const defaultConfig = Value.Clone(Value.Create(configSchema)) as PluginConfiguration;
     const configWithDefaults: PluginConfiguration = {
       ...defaultConfig,
       ...config,
       plugins: normalizePluginSettings(config.plugins),
     };
-    const errors = configSchemaValidator.testReturningErrors(configWithDefaults);
-    const errorList = errors ? [...errors] : null;
-    if (errorList !== null) {
-      for (const error of errorList) {
-        context.logger.error({ err: error }, "Configuration validation error");
-      }
-    }
-    return { config: stripImports(configWithDefaults), errors: errorList };
+    return { config: stripImports(configWithDefaults), errors: null };
   } catch (error) {
     context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
     return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };

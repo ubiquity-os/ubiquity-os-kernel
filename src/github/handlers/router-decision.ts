@@ -54,13 +54,13 @@ export async function getRouterDecision(
   return { raw, decision: tryParseRouterDecision(raw) };
 }
 
-async function postRouterErrorReply(context: GitHubContext, body: string) {
+export async function postRouterErrorReply(context: GitHubContext, body: string) {
   const message = body.trim();
   if (!message) return;
 
   const payload = context.payload as Record<string, unknown>;
-  const repository = payload.repository as { owner?: { login?: string }; name?: string } | undefined;
-  const owner = repository?.owner?.login;
+  const repository = payload.repository as Record<string, unknown> | undefined;
+  const owner = (repository?.owner as Record<string, unknown> | undefined)?.login as string | undefined;
   const repo = repository?.name;
 
   if (!owner || !repo) {
@@ -68,35 +68,31 @@ async function postRouterErrorReply(context: GitHubContext, body: string) {
     return;
   }
 
-  const comment = payload.comment as { id: number } | undefined;
-  if (!comment || !comment.id) {
-    context.logger.info({ key: context.key }, "Router error handler skipped: no comment in payload");
-    return;
-  }
+  // 1. Threaded Review Comment (highest priority)
+  // Check both context name and key prefix to be robust
+  const isReviewComment = context.name === "pull_request_review_comment" || context.key?.startsWith("pull_request_review_comment");
+  const pullNumber = payload.pull_request?.number || payload.issue?.number;
+  const commentId = payload.comment?.id;
 
   try {
-    // PR Review Comment (reply to specific thread)
-    // API: POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies
-    const pullRequest = payload.pull_request as { number: number } | undefined;
-    if (context.name === "pull_request_review_comment" && pullRequest?.number) {
+    if (isReviewComment && pullNumber && commentId) {
       await context.octokit.rest.pulls.createReplyForReviewComment({
         owner,
         repo,
-        pull_number: pullRequest.number,
-        comment_id: comment.id,
+        pull_number: pullNumber,
+        comment_id: commentId,
         body: message,
       });
       return;
     }
 
-    // Issue OR Pull Request top-level comment (issue_comment event)
-    // API: POST /repos/{owner}/{repo}/issues/{issue_number}/comments
-    const issue = payload.issue as { number: number } | undefined;
-    if (context.name === "issue_comment" && issue?.number) {
+    // 2. Issue or Pull Request top-level comment
+    // issue_comment, pull_request_review, or pull_request events
+    if (pullNumber) {
       await context.octokit.rest.issues.createComment({
         owner,
         repo,
-        issue_number: issue.number,
+        issue_number: pullNumber,
         body: message,
       });
       return;

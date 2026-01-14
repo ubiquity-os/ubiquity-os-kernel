@@ -7,11 +7,11 @@ const PERSONALITIES: RouterPersonalityName[] = ["authentic", "relatable"];
 function printSamples(): void {
   for (const personality of PERSONALITIES) {
     console.log(`\n=== ${personality} personality ===`);
-    STATUS_CODES.forEach((status) => {
+    for (const status of STATUS_CODES) {
       const detail = `Mock detail payload for ${status}`;
       const reply = getErrorReply(status, detail, personality);
       console.log(`[${status}] ${reply}`);
-    });
+    }
   }
 }
 

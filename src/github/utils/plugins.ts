@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
+import { isPlainObject } from "./helpers.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
 const manifestCache = new Map<string, Manifest>();
@@ -53,11 +54,7 @@ function formatPluginTarget(target: string | GithubPlugin) {
     : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
+export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
   if (!isPlainObject(defaults) || !isPlainObject(overrides)) {
     return (overrides ?? defaults) as T;
   }

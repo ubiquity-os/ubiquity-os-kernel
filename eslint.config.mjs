@@ -116,6 +116,7 @@ export default tsEslint.config(
         },
         {
           selector: "variable",
+          modifiers: ["const"],
           format: ["strictCamelCase", "UPPER_CASE", "snake_case"],
           leadingUnderscore: "allow",
           trailingUnderscore: "allow",
