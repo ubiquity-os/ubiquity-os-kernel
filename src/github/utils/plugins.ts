@@ -53,6 +53,29 @@ function formatPluginTarget(target: string | GithubPlugin) {
     : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
+  if (!isPlainObject(defaults) || !isPlainObject(overrides)) {
+    return (overrides ?? defaults) as T;
+  }
+  const result: Record<string, unknown> = { ...defaults };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      continue;
+    }
+    const defaultValue = (defaults as Record<string, unknown>)[key];
+    if (isPlainObject(defaultValue) && isPlainObject(value)) {
+      result[key] = mergeWithDefaults(defaultValue, value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result as T;
+}
+
 export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
   if (plugin.settings?.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
     context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
@@ -176,13 +199,13 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
 }
 
 function decodeManifest(context: GitHubContext, manifest: unknown) {
-  const errors = [...Value.Errors(kernelManifestSchema, manifest)];
+  const manifestWithDefaults = mergeWithDefaults(Value.Create(kernelManifestSchema), manifest);
+  const errors = [...Value.Errors(kernelManifestSchema, manifestWithDefaults)];
   if (errors.length) {
     for (const error of errors) {
-      context.logger.error({ error }, "Manifest validation error");
+      context.logger.warn({ error }, "Manifest validation error");
     }
     throw new Error("Manifest is invalid.");
   }
-  const defaultManifest = Value.Default(kernelManifestSchema, manifest);
-  return defaultManifest as Manifest;
+  return manifestWithDefaults as Manifest;
 }

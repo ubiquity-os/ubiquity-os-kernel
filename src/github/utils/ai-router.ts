@@ -93,8 +93,25 @@ export async function callUbqAiRouter(
       if (response.status === 403 || response.status === 503 || isCloudflareAntibotHtml(response.status, text)) {
         context.logger.warn({ status: response.status }, "Router endpoint blocked");
       }
-      const snippet = text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
-      throw new Error(`${endpoint} -> ${response.status} ${snippet}`);
+      let snippet = text;
+      try {
+        const obj = JSON.parse(text);
+        if (obj?.error?.message) {
+          try {
+            // Check if the message itself is a stringified JSON (common in our error handling)
+            obj.error.message = JSON.parse(obj.error.message);
+          } catch {
+            // Not JSON, leave message as is
+          }
+        }
+        snippet = JSON.stringify(obj, null, 2);
+      } catch {
+        // Not JSON or failed to parse, keep as is
+      }
+
+      const error = new Error(`${endpoint} -> ${response.status}\n${snippet}`);
+      (error as Error & { status: number }).status = response.status;
+      throw error;
     }
 
     const data = (await response.json()) as ChatCompletion;
@@ -105,7 +122,11 @@ export async function callUbqAiRouter(
     return content;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Router error: ${message}`);
+    const routerError = new Error(`Router error: ${message}`);
+    if (error instanceof Error && "status" in error) {
+      (routerError as Error & { status: number }).status = (error as { status: number }).status;
+    }
+    throw routerError;
   } finally {
     clearTimeout(timeout);
   }

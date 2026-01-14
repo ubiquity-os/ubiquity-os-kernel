@@ -96,20 +96,15 @@ const emitterType = stringLiteralUnion(emitterEventNames);
 const runsOnSchema = T.Array(emitterType, { default: [] });
 
 // We accept null when a key has no following body
-const pluginSettingsSchema = T.Union(
-  [
-    T.Null(),
-    T.Object(
-      {
-        with: T.Record(T.String(), T.Unknown(), { default: {} }),
-        runsOn: T.Optional(runsOnSchema),
-        skipBotEvents: T.Optional(T.Boolean()),
-      },
-      { default: {} }
-    ),
-  ],
-  { default: null }
+export const pluginSettingsObjectSchema = T.Object(
+  {
+    with: T.Record(T.String(), T.Unknown(), { default: {} }),
+    runsOn: T.Optional(runsOnSchema),
+    skipBotEvents: T.Optional(T.Boolean()),
+  },
+  { default: {} }
 );
+export const pluginSettingsSchema = T.Union([T.Null(), pluginSettingsObjectSchema], { default: null });
 
 export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;
 

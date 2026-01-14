@@ -246,6 +246,34 @@ async function loadConfigSource(
   return { config, imports, errors, rawData, source };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizePluginSettings(overrides?: PluginConfiguration["plugins"]): PluginConfiguration["plugins"] {
+  if (!overrides) return {};
+  const normalized: Record<string, PluginSettings> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    normalized[key] = normalizePluginSettingsValue(value);
+  }
+  return normalized;
+}
+
+function normalizePluginSettingsValue(value: PluginSettings): PluginSettings {
+  if (value === null) return null;
+  const normalized = isPlainObject(value) ? { ...value } : {};
+  if (!isPlainObject(normalized.with)) {
+    normalized.with = {};
+  }
+  if (!Array.isArray(normalized.runsOn)) {
+    normalized.runsOn = [];
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "skipBotEvents") && typeof normalized.skipBotEvents !== "boolean") {
+    delete normalized.skipBotEvents;
+  }
+  return normalized as PluginSettings;
+}
+
 function decodeConfiguration(
   context: GitHubContext,
   location: ConfigLocation,
@@ -253,16 +281,20 @@ function decodeConfiguration(
 ): { config: PluginConfiguration | null; errors: ValueError[] | null } {
   context.logger.debug({ owner: location.owner, repository: location.repo }, "Decoding configuration");
   try {
-    const configSchemaWithDefaults = Value.Default(configSchema, config) as Readonly<unknown>;
-    const errors = configSchemaValidator.testReturningErrors(configSchemaWithDefaults);
+    const defaultConfig = Value.Clone(Value.Create(configSchema)) as PluginConfiguration;
+    const configWithDefaults: PluginConfiguration = {
+      ...defaultConfig,
+      ...config,
+      plugins: normalizePluginSettings(config.plugins),
+    };
+    const errors = configSchemaValidator.testReturningErrors(configWithDefaults);
     const errorList = errors ? [...errors] : null;
     if (errorList !== null) {
       for (const error of errorList) {
         context.logger.error({ err: error }, "Configuration validation error");
       }
     }
-    const decodedConfig = Value.Decode(configSchema, configSchemaWithDefaults);
-    return { config: stripImports(decodedConfig), errors: errorList };
+    return { config: stripImports(configWithDefaults), errors: errorList };
   } catch (error) {
     context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
     return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };
@@ -374,7 +406,7 @@ function mergeConfigurations(configuration1: PluginConfiguration, configuration2
 
 export async function getConfig(context: GitHubContext): Promise<PluginConfiguration> {
   const payload = context.payload;
-  const defaultConfiguration = stripImports(Value.Decode(configSchema, Value.Default(configSchema, {})));
+  const defaultConfiguration = stripImports(Value.Clone(Value.Create(configSchema)));
   if (!("repository" in payload) || !payload.repository) {
     context.logger.warn("Repository is not defined");
     return defaultConfiguration;

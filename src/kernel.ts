@@ -26,6 +26,10 @@ app.use(async (c: Context, next) => {
   await next();
 });
 
+function getEnvWithDefaults(ctx: Context): Env {
+  return Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+}
+
 app.get("/", async (c) => {
   const commit = await getKernelCommit();
   return c.text(`Welcome to UbiquityOS kernel (${commit})`);
@@ -33,7 +37,7 @@ app.get("/", async (c) => {
 
 app.post("/internal/agent/refresh-token", async (ctx: Context) => {
   try {
-    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const env = getEnvWithDefaults(ctx);
     const authHeader = ctx.req.header("authorization") ?? "";
     const authToken = getBearerToken(authHeader);
     if (!authToken) {
@@ -100,7 +104,7 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
 
 app.post("/", async (ctx: Context) => {
   try {
-    const env = Value.Decode(envSchema, Value.Default(envSchema, honoEnv(ctx))) as Env;
+    const env = getEnvWithDefaults(ctx);
     const missingEnv: string[] = [];
     const aiBaseUrl = requireEnvValue(env.UOS_AI_BASE_URL, "UOS_AI_BASE_URL", missingEnv);
     const agentOwner = requireEnvValue(env.UOS_AGENT_OWNER, "UOS_AGENT_OWNER", missingEnv);

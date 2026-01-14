@@ -13,6 +13,7 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
   public octokit: InstanceType<typeof customOctokit>;
   public eventHandler: InstanceType<typeof GitHubEventHandler>;
   public llm: string;
+  public issueAuthor?: string;
   public logger = pinoLogger;
 
   constructor(
@@ -34,6 +35,15 @@ export class GitHubContext<TSupportedEvents extends WebhookEventName = WebhookEv
     this.llm = eventHandler.llm;
     const instigator = "repository" in this.payload ? this.payload.repository?.html_url : undefined;
     this.logger = logger.child({ name: this.key, instigator });
+    let issueAuthor: string | undefined;
+    if ("comment" in this.payload && this.payload.comment?.user?.login) {
+      issueAuthor = this.payload.comment.user.login;
+    } else if ("issue" in this.payload && this.payload.issue?.user?.login) {
+      issueAuthor = this.payload.issue.user.login;
+    } else if ("sender" in this.payload && this.payload.sender?.login) {
+      issueAuthor = this.payload.sender.login;
+    }
+    this.issueAuthor = issueAuthor;
   }
 }
 
