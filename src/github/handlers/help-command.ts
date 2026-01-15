@@ -94,7 +94,11 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   const comments = ["| Command | Description | Example |", "|---|---|---|"];
   const commandRows = new Map<string, string>();
   const configuration = await getConfig(context);
-  for (const [pluginKey] of Object.entries(configuration.plugins)) {
+  context.logger.info({ pluginCount: Object.keys(configuration?.plugins || {}).length }, "Processing help command");
+
+  commandRows.set("help", "| `/help` | List all available commands. | `/help` |");
+
+  for (const [pluginKey] of Object.entries(configuration?.plugins || {})) {
     let plugin: string | GithubPlugin;
     try {
       plugin = parsePluginIdentifier(pluginKey);
@@ -102,16 +106,18 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
-    for (const command of await parseCommandsFromManifest(context, plugin)) {
+
+    const manifestCommands = await parseCommandsFromManifest(context, plugin);
+    context.logger.debug({ plugin: pluginKey, commandsCount: manifestCommands.length }, "Parsed commands for plugin");
+
+    for (const command of manifestCommands) {
       commandRows.set(command.key, command.row);
     }
   }
+
   if (!commandRows.size) {
-    context.logger.warn("No commands found, will not post the help command message.");
+    context.logger.warn("No commands found (even help row missing!), will abort.");
   } else {
-    if (!commandRows.has("help")) {
-      commandRows.set("help", "| `/help` | List all available commands. | `/help` |");
-    }
     const commands = [...commandRows.entries()]
       .sort(([a], [b]) => {
         if (a === "help") return -1;
