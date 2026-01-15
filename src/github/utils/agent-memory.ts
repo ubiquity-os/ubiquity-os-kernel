@@ -108,7 +108,6 @@ async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null
   memoryKeyPromise = (async () => {
     const raw = getEnvValue("UOS_AGENT_MEMORY_KEY");
     if (!raw) {
-      warnOnce(logger, "agent-memory-key-missing", "UOS_AGENT_MEMORY_KEY is not set; agent memory persistence is disabled.");
       return null;
     }
     const bytes = decodeBase64Bytes(raw);
@@ -161,9 +160,9 @@ function isMemoryEnvelope(value: unknown): value is AgentMemoryEnvelope {
   return value.v === 1 && value.alg === "A256GCM" && value.codec === "json+gzip" && typeof value.iv === "string" && typeof value.data === "string";
 }
 
-async function encodeEntry(entry: AgentRunMemoryEntry, logger?: LoggerLike): Promise<AgentMemoryEnvelope | null> {
+async function encodeEntry(entry: AgentRunMemoryEntry, logger?: LoggerLike): Promise<AgentMemoryEnvelope | AgentRunMemoryEntry | null> {
   const key = await getMemoryCryptoKey(logger);
-  if (!key) return null;
+  if (!key) return entry;
   const compressed = await compressBytes(textEncoder.encode(JSON.stringify(entry)));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ivSource = toBufferSource(iv);
@@ -224,13 +223,7 @@ function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: 
 
 async function getKv(logger?: LoggerLike): Promise<KvLike | null> {
   if (kvPromise) return kvPromise;
-  kvPromise = (async () => {
-    const kv = await getKvClient(logger);
-    if (!kv) return null;
-    const key = await getMemoryCryptoKey(logger);
-    if (!key) return null;
-    return kv;
-  })();
+  kvPromise = getKvClient(logger);
   return kvPromise;
 }
 
