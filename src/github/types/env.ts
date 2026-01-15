@@ -19,6 +19,8 @@ export const envSchema = T.Object({
   UOS_AGENT_MEMORY_URL: T.Optional(T.String({ minLength: 1 })),
   // Base64-encoded 32-byte key for AES-256-GCM at-rest encryption.
   UOS_AGENT_MEMORY_KEY: T.Optional(T.String({ minLength: 1 })),
+  // Optional bearer token for diagnostics endpoints (e.g. agent memory queue).
+  UOS_DIAGNOSTICS_TOKEN: T.Optional(T.String({ minLength: 1 })),
   SUPABASE_URL: T.Optional(T.String({ minLength: 1 })),
   SUPABASE_ANON_KEY: T.Optional(T.String({ minLength: 1 })),
   UOS_KERNEL_REFRESH_INTERVAL_SECONDS: T.Optional(T.String({ minLength: 1 })),
@@ -41,6 +43,7 @@ declare global {
       UOS_AI_TOKEN?: string;
       UOS_AGENT_MEMORY_URL?: string;
       UOS_AGENT_MEMORY_KEY?: string;
+      UOS_DIAGNOSTICS_TOKEN?: string;
       SUPABASE_URL?: string;
       SUPABASE_ANON_KEY?: string;
       UOS_KERNEL_REFRESH_INTERVAL_SECONDS?: string;

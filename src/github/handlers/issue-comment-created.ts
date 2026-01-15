@@ -2,7 +2,7 @@ import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
-import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
+import { getAgentMemorySnippet, listAgentMemoryEntries, upsertAgentRunMemory } from "../utils/agent-memory.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
 import { getConfig } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
@@ -405,7 +405,10 @@ export function getIssueLabelNames(labels: unknown): string[] {
   return [...new Set(names)];
 }
 
-async function getRecentCommentsForRouter(context: GitHubContext<"issue_comment.created">, limit: number): Promise<{ author: string; body: string }[]> {
+async function getRecentCommentsForRouter(
+  context: GitHubContext<"issue_comment.created">,
+  limit: number
+): Promise<{ id: number; author: string; body: string }[]> {
   try {
     const owner = context.payload.repository.owner.login;
     const repo = context.payload.repository.name;
@@ -424,6 +427,7 @@ async function getRecentCommentsForRouter(context: GitHubContext<"issue_comment.
       .slice(0, limit)
       .reverse()
       .map((comment) => ({
+        id: comment.id ?? 0,
         author: comment.user?.login ?? "unknown",
         body: comment.body ?? "",
       }));
@@ -479,10 +483,19 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     scopeKey: conversation?.key,
     logger: context.logger,
   });
+  const handledEntries = await listAgentMemoryEntries({
+    owner: context.payload.repository.owner.login,
+    repo: context.payload.repository.name,
+    limit: 50,
+    scopeKey: conversation?.key,
+    logger: context.logger,
+  });
+  const handledCommentIds = new Set(handledEntries.filter((entry) => entry.status === "reply-posted" && entry.stateId).map((entry) => String(entry.stateId)));
+  const filteredRecentComments = handledCommentIds.size ? recentComments.filter((comment) => !handledCommentIds.has(String(comment.id))) : recentComments;
 
   const prompt = buildRouterPrompt({
     commands,
-    recentCommentsDescription: "array of the last ~10 human comments: { author, body }",
+    recentCommentsDescription: "array of the last ~10 human comments: { id, author, body }",
     replyActionDescription: "post a comment",
   });
 
@@ -494,7 +507,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     issueBody,
     isPullRequest: Boolean(context.payload.issue.pull_request),
     labels,
-    recentComments,
+    recentComments: filteredRecentComments,
     agentMemory,
     conversationContext,
     author: context.payload.comment.user?.login,
@@ -517,6 +530,30 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
   if (decision.action === "reply") {
     await postReply(context, decision.reply);
+    const owner = context.payload.repository.owner.login;
+    const repo = context.payload.repository.name;
+    const conversationKey = conversation?.key;
+    const commentId = context.payload.comment.id;
+    if (commentId) {
+      try {
+        await upsertAgentRunMemory({
+          owner,
+          repo,
+          scopeKey: conversationKey,
+          entry: {
+            kind: "agent_run",
+            stateId: String(commentId),
+            status: "reply-posted",
+            issueNumber: context.payload.issue.number,
+            updatedAt: new Date().toISOString(),
+            summary: decision.reply,
+          },
+          logger: context.logger,
+        });
+      } catch (error) {
+        context.logger.debug({ err: error }, "Failed to mark router reply as handled (non-fatal)");
+      }
+    }
     return;
   }
   if (decision.action === "agent") {

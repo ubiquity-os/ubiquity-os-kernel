@@ -12,6 +12,7 @@ import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
 import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
 import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
+import { listAgentMemoryEntries } from "./github/utils/agent-memory.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
@@ -33,6 +34,39 @@ function getEnvWithDefaults(ctx: Context): Env {
 app.get("/", async (c) => {
   const commit = await getKernelCommit();
   return c.text(`Welcome to UbiquityOS kernel (${commit})`);
+});
+
+app.get("/internal/agent-memory", async (ctx: Context) => {
+  try {
+    const env = getEnvWithDefaults(ctx);
+    const diagnosticsToken = normalizeOptionalEnvValue(env.UOS_DIAGNOSTICS_TOKEN);
+    if (!diagnosticsToken) {
+      return ctx.json({ error: "Diagnostics disabled." }, 404);
+    }
+
+    const authHeader = ctx.req.header("authorization") ?? "";
+    const authToken = getBearerToken(authHeader);
+    if (!authToken || authToken !== diagnosticsToken) {
+      return ctx.json({ error: "Unauthorized." }, 401);
+    }
+
+    const owner = (ctx.req.query("owner") ?? "").trim();
+    const repo = (ctx.req.query("repo") ?? "").trim();
+    if (!owner || !repo) {
+      return ctx.json({ error: "Missing owner or repo." }, 400);
+    }
+
+    const limit = parseBoundedInt(ctx.req.query("limit"), 25, 1, 200);
+    const issueNumber = parseOptionalPositiveInt(ctx.req.query("issue"));
+    const scopeKey = (ctx.req.query("scope") ?? "").trim() || undefined;
+
+    const entries = await listAgentMemoryEntries({ owner, repo, limit, scopeKey });
+    const filtered = issueNumber ? entries.filter((entry) => entry.issueNumber === issueNumber) : entries;
+
+    return ctx.json({ entries: filtered, count: filtered.length }, 200);
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
+  }
 });
 
 app.post("/internal/agent/refresh-token", async (ctx: Context) => {
@@ -197,6 +231,20 @@ function parseOptionalNumber(value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseOptionalPositiveInt(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value.trim());
+  if (!Number.isFinite(parsed)) return undefined;
+  if (parsed <= 0) return undefined;
+  return Math.trunc(parsed);
+}
+
+function parseBoundedInt(value: string | null | undefined, fallback: number, min: number, max: number): number {
+  const parsed = parseOptionalPositiveInt(value);
+  if (!parsed) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function normalizeOptionalEnvValue(value?: string): string | undefined {

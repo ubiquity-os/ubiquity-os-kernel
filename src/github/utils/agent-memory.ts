@@ -1,4 +1,4 @@
-type AgentRunMemoryEntry = Readonly<{
+export type AgentRunMemoryEntry = Readonly<{
   kind: "agent_run";
   stateId: string;
   status: string;
@@ -364,6 +364,42 @@ export async function getAgentMemorySnippet(
   const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : 2_000;
   if (!owner || !repo || limit === 0) return "";
 
+  const entriesForSnippet = await collectAgentMemoryEntries({
+    owner,
+    repo,
+    logger: params.logger,
+    scopeKey: params.scopeKey,
+    limit,
+  });
+  if (entriesForSnippet.length === 0) return "";
+
+  const lines = entriesForSnippet.map((entry) => {
+    const summaryFirstLine = (entry.summary ?? "").split(/\r?\n/)[0]?.trim();
+    const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
+    const parts = [`[${entry.updatedAt}]`, `#${entry.issueNumber}`, entry.status];
+    if (headline) parts.push(`- ${headline}`);
+    return `- ${parts.join(" ")}`;
+  });
+
+  return clampText(lines.join("\n"), maxChars);
+}
+
+type AgentMemoryEntriesParams = Readonly<{
+  owner: string;
+  repo: string;
+  limit?: number;
+  logger?: LoggerLike;
+  scopeKey?: string;
+}>;
+
+const DEFAULT_LIST_LIMIT = 50;
+
+async function collectAgentMemoryEntries(params: AgentMemoryEntriesParams): Promise<AgentRunMemoryEntry[]> {
+  const owner = params.owner.trim();
+  const repo = params.repo.trim();
+  const limit = typeof params.limit === "number" && Number.isFinite(params.limit) && params.limit > 0 ? Math.trunc(params.limit) : 0;
+  if (!owner || !repo || limit === 0) return [];
+
   const kv = await getKv(params.logger);
   const entries: AgentRunMemoryEntry[] = [];
   const scope = normalizeScopeKey(params.scopeKey);
@@ -389,20 +425,20 @@ export async function getAgentMemorySnippet(
     }
   }
 
-  if (entries.length === 0) return "";
+  if (entries.length === 0) return [];
 
   const seen = new Set<string>();
-  const lines: string[] = [];
-  for (const e of entries) {
-    if (seen.has(e.stateId)) continue;
-    seen.add(e.stateId);
-    const summaryFirstLine = (e.summary ?? "").split(/\r?\n/)[0]?.trim();
-    const headline = summaryFirstLine ? clampText(summaryFirstLine, 180) : "";
-    const parts = [`[${e.updatedAt}]`, `#${e.issueNumber}`, e.status];
-    if (headline) parts.push(`- ${headline}`);
-    lines.push(`- ${parts.join(" ")}`);
-    if (lines.length >= limit) break;
+  const output: AgentRunMemoryEntry[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.stateId)) continue;
+    seen.add(entry.stateId);
+    output.push(entry);
+    if (output.length >= limit) break;
   }
 
-  return clampText(lines.join("\n"), maxChars);
+  return output;
+}
+
+export async function listAgentMemoryEntries(params: AgentMemoryEntriesParams): Promise<AgentRunMemoryEntry[]> {
+  return collectAgentMemoryEntries({ ...params, limit: params.limit ?? DEFAULT_LIST_LIMIT });
 }
