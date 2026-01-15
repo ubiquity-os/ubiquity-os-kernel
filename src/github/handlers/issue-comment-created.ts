@@ -145,6 +145,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
       await addReactionEyes(context);
     }
     if (slashInvocation) {
+      if (slashInvocation.name === "help") {
+        await postHelpCommand(context);
+        return;
+      }
       await dispatchSlashCommand(context, slashInvocation);
       return;
     }

@@ -56,11 +56,15 @@ export async function shouldSkipDuplicateCommentEvent(
   const kv = await getKvClient();
   if (kv) {
     const key = buildKvKey(owner, repo, eventName, commentId);
-    const existing = await kv.get(key);
-    const hasSeen = existing.value !== null && existing.value !== undefined;
-    if (hasSeen) {
-      markLocal(keyString, nowMs + ttlMs);
-      return true;
+    try {
+      const existing = await kv.get(key);
+      const hasSeen = existing.value !== null && existing.value !== undefined;
+      if (hasSeen) {
+        markLocal(keyString, nowMs + ttlMs);
+        return true;
+      }
+    } catch (error) {
+      logger.error({ err: error, owner, repo, eventName, commentId }, "Failed to check comment dedupe marker");
     }
     try {
       await kv.set(key, { seenAt: new Date(nowMs).toISOString() }, { expireIn: ttlMs });
