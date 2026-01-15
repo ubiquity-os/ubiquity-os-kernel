@@ -15,6 +15,7 @@ import { callUbqAiRouter } from "../github/utils/ai-router.ts";
 import { getConfig } from "../github/utils/config.ts";
 import { parseAgentConfig, parseAiConfig, parseKernelConfig, type AgentConfig, type AiConfig, type KernelConfig } from "../github/utils/env-config.ts";
 import { parseGitHubAppConfig, type GitHubAppConfig } from "../github/utils/github-app-config.ts";
+import { getKvClient, type KvKey, type KvLike } from "../github/utils/kv-client.ts";
 import { getManifest } from "../github/utils/plugins.ts";
 import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../github/utils/plugin-dispatch-settings.ts";
 import { classifyTextIngress } from "../github/utils/reaction.ts";
@@ -85,7 +86,7 @@ const TELEGRAM_SHIM_GITHUB_LOGIN = "0x4007";
 const TELEGRAM_SHIM_ORG = "0x4007-ubiquity-os";
 // TODO: Swap this shim registry for org plugin-derived commands once GitHub wiring lands.
 const TELEGRAM_SHIM_COMMANDS = [
-  { name: "start", description: "Connect your account (stubbed).", example: "/start" },
+  { name: "s", description: "Connect your account (stubbed).", example: "/s" },
   { name: "ping", description: "Check if the bot is alive.", example: "/ping" },
   {
     name: "context",
@@ -96,7 +97,8 @@ const TELEGRAM_SHIM_COMMANDS = [
 ];
 const TELEGRAM_COMMAND_SYNC_MIN_INTERVAL_MS = 60_000;
 const telegramCommandSyncState: { lastSignature?: string; lastSyncAt?: number } = {};
-const telegramRoutingOverrides = new Map<number, TelegramRoutingOverride>();
+const TELEGRAM_CONTEXT_PREFIX: KvKey = ["ubiquityos", "telegram", "context"];
+let isTelegramKvWarningIssued = false;
 
 type Logger = typeof baseLogger;
 
@@ -168,36 +170,34 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     }
   }
 
-  if (config.mode === "shim") {
-    const override = telegramRoutingOverrides.get(message.chat.id);
-    if (!override) {
-      void maybeSyncTelegramCommands({
+  const routingOverride = config.mode === "shim" ? await loadTelegramRoutingOverride({ botToken, chatId: message.chat.id, logger }) : null;
+  if (config.mode === "shim" && !routingOverride) {
+    void maybeSyncTelegramCommands({
+      botToken,
+      commands: TELEGRAM_SHIM_COMMANDS,
+      logger,
+    });
+    if (invocation?.name.toLowerCase() === "help") {
+      const help = formatHelpForTelegram(TELEGRAM_SHIM_COMMANDS);
+      await safeSendTelegramMessage({
         botToken,
-        commands: TELEGRAM_SHIM_COMMANDS,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: help,
         logger,
       });
-      if (invocation?.name.toLowerCase() === "help") {
-        const help = formatHelpForTelegram(TELEGRAM_SHIM_COMMANDS);
-        await safeSendTelegramMessage({
-          botToken,
-          chatId: message.chat.id,
-          replyToMessageId: message.message_id,
-          text: help,
-          logger,
-        });
-        return ctx.json({ ok: true }, 200);
-      }
-      if (invocation) {
-        await safeSendTelegramMessage({
-          botToken,
-          chatId: message.chat.id,
-          replyToMessageId: message.message_id,
-          text: "Set context with /context <github-issue-url> before running commands.",
-          logger,
-        });
-      }
       return ctx.json({ ok: true }, 200);
     }
+    if (invocation) {
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: "Set context with /context <github-issue-url> before running commands.",
+        logger,
+      });
+    }
+    return ctx.json({ ok: true }, 200);
   }
 
   void safeSendTelegramChatAction({
@@ -252,7 +252,6 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     return ctx.json({ ok: true }, 200);
   }
 
-  const routingOverride = config.mode === "shim" ? telegramRoutingOverrides.get(message.chat.id) : null;
   const routing: TelegramRoutingConfig =
     config.mode === "shim"
       ? {
@@ -796,7 +795,7 @@ async function handleTelegramShimSlash(params: {
     });
     return true;
   }
-  if (command === "start") {
+  if (command === "s") {
     const message = [
       "Login is stubbed for now.",
       `GitHub identity: ${TELEGRAM_SHIM_GITHUB_LOGIN}`,
@@ -846,9 +845,25 @@ async function handleTelegramContextCommand(params: {
     return true;
   }
 
+  const kv = await getTelegramKv(params.logger);
+  if (!kv) {
+    await safeSendTelegramMessage({
+      botToken: params.botToken,
+      chatId: params.chatId,
+      replyToMessageId: params.replyToMessageId,
+      text: "KV is unavailable, so I can't persist context yet.",
+      logger: params.logger,
+    });
+    return true;
+  }
+  if (!kv && !isTelegramKvWarningIssued) {
+    params.logger.warn({ feature: "telegram-context" }, "KV unavailable; Telegram context will not persist.");
+    isTelegramKvWarningIssued = true;
+  }
+
   const rawArgs = params.rawArgs.trim();
   if (!rawArgs) {
-    const current = telegramRoutingOverrides.get(params.chatId);
+    const current = await loadTelegramRoutingOverride({ botToken: params.botToken, chatId: params.chatId, logger: params.logger, kv });
     const currentUrl =
       current && current.owner && current.repo && current.issueNumber
         ? buildIssueUrl({ owner: current.owner, repo: current.repo, issueNumber: current.issueNumber })
@@ -878,12 +893,29 @@ async function handleTelegramContextCommand(params: {
     return true;
   }
 
-  telegramRoutingOverrides.set(params.chatId, {
-    owner: parsed.owner,
-    repo: parsed.repo,
-    issueNumber: parsed.issueNumber,
-    sourceUrl: parsed.url,
+  const isSaved = await saveTelegramRoutingOverride({
+    botToken: params.botToken,
+    chatId: params.chatId,
+    override: {
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issueNumber: parsed.issueNumber,
+      sourceUrl: parsed.url,
+    },
+    logger: params.logger,
+    kv,
   });
+
+  if (!isSaved) {
+    await safeSendTelegramMessage({
+      botToken: params.botToken,
+      chatId: params.chatId,
+      replyToMessageId: params.replyToMessageId,
+      text: "I couldn't save that context. Please try again.",
+      logger: params.logger,
+    });
+    return true;
+  }
 
   await safeSendTelegramMessage({
     botToken: params.botToken,
@@ -1004,6 +1036,87 @@ function formatRoutingTarget(routing: TelegramRoutingConfig): string | null {
   const issueNumber = routing.issueNumber;
   if (!owner || !repo || !Number.isFinite(issueNumber) || issueNumber <= 0) return null;
   return `${owner}/${repo}#${issueNumber}`;
+}
+
+async function getTelegramKv(logger: Logger): Promise<KvLike | null> {
+  const kv = await getKvClient(logger);
+  if (!kv && !telegramKvWarningIssued) {
+    logger.warn({ feature: "telegram-context" }, "KV unavailable; Telegram context will not persist.");
+    telegramKvWarningIssued = true;
+  }
+  return kv;
+}
+
+async function loadTelegramRoutingOverride(params: {
+  botToken: string;
+  chatId: number;
+  logger: Logger;
+  kv?: KvLike | null;
+}): Promise<TelegramRoutingOverride | null> {
+  const kv = params.kv ?? (await getTelegramKv(params.logger));
+  if (!kv) return null;
+  const key = getTelegramContextKey(params.botToken, params.chatId);
+  const { value } = await kv.get(key);
+  return parseTelegramRoutingOverride(value);
+}
+
+async function saveTelegramRoutingOverride(params: {
+  botToken: string;
+  chatId: number;
+  override: TelegramRoutingOverride;
+  logger: Logger;
+  kv?: KvLike | null;
+}): Promise<boolean> {
+  const kv = params.kv ?? (await getTelegramKv(params.logger));
+  if (!kv) return false;
+  const key = getTelegramContextKey(params.botToken, params.chatId);
+  const payload = {
+    owner: params.override.owner,
+    repo: params.override.repo,
+    issueNumber: params.override.issueNumber,
+    ...(params.override.installationId ? { installationId: params.override.installationId } : {}),
+    ...(params.override.sourceUrl ? { sourceUrl: params.override.sourceUrl } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await kv.set(key, payload);
+    return true;
+  } catch (error) {
+    params.logger.warn({ err: error }, "Failed to persist Telegram context");
+    return false;
+  }
+}
+
+function getTelegramContextKey(botToken: string, chatId: number): KvKey {
+  const botId = getTelegramBotId(botToken);
+  return [...TELEGRAM_CONTEXT_PREFIX, botId, String(chatId)];
+}
+
+function getTelegramBotId(botToken: string): string {
+  const trimmed = botToken.trim();
+  const index = trimmed.indexOf(":");
+  if (index > 0) {
+    return trimmed.slice(0, index);
+  }
+  return trimmed || "unknown";
+}
+
+function parseTelegramRoutingOverride(value: unknown): TelegramRoutingOverride | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const owner = normalizeOptionalString(record.owner);
+  const repo = normalizeOptionalString(record.repo);
+  const issueNumber = parseOptionalPositiveInt(record.issueNumber);
+  if (!owner || !repo || !issueNumber) return null;
+  const installationId = parseOptionalPositiveInt(record.installationId);
+  const sourceUrl = normalizeOptionalString(record.sourceUrl);
+  return {
+    owner,
+    repo,
+    issueNumber,
+    ...(installationId ? { installationId } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+  };
 }
 
 async function resolveInstallationId(
