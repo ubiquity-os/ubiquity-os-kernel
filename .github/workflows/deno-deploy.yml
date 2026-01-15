@@ -46,6 +46,7 @@ jobs:
           UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
           UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL || '' }}
           UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY || '' }}
+          UOS_DIAGNOSTICS_TOKEN: ${{ secrets.UOS_DIAGNOSTICS_TOKEN || '' }}
           UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || '' }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || '' }}
