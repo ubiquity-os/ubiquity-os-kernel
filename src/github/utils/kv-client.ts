@@ -1,4 +1,5 @@
 import { getEnvValue } from "./env.ts";
+import { parseAgentMemoryConfig } from "./env-config.ts";
 
 type KvKey = ReadonlyArray<unknown>;
 
@@ -29,8 +30,13 @@ type LoggerLike = Readonly<{
 
 let kvClientPromise: Promise<KvLike | null> | null = null;
 
-function resolveKvUrl(): string | null {
-  const raw = getEnvValue("UOS_AGENT_MEMORY_URL");
+function resolveKvUrl(logger?: LoggerLike): string | null {
+  const configResult = parseAgentMemoryConfig(getEnvValue("UOS_AGENT_MEMORY"));
+  if (!configResult.ok) {
+    if (logger?.warn) logger.warn({ err: configResult.error }, "Invalid UOS_AGENT_MEMORY config.");
+    return null;
+  }
+  const raw = configResult.config?.url;
   if (!raw) return null;
   const trimmed = raw.trim().replace(/\/+$/, "");
   if (!trimmed) return null;
@@ -122,7 +128,7 @@ function createPiKvClient(baseUrl: string): KvLike {
 export async function getKvClient(logger?: LoggerLike): Promise<KvLike | null> {
   if (kvClientPromise) return kvClientPromise;
   kvClientPromise = (async () => {
-    const memoryUrl = resolveKvUrl();
+    const memoryUrl = resolveKvUrl(logger);
     if (memoryUrl) {
       return createPiKvClient(memoryUrl);
     }

@@ -4,6 +4,8 @@
   "tasks": {
     "dev": "deno run --allow-run --allow-env predev.ts && deno task dev:serve",
     "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
+    "dev:ingress": "deno run --allow-read --allow-env --allow-run scripts/with-ingress-env.ts",
+    "secrets:github": "deno run --allow-read --allow-write scripts/github-secrets.ts",
     "test": "deno test --allow-env --allow-net --allow-read --allow-sys",
     "check": "deno check --sloppy-imports src/kernel.ts",
     "commitlint": "deno run --allow-env --allow-read --allow-run --allow-sys npm:@commitlint/cli@19.3.0",
@@ -23,7 +25,8 @@
     "dash-logs:ai": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=ndjson",
     "dash-logs:human": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=table",
     "dev:easy": "deno run -A predev.ts && deno task dev:serve:easy",
-    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/kernel.ts"
+    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
+    "dev:ingress:easy": "deno run -A scripts/with-ingress-env.ts"
   },
   "compilerOptions": {
     "lib": ["deno.ns", "deno.window"],

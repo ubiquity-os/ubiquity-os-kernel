@@ -9,6 +9,7 @@ import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from ".
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { classifyTextIngress } from "../utils/reaction.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
@@ -21,6 +22,8 @@ const LOG_TRAIL_MAX_LINES = 40;
 const LOG_TRAIL_MAX_LINE_LENGTH = 240;
 const KERNEL_REPO = "ubiquity-os/ubiquity-os-kernel";
 const DISPATCH_EVENT_LOG = "Dispatching event";
+const ISSUE_COMMENT_CREATED_EVENT = "issue_comment.created";
+const PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT = "pull_request_review_comment.created";
 
 export type HandlerDeps = {
   getConfig: typeof getConfig;
@@ -577,7 +580,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 
 export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<HandlerDeps>) {
   const resolvedDeps = resolveHandlerDeps(deps);
-  eventHandler.on("issue_comment.created", issueCommentCreated);
+  eventHandler.on(ISSUE_COMMENT_CREATED_EVENT, issueCommentCreated);
   eventHandler.on("issue_comment.edited", async (context) => {
     const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
     if (!issueNumber) {
@@ -586,7 +589,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<Ha
     }
     await handleAgentRunCommentEdited(context as GitHubContext<"issue_comment.edited">, issueNumber);
   });
-  eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
+  eventHandler.on(PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT, pullRequestReviewCommentCreated);
   eventHandler.on("pull_request_review_comment.edited", async (context) => {
     const prNumber = typeof context.payload?.pull_request?.number === "number" ? context.payload.pull_request.number : null;
     if (!prNumber) {
@@ -660,6 +663,18 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
+  if (context.key === ISSUE_COMMENT_CREATED_EVENT || context.key === PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT) {
+    const commentBody =
+      context.key === ISSUE_COMMENT_CREATED_EVENT
+        ? String((context.payload as GitHubContext<"issue_comment.created">["payload"]).comment?.body ?? "")
+        : String((context.payload as GitHubContext<"pull_request_review_comment.created">["payload"]).comment?.body ?? "");
+    const stimulus = classifyTextIngress(commentBody);
+    if (stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent") {
+      context.logger.debug({ leadingMention: stimulus.leadingMention ?? null }, "Skipping plugin dispatch for personal-agent mention");
+      return;
+    }
+  }
+
   const config = await deps.getConfig(context);
 
   if (!config) {
@@ -683,7 +698,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     resolvedPlugins.push(...allowed);
   }
 
-  if (context.key === "issue_comment.created") {
+  if (context.key === ISSUE_COMMENT_CREATED_EVENT) {
     const issueContext = context as GitHubContext<"issue_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
     if (commandName) {
@@ -693,7 +708,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     }
   }
 
-  if (context.key === "pull_request_review_comment.created") {
+  if (context.key === PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT) {
     const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
     if (commandName) {
@@ -702,7 +717,6 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       resolvedPlugins.push(...filtered);
     }
   }
-
   if (resolvedPlugins.length === 0) {
     context.logger.debug("No handler found for event");
     return;

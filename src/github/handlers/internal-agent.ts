@@ -96,7 +96,7 @@ export async function dispatchInternalAgent(
         "",
         `Actions workflow: ${agentWorkflowUrl}`,
         "",
-        "If you're testing a feature branch, set `UOS_AGENT_REF` to that branch and ensure the workflow file exists at that ref.",
+        "If you're testing a feature branch, set `UOS_AGENT.ref` in `UOS_AGENT` and ensure the workflow file exists at that ref.",
       ]
         .filter(Boolean)
         .join("\n")
