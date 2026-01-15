@@ -15,6 +15,9 @@ jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
 jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
+jest.mock("../src/github/utils/comment-dedupe", () => ({
+  shouldSkipDuplicateCommentEvent: jest.fn().mockResolvedValue(false),
+}));
 jest.mock("../src/github/utils/workflow-dispatch", () => ({
   getDefaultBranch: jest.fn().mockResolvedValue("main"),
   dispatchWorkflow: jest.fn(),
@@ -194,8 +197,10 @@ function getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["par
     return {
       data: `
       plugins:
-        https://plugin-a.internal: {}
-        ubiquity-os/plugin-b: {}
+        https://plugin-a.internal:
+          with: {}
+        ubiquity-os/plugin-b:
+          with: {}
       `,
     };
   } else if (params?.path === "manifest.json") {
@@ -397,7 +402,7 @@ describe("Event related tests", () => {
     });
   });
 
-  it("Should route when @ubiquityos is mentioned mid-comment", async () => {
+  it("Should not route when @ubiquityos is mentioned mid-comment", async () => {
     const { dispatchWorkflowWithRunUrl } = await import("../src/github/utils/workflow-dispatch");
 
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
@@ -424,12 +429,7 @@ describe("Event related tests", () => {
       logger,
     } as unknown as GitHubContext);
 
-    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls.length).toEqual(1);
-    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls[0][1]).toMatchObject({
-      owner: UBIQUITY_OS_OWNER,
-      repository: "plugin-b",
-      workflowId: "compute.yml",
-    });
+    expect((dispatchWorkflowWithRunUrl as jest.Mock).mock.calls.length).toEqual(0);
   });
 
   it("Should dispatch the agent workflow for complex requests", async () => {
@@ -454,7 +454,7 @@ describe("Event related tests", () => {
       eventHandler: eventHandler,
       payload: {
         ...payload,
-        comment: makeComment("Hey @UbiquityOS rewrite spec based on the thread and set the best time label"),
+        comment: makeComment("@UbiquityOS rewrite spec based on the thread and set the best time label"),
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
@@ -507,7 +507,7 @@ describe("Event related tests", () => {
     });
   });
 
-  it("Should not post the help menu when /help command if there is no available command", async () => {
+  it("Should post the help menu when /help has no plugin commands", async () => {
     const issues = {
       createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
         return params;
@@ -519,7 +519,8 @@ describe("Event related tests", () => {
         return {
           data: `
           plugins:
-            ubiquity-os/plugin-b: {}
+            ubiquity-os/plugin-b:
+              with: {}
           `,
         };
       } else if (params?.path === "manifest.json") {
@@ -556,6 +557,16 @@ describe("Event related tests", () => {
       } as unknown as GitHubContext<"issue_comment.created">["payload"],
       logger,
     } as unknown as GitHubContext);
-    expect(spy).not.toBeCalled();
+    expect(spy).toBeCalledTimes(1);
+    const expectedBody =
+      ["| Command | Description | Example |", "|---|---|---|", "| `/help` | List all available commands. | `/help` |"].join("\n") +
+      expectedHelpFooter +
+      EXPECTED_COMMAND_RESPONSE_MARKER;
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      body: expectedBody,
+      issue_number: 1,
+      owner: "ubiquity",
+      repo: name,
+    });
   });
 });

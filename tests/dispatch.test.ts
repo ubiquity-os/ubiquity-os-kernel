@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { Octokit } from "@octokit/rest";
-import crypto from "crypto";
 import { http, HttpResponse } from "msw";
 import { server } from "./__mocks__/node";
+import { GitHubEventHandler } from "../src/github/github-event-handler";
+import { logger } from "../src/logger/logger";
 
 jest.mock("@octokit/plugin-paginate-rest", () => ({}));
 jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
@@ -10,6 +10,12 @@ jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({
   createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
+}));
+jest.mock("../src/github/handlers/router-decision", () => ({
+  getRouterDecision: jest.fn().mockResolvedValue({
+    raw: JSON.stringify({ action: "ignore" }),
+    decision: { action: "ignore" },
+  }),
 }));
 
 const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
@@ -35,10 +41,6 @@ jest.mock(PLUGIN_INPUT_MODULE, () => {
     },
   };
 });
-
-function calculateSignature(payload: string, secret: string) {
-  return `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
-}
 
 const issueCommentCreatedEvent = "issue_comment.created";
 const FOO_COMMAND = "foo";
@@ -93,7 +95,7 @@ describe("handleEvent", () => {
       ),
       http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
         const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  https://plugin-a.internal: {}\n  https://plugin-b.internal: {}`;
+        const yamlContent = `plugins:\n  https://plugin-a.internal:\n    with: {}\n  https://plugin-b.internal:\n    with: {}`;
         if (acceptHeader === "application/vnd.github.v3.raw") {
           return HttpResponse.text(yamlContent);
         } else {
@@ -116,11 +118,6 @@ describe("handleEvent", () => {
   });
 
   it("should continue dispatching plugins if dispatch throws an error", async () => {
-    jest.mock("../src/github/github-client", () => {
-      return {
-        customOctokit: jest.fn().mockReturnValue(new Octokit()),
-      };
-    });
     const dispatchWorker = jest
       .fn()
       .mockImplementationOnce(() => {
@@ -132,6 +129,7 @@ describe("handleEvent", () => {
       dispatchWorker: dispatchWorker,
     }));
     const payload = {
+      action: "created",
       installation: {
         id: 1,
       },
@@ -140,7 +138,7 @@ describe("handleEvent", () => {
       },
       comment: {
         id: 101,
-        body: "/foo",
+        body: "please do foo",
         user: {
           login: "test-user",
           type: "User",
@@ -162,35 +160,50 @@ describe("handleEvent", () => {
         },
       },
     };
-    const secret = "1234";
-    const payloadString = JSON.stringify(payload);
-    const signature = calculateSignature(payloadString, secret);
+    const fakeEvent = {
+      id: "test-event-id",
+      name: "issue_comment",
+      payload,
+    } as const;
 
-    const originalEnv = { ...process.env };
-    process.env = {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: secret,
-      APP_ID: "1",
-      APP_PRIVATE_KEY: "1234",
+    const eventHandler = new GitHubEventHandler({
+      environment: "production",
+      webhookSecret: "1234",
+      appId: "1",
+      privateKey: "1234",
+      llm: "test-model",
+    });
+    jest.spyOn(eventHandler, "getToken").mockResolvedValue("mock-token");
+
+    const { bindHandlers } = await import("../src/github/handlers/index");
+    bindHandlers(eventHandler);
+
+    const yamlContent = `plugins:\n  https://plugin-a.internal:\n    with: {}\n  https://plugin-b.internal:\n    with: {}`;
+    const mockOctokit = {
+      rest: {
+        repos: {
+          getContent: jest.fn().mockResolvedValue({ data: yamlContent, headers: {} }),
+        },
+        issues: {
+          listComments: jest.fn().mockResolvedValue({ data: [] }),
+        },
+      },
     };
 
-    const app = (await import("../src/kernel")).app;
-    const res = await app.request("http://localhost:8080", {
-      method: "POST",
-      headers: {
-        "x-github-event": issueCommentCreatedEvent,
-        "x-hub-signature-256": signature,
-        "x-github-delivery": "mocked_delivery_id",
-        "content-type": "application/json",
-      },
-      body: payloadString,
-    });
+    jest.spyOn(eventHandler, "transformEvent").mockReturnValue({
+      id: "test-context-id",
+      key: issueCommentCreatedEvent,
+      octokit: mockOctokit,
+      eventHandler,
+      payload: fakeEvent.payload,
+      logger,
+    } as unknown as ReturnType<typeof eventHandler.transformEvent>);
 
-    expect(res).toBeTruthy();
-    // Slash command dispatch should be attempted once; ensure execution didn't break.
-    expect(dispatchWorker).toHaveBeenCalledTimes(1);
+    await eventHandler.webhooks.receive(fakeEvent);
+
+    // Event dispatch should continue after a failure.
+    expect(dispatchWorker).toHaveBeenCalledTimes(2);
 
     dispatchWorker.mockReset();
-    process.env = originalEnv;
   });
 });

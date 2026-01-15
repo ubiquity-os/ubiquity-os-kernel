@@ -11,7 +11,6 @@ import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "..
 import {
   describeCommands,
   extractAfterUbiquityosMention,
-  extractSlashCommandInvocation,
   getIssueLabelNames,
   parseSlashCommandParameters,
   truncateForRouter,
@@ -22,6 +21,8 @@ import { buildConversationContext } from "../utils/conversation-context.ts";
 import { dispatchInternalAgent } from "./internal-agent.ts";
 import { buildRouterPrompt } from "./router-prompt.ts";
 import { getRouterDecision } from "./router-decision.ts";
+import { classifyTextIngress } from "../utils/reaction.ts";
+import { callPersonalAgent } from "./personal-agent.ts";
 
 async function addReactionEyes(context: GitHubContext<"pull_request_review_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -209,9 +210,13 @@ async function dispatchReviewCommand(
 }
 
 export default async function pullRequestReviewCommentCreated(context: GitHubContext<"pull_request_review_comment.created">) {
-  const body = context.payload.comment.body?.trim() ?? "";
+  const stimulus = classifyTextIngress(context.payload.comment.body);
+  const body = stimulus.body;
   const afterMention = extractAfterUbiquityosMention(body);
-  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
+  const isMentionsUbiquity = stimulus.isUbiquityMention;
+  const isSlashCommand = stimulus.reaction === "reflex" && stimulus.reflex === "slash";
+  const isPersonalAgentMention = stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent";
+  const slashInvocation = stimulus.slashInvocation;
 
   const isHuman = context.payload.comment.user?.type === "User";
   if (!isHuman) {
@@ -233,18 +238,25 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  if (afterMention) {
+  if (isMentionsUbiquity) {
     await addReactionEyes(context);
   }
 
-  const agentPrefixMatch = afterMention ? /^agent\b/i.exec(afterMention) : null;
-  if (agentPrefixMatch && afterMention) {
-    const task = afterMention.replace(/^agent\b/i, "").trim() || body;
-    await dispatchInternalAgent(context, task, { postReply: (reply) => postReplyInReviewThread(context, reply) });
-    return;
+  if (isSlashCommand) {
+    if (!slashInvocation) {
+      await postReplyInReviewThread(context, "I couldn't understand that command. Use `/help` in the PR conversation to list available commands.");
+      return;
+    }
+    if (slashInvocation.name.toLowerCase() === "help") {
+      await postReplyInReviewThread(context, "Use `/help` in the PR conversation (top-level comments) to list all available commands.");
+      return;
+    }
   }
 
-  if (!afterMention && !slashInvocation) return;
+  if (isPersonalAgentMention) {
+    await callPersonalAgent(context);
+    return;
+  }
 
   const config = await getConfig(context);
   if (!config) {
@@ -269,11 +281,6 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   }
 
   if (slashInvocation) {
-    if (slashInvocation.name.toLowerCase() === "help") {
-      await postReplyInReviewThread(context, "Use `/help` in the PR conversation (top-level comments) to list all available commands.");
-      return;
-    }
-
     const match = resolveReviewCommandMatch(pluginsWithManifest, slashInvocation.name);
     if (!match) {
       await postReplyInReviewThread(
@@ -289,7 +296,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  if (afterMention === null) return;
+  if (!isMentionsUbiquity) return;
 
   const commands = describeCommands(manifests);
   const recentComments = await getReviewThreadCommentsForRouter(context, 10);

@@ -24,6 +24,7 @@ const LIST_PAGE_SIZE = 200;
 import type { KvKey, KvLike, LoggerLike } from "./kv-client.ts";
 import { getKvClient } from "./kv-client.ts";
 import { getEnvValue } from "./env.ts";
+import { parseAgentMemoryConfig } from "./env-config.ts";
 
 const inMemory = new Map<string, AgentRunMemoryEntry[]>();
 let kvPromise: Promise<KvLike | null> | null = null;
@@ -106,23 +107,26 @@ function encodeBase64Bytes(bytes: Uint8Array): string {
 async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null> {
   if (memoryKeyPromise) return memoryKeyPromise;
   memoryKeyPromise = (async () => {
-    const raw = getEnvValue("UOS_AGENT_MEMORY_KEY");
-    if (!raw) {
+    const configResult = parseAgentMemoryConfig(getEnvValue("UOS_AGENT_MEMORY"));
+    if (!configResult.ok) {
+      warnOnce(logger, "agent-memory-config-invalid", configResult.error);
       return null;
     }
+    const raw = configResult.config?.key;
+    if (!raw) return null;
     const bytes = decodeBase64Bytes(raw);
     if (!bytes) {
-      warnOnce(logger, "agent-memory-key-invalid", "UOS_AGENT_MEMORY_KEY must be base64-encoded 32 bytes.");
+      warnOnce(logger, "agent-memory-key-invalid", "UOS_AGENT_MEMORY.key must be base64-encoded 32 bytes.");
       return null;
     }
     if (bytes.length !== 32) {
-      warnOnce(logger, "agent-memory-key-length", "UOS_AGENT_MEMORY_KEY must decode to 32 bytes for AES-256-GCM.");
+      warnOnce(logger, "agent-memory-key-length", "UOS_AGENT_MEMORY.key must decode to 32 bytes for AES-256-GCM.");
       return null;
     }
     try {
       return await crypto.subtle.importKey("raw", toBufferSource(bytes), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     } catch (error) {
-      warnOnce(logger, "agent-memory-key-import", "Failed to import UOS_AGENT_MEMORY_KEY.", error);
+      warnOnce(logger, "agent-memory-key-import", "Failed to import UOS_AGENT_MEMORY.key.", error);
       return null;
     }
   })();

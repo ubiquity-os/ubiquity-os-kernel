@@ -10,6 +10,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import YAML from "js-yaml";
 import { getConfigPathCandidatesForEnvironment } from "../src/github/utils/config";
+import { parseGitHubAppConfig } from "../src/github/utils/github-app-config";
 
 loadEnv({ path: ".env" });
 
@@ -351,14 +352,14 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
   try {
     console.log(`📡 Fetching config using kernel logic...`);
 
-    // Check for GitHub App credentials
-    const appId = process.env.APP_ID;
-    const privateKey = process.env.APP_PRIVATE_KEY;
-
-    if (!appId || !privateKey) {
+    const githubConfigResult = parseGitHubAppConfig(process.env as unknown as Record<string, string>);
+    if (!githubConfigResult.ok) {
+      if (githubConfigResult.error !== "UOS_GITHUB is required.") {
+        console.log(`⚠️  ${githubConfigResult.error}`);
+      }
       const githubToken = (process.env.GITHUB_TOKEN ?? String()).trim();
       if (!githubToken) {
-        console.log("❌ No GitHub auth available. Set APP_ID+APP_PRIVATE_KEY or GITHUB_TOKEN.");
+        console.log("❌ No GitHub auth available. Set UOS_GITHUB or GITHUB_TOKEN.");
         return null;
       }
 
@@ -380,8 +381,8 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
     const eventHandler = new GitHubEventHandler({
       environment: process.env.ENVIRONMENT ?? "development",
       webhookSecret: "dummy", // Not needed for config fetching
-      appId: appId,
-      privateKey: privateKey,
+      appId: githubConfigResult.config.appId,
+      privateKey: githubConfigResult.config.privateKey,
       llm: "dummy", // Not needed for config fetching
     });
 
@@ -492,21 +493,19 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
 
   const configCachePath = getConfigCachePath(org, repo);
 
-  // Check for GitHub App credentials for real token generation
-  const appId = process.env.APP_ID;
-  const privateKey = process.env.APP_PRIVATE_KEY;
+  const githubConfigResult = parseGitHubAppConfig(process.env as unknown as Record<string, string>);
   let installationToken: string | null = null;
   let installationId: number | null = null;
 
-  if (appId && privateKey) {
+  if (githubConfigResult.ok) {
     try {
       // Create a GitHubEventHandler for app authentication
       const { GitHubEventHandler } = await import("../src/github/github-event-handler.js");
       const eventHandler = new GitHubEventHandler({
         environment: process.env.ENVIRONMENT ?? "development",
         webhookSecret: "dummy",
-        appId: appId,
-        privateKey: privateKey,
+        appId: githubConfigResult.config.appId,
+        privateKey: githubConfigResult.config.privateKey,
         llm: "dummy",
       });
 
@@ -528,6 +527,9 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       console.log(`⚠️  Failed to generate installation token: ${error}, using mock token`);
     }
   } else {
+    if (githubConfigResult.error !== "UOS_GITHUB is required.") {
+      console.log(`⚠️  ${githubConfigResult.error}`);
+    }
     console.log(`⚠️  GitHub App credentials not found; will use GITHUB_TOKEN if set`);
   }
 

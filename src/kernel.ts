@@ -11,10 +11,15 @@ import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
 import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
-import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
+import { deriveRsaPublicKeyPemFromPrivateKey } from "./github/utils/rsa.ts";
 import { listAgentMemoryEntries } from "./github/utils/agent-memory.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
+import { handleTelegramWebhook } from "./telegram/handler.ts";
+import { handleGoogleDriveWebhook } from "./google/drive/handler.ts";
+import { handleTwitterWebhook } from "./x/handler.ts";
+import { parseGitHubAppConfig } from "./github/utils/github-app-config.ts";
+import { parseAgentConfig, parseAiConfig, parseDiagnosticsConfig, parseKernelConfig } from "./github/utils/env-config.ts";
 
 export const app = new Hono();
 export default app;
@@ -39,7 +44,11 @@ app.get("/", async (c) => {
 app.get("/internal/agent-memory", async (ctx: Context) => {
   try {
     const env = getEnvWithDefaults(ctx);
-    const diagnosticsToken = normalizeOptionalEnvValue(env.UOS_DIAGNOSTICS_TOKEN);
+    const diagnosticsConfig = parseDiagnosticsConfig(env.UOS_DIAGNOSTICS);
+    if (!diagnosticsConfig.ok) {
+      return ctx.json({ error: diagnosticsConfig.error }, 500);
+    }
+    const diagnosticsToken = diagnosticsConfig.config?.token;
     if (!diagnosticsToken) {
       return ctx.json({ error: "Diagnostics disabled." }, 404);
     }
@@ -71,7 +80,7 @@ app.get("/internal/agent-memory", async (ctx: Context) => {
 
 app.post("/internal/agent/refresh-token", async (ctx: Context) => {
   try {
-    const env = getEnvWithDefaults(ctx);
+    const _env = getEnvWithDefaults(ctx);
     const authHeader = ctx.req.header("authorization") ?? "";
     const authToken = getBearerToken(authHeader);
     if (!authToken) {
@@ -98,7 +107,7 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
       return ctx.json({ error: "Invalid X-GitHub-Installation-Id." }, 400);
     }
 
-    const privateKey = normalizeMultilineSecret(env.APP_PRIVATE_KEY);
+    const privateKey = githubConfig.config.privateKey;
     const publicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(privateKey);
     const verification = await verifyKernelAttestationToken({
       token: kernelToken,
@@ -114,7 +123,7 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
       return ctx.json({ error: verification.error }, 401);
     }
 
-    const auth = createAppAuth({ appId: Number(env.APP_ID), privateKey });
+    const auth = createAppAuth({ appId: Number(githubConfig.config.appId), privateKey });
     const refreshed = await auth({ type: "installation", installationId });
     const refreshedKernelToken = await createKernelAttestationToken({
       sign: (payload) => signPayload(payload, privateKey),
@@ -136,20 +145,59 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
   }
 });
 
+app.post("/telegram", async (ctx: Context) => {
+  try {
+    const env = getEnvWithDefaults(ctx);
+    return await handleTelegramWebhook(ctx, env);
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
+  }
+});
+
+app.post("/google/drive", async (ctx: Context) => {
+  try {
+    const env = getEnvWithDefaults(ctx);
+    return await handleGoogleDriveWebhook(ctx, env);
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
+  }
+});
+
+app.all("/x", async (ctx: Context) => {
+  try {
+    const env = getEnvWithDefaults(ctx);
+    return await handleTwitterWebhook(ctx, env);
+  } catch (error) {
+    return handleUncaughtError(ctx, error);
+  }
+});
+
 app.post("/", async (ctx: Context) => {
   try {
     const env = getEnvWithDefaults(ctx);
-    const missingEnv: string[] = [];
-    const aiBaseUrl = requireEnvValue(env.UOS_AI_BASE_URL, "UOS_AI_BASE_URL", missingEnv);
-    const aiToken = normalizeOptionalEnvValue(env.UOS_AI_TOKEN);
-    const agentOwner = requireEnvValue(env.UOS_AGENT_OWNER, "UOS_AGENT_OWNER", missingEnv);
-    const agentRepo = requireEnvValue(env.UOS_AGENT_REPO, "UOS_AGENT_REPO", missingEnv);
-    const agentWorkflow = requireEnvValue(env.UOS_AGENT_WORKFLOW, "UOS_AGENT_WORKFLOW", missingEnv);
-    const agentRef = normalizeOptionalEnvValue(env.UOS_AGENT_REF);
-    if (missingEnv.length > 0) {
-      throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+    const githubConfigResult = parseGitHubAppConfig(env);
+    if (!githubConfigResult.ok) {
+      if (githubConfigResult.error === "UOS_GITHUB is required.") {
+        throw new Error("Missing required environment variables: UOS_GITHUB");
+      }
+      throw new Error(githubConfigResult.error);
     }
-    const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
+    const aiConfigResult = parseAiConfig(env.UOS_AI);
+    if (!aiConfigResult.ok) {
+      throw new Error(aiConfigResult.error);
+    }
+    const agentConfigResult = parseAgentConfig(env.UOS_AGENT);
+    if (!agentConfigResult.ok) {
+      throw new Error(agentConfigResult.error);
+    }
+    const kernelConfigResult = parseKernelConfig(env.UOS_KERNEL);
+    if (!kernelConfigResult.ok) {
+      throw new Error(kernelConfigResult.error);
+    }
+    const githubConfig = githubConfigResult.config;
+    const aiConfig = aiConfigResult.config;
+    const agentConfig = agentConfigResult.config;
+    const kernelRefreshIntervalSeconds = kernelConfigResult.config.refreshIntervalSeconds;
     const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
     const request = ctx.req;
     const eventName = getEventName(request);
@@ -157,19 +205,19 @@ app.post("/", async (ctx: Context) => {
     const id = getId(request);
     const eventHandler = new GitHubEventHandler({
       environment: env.ENVIRONMENT,
-      webhookSecret: env.APP_WEBHOOK_SECRET,
-      appId: env.APP_ID,
-      privateKey: env.APP_PRIVATE_KEY,
+      webhookSecret: githubConfig.webhookSecret,
+      appId: githubConfig.appId,
+      privateKey: githubConfig.privateKey,
       llm: "gpt-5.2-chat-latest",
-      aiBaseUrl,
-      aiToken,
+      aiBaseUrl: aiConfig.baseUrl,
+      aiToken: aiConfig.token,
       kernelRefreshUrl,
       kernelRefreshIntervalSeconds,
       agent: {
-        owner: agentOwner,
-        repo: agentRepo,
-        workflowId: agentWorkflow,
-        ref: agentRef,
+        owner: agentConfig.owner,
+        repo: agentConfig.repo,
+        workflowId: agentConfig.workflow,
+        ref: agentConfig.ref,
       },
       logger: ctx.var.logger,
     });
@@ -227,12 +275,6 @@ function getId(request: HonoRequest): string {
   return id;
 }
 
-function parseOptionalNumber(value?: string): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value.trim());
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function parseOptionalPositiveInt(value?: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value.trim());
@@ -245,17 +287,4 @@ function parseBoundedInt(value: string | null | undefined, fallback: number, min
   const parsed = parseOptionalPositiveInt(value);
   if (!parsed) return fallback;
   return Math.min(max, Math.max(min, parsed));
-}
-
-function normalizeOptionalEnvValue(value?: string): string | undefined {
-  const trimmed = value?.trim() ?? "";
-  return trimmed ? trimmed : undefined;
-}
-
-function requireEnvValue(value: string | undefined, name: string, missing: string[]): string {
-  const normalized = normalizeOptionalEnvValue(value) ?? "";
-  if (!normalized) {
-    missing.push(name);
-  }
-  return normalized;
 }

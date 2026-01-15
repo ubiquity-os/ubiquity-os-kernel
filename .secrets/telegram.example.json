@@ -1,0 +1,9 @@
+{
+  "mode": "github",
+  "botToken": "TELEGRAM_BOT_TOKEN",
+  "webhookSecret": "TELEGRAM_WEBHOOK_SECRET",
+  "owner": "ubiquity-os-marketplace",
+  "repo": "ubiquity-os-marketplace",
+  "issueNumber": 1,
+  "installationId": 123
+}

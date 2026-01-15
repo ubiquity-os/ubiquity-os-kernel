@@ -66,15 +66,13 @@ describe("Worker tests", () => {
     const originalEnv = { ...process.env };
     process.env = {
       ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: "",
-      APP_ID: "",
-      APP_PRIVATE_KEY: "",
+      UOS_GITHUB: "",
     };
     const res = await app.request("http://localhost:8080", {
       method: "POST",
     });
     expect(res.status).toEqual(500);
-    expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
+    expect(await res.json()).toEqual({ error: "Error: Missing required environment variables: UOS_GITHUB" });
     process.env = originalEnv;
     consoleSpy.mockRestore();
   });

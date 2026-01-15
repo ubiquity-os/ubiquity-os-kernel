@@ -9,6 +9,25 @@ import { server } from "./__mocks__/node";
 import { createConfigurationHandler } from "./test-utils/configuration-handler";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
+
+jest.mock("../src/github/handlers/router-decision", () => ({
+  getRouterDecision: jest.fn(),
+}));
+jest.mock("../src/github/utils/comment-dedupe", () => ({
+  shouldSkipDuplicateCommentEvent: jest.fn().mockResolvedValue(false),
+}));
+jest.mock("../src/github/github-client", () => ({
+  tokenOctokit: jest.fn().mockImplementation(() => ({
+    rest: {
+      repos: {
+        get: jest.fn().mockResolvedValue({ data: { default_branch: "main" } }),
+      },
+      actions: {
+        createWorkflowDispatch: createWorkflowDispatch,
+      },
+    },
+  })),
+}));
 const commentCreateEvent = "issue_comment.created";
 let nextCommentId = 1000;
 
@@ -28,40 +47,47 @@ describe("Personal Agent tests", () => {
     drop(db);
   });
 
-  it("Should handle personal agent command", async () => {
+  it("Should dispatch personal agent when tagged", async () => {
+    const { getRouterDecision } = await import("../src/github/handlers/router-decision");
+    (getRouterDecision as jest.Mock).mockResolvedValue({
+      raw: JSON.stringify({ action: "ignore" }),
+      decision: { action: "ignore" },
+    });
+
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, infoSpy, debugSpy } = createContext("@test_acc2 help");
+    const { context, errorSpy, infoSpy } = createContext("@test_acc2 help");
 
     expect(context.key).toBe(commentCreateEvent);
 
     await issueCommentCreated(context);
 
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(debugSpy).toHaveBeenNthCalledWith(
-      1,
-      {
-        personalAgentOwner: "test_acc2",
-        owner: "test_acc",
-        comment: "@test_acc2 help",
-      },
-      `Comment received`
-    );
-    expect(infoSpy).toHaveBeenNthCalledWith(1, `Successfully sent the comment to test_acc2/personal-agent`);
+    expect(getRouterDecision).not.toHaveBeenCalled();
     expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
-    expect(context.octokit.rest.repos.getCollaboratorPermissionLevel).toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(expect.any(Object), "Dispatching personal-agent workflow");
   });
 
-  it("Should ignore irrelevant comments", async () => {
+  it("Should dispatch only for the leading mention", async () => {
     const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, debugSpy } = createContext("foo bar");
+    const { context, errorSpy } = createContext("@test_acc2 please review with @test_acc3");
 
     expect(context.key).toBe(commentCreateEvent);
-    expect(context.payload.comment.body).toBe("foo bar");
 
     await issueCommentCreated(context);
 
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(debugSpy).toHaveBeenNthCalledWith(1, "Ignoring irrelevant comment: foo bar");
+    expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("Should not dispatch when mention is not leading", async () => {
+    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
+    const { context, errorSpy } = createContext("Please review with @test_acc2");
+
+    expect(context.key).toBe(commentCreateEvent);
+
+    await issueCommentCreated(context);
+
+    expect(errorSpy).not.toHaveBeenCalled();
     expect(createWorkflowDispatch).not.toHaveBeenCalled();
   });
 });
@@ -127,6 +153,7 @@ function createContextInner(commentBody: string): GitHubContext<"issue_comment.c
       getToken: jest.fn().mockReturnValue("1234"),
       signPayload: jest.fn().mockReturnValue("sha256=1234"),
       getAuthenticatedOctokit: jest.fn().mockReturnValue(octokit),
+      getUnauthenticatedOctokit: jest.fn().mockReturnValue(octokit),
       logger: logger,
     } as unknown as GitHubEventHandler,
     llm: "",

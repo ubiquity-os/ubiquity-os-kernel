@@ -16,11 +16,8 @@ import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts"
 import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 import { buildConversationContext } from "../utils/conversation-context.ts";
 import { getRouterDecision } from "./router-decision.ts";
-
-type SlashCommandInvocation = {
-  name: string;
-  rawArgs: string;
-};
+import { type SlashCommandInvocation } from "../utils/slash-command.ts";
+import { classifyTextIngress } from "../utils/reaction.ts";
 
 async function addReactionEyes(context: GitHubContext<"issue_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -38,86 +35,12 @@ async function addReactionEyes(context: GitHubContext<"issue_comment.created">) 
   }
 }
 
-async function isExternalContributor(context: GitHubContext<"issue_comment.created">) {
-  const {
-    octokit,
-    payload: {
-      comment: { user },
-    },
-  } = context;
-  if (!user) {
-    return true;
-  }
-  const permissionLevel = await octokit.rest.repos.getCollaboratorPermissionLevel({
-    username: user.login,
-    owner: context.payload.repository.owner.login,
-    repo: context.payload.repository.name,
-  });
-  const role = permissionLevel.data.role_name?.toLowerCase();
-  return role === "none" || role === "read";
-}
-
-async function getPreviousComment(context: GitHubContext<"issue_comment.created">) {
-  const currentCommentId = context.payload.comment.id;
-
-  try {
-    const comments = await context.octokit.paginate(context.octokit.rest.issues.listComments, {
-      owner: context.payload.repository.owner.login,
-      repo: context.payload.repository.name,
-      issue_number: context.payload.issue.number,
-      per_page: 100,
-    });
-
-    const filteredComments = comments.filter((comment) => comment.user?.type === "User");
-    const currentIndex = filteredComments.findIndex((comment) => comment.id === currentCommentId);
-    if (currentIndex > 0) {
-      return filteredComments[currentIndex - 1];
-    }
-    return null;
-  } catch (e) {
-    context.logger.warn(e, "Failed to fetch previous comment");
-    return null;
-  }
-}
-
-async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">) {
-  const comment = context.payload.comment;
-  const body = comment.body.trim().toLowerCase();
-  const issueAuthor = context.payload.issue.user?.login;
-  const commentAuthor = context.payload.comment.user?.login;
-
-  // The author of that comment is not an external contributor, or not a human
-  if (comment.user?.type !== "User" || !(await isExternalContributor(context))) {
-    context.logger.warn(`Comment author is not an external contributor, or not a human, will ignore the help request.`);
-    return false;
-  }
-  // We also ignore pull-requests
-  if (context.payload.issue.pull_request) {
-    context.logger.warn("Help requests cannot be made in pull requests, will ignore the help request.");
-    return false;
-  }
-  // The author was not tagged in the message
-  if (body.search(`@${issueAuthor}`) === -1 || issueAuthor === commentAuthor) {
-    context.logger.warn({ issueAuthor, commentAuthor, body }, `Comment author was not tagged in the message or tagged itself, will ignore the help request.`);
-    return false;
-  }
-  // Get the previous comment, and if it was from the author, consider that a conversation is already ongoing
-  const previousComment = await getPreviousComment(context);
-  context.logger.debug(
-    {
-      previousComment: previousComment?.user?.login,
-      issueAuthor,
-    },
-    "isUserHelpRequest"
-  );
-  return previousComment?.user?.login !== issueAuthor;
-}
-
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim();
-  const bodyLower = body.toLowerCase();
-  const afterMention = extractAfterUbiquityosMention(body);
-  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
+  const stimulus = classifyTextIngress(context.payload.comment.body);
+  const isSlashCommand = stimulus.reaction === "reflex" && stimulus.reflex === "slash";
+  const isPersonalAgentMention = stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent";
+  const slashInvocation = stimulus.slashInvocation;
+  const isMentionsUbiquity = stimulus.isUbiquityMention;
   const isHuman = context.payload.comment.user?.type === "User";
   const shouldSkip = await shouldSkipDuplicateCommentEvent({
     owner: context.payload.repository.owner.login,
@@ -130,63 +53,47 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     return;
   }
 
-  if (!isHuman && !slashInvocation && afterMention === null) {
+  if (!isHuman && !isSlashCommand) {
     context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
     return;
   }
 
-  if (bodyLower.startsWith(`/help`)) {
-    await postHelpCommand(context);
+  if (isSlashCommand) {
+    if (!slashInvocation) {
+      if (isHuman) {
+        await postReply(context, "I couldn't understand that command. Try `/help`.");
+      }
+      return;
+    }
+    if (slashInvocation.name.toLowerCase() === "help") {
+      await postHelpCommand(context);
+      return;
+    }
+    const isDispatched = await dispatchSlashCommand(context, slashInvocation);
+    if (!isDispatched && isHuman) {
+      await postReply(context, `I couldn't find a plugin for \`/${slashInvocation.name}\`. Try \`/help\`.`);
+    }
     return;
   }
 
-  if (afterMention !== null) {
-    if (context.payload.comment.user?.type === "User") {
-      await addReactionEyes(context);
-    }
-    if (slashInvocation) {
-      if (slashInvocation.name === "help") {
-        await postHelpCommand(context);
-        return;
-      }
-      await dispatchSlashCommand(context, slashInvocation);
-      return;
-    }
-    const agentPrefixMatch = /^agent\b/i.exec(afterMention);
-    if (agentPrefixMatch) {
-      const task = afterMention.replace(/^agent\b/i, "").trim() || body.trim();
-      await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
-      return;
-    }
-    await commandRouter(context);
-  } else if (body.startsWith(`/`)) {
-    const slashInvocation = extractSlashCommandInvocation(body);
-    if (slashInvocation) {
-      await dispatchSlashCommand(context, slashInvocation);
-      return;
-    }
-  } else if (isHuman && (await isUserHelpRequest(context))) {
-    const issueAuthor = context.payload.issue.user?.login;
-    context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
-    await commandRouter(context);
-  } else {
+  if (isPersonalAgentMention) {
     await callPersonalAgent(context);
+    return;
+  }
+
+  if (isMentionsUbiquity && isHuman) {
+    await addReactionEyes(context);
+  }
+
+  if (isMentionsUbiquity) {
+    await commandRouter(context);
   }
 }
 
-export function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
-  const match = /^\s*\/([\w-]+)\b(.*)$/s.exec(text);
-  if (!match) return null;
-  return {
-    name: match[1],
-    rawArgs: (match[2] ?? "").trim(),
-  };
-}
-
 export function extractAfterUbiquityosMention(text: string): string | null {
-  const match = /@ubiquityos\b/i.exec(text);
-  if (!match || match.index === undefined) return null;
-  return text.slice(match.index + match[0].length).trim();
+  const match = /^\s*@ubiquityos\b/i.exec(text);
+  if (!match) return null;
+  return text.slice(match[0].length).trim();
 }
 
 function listUserMentions(text: string): string[] {
@@ -238,17 +145,17 @@ export function parseSlashCommandParameters(
   return {};
 }
 
-async function dispatchSlashCommand(context: GitHubContext<"issue_comment.created">, invocation: SlashCommandInvocation) {
+async function dispatchSlashCommand(context: GitHubContext<"issue_comment.created">, invocation: SlashCommandInvocation): Promise<boolean> {
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     context.logger.warn(`No installation found, cannot route slash command`);
-    return;
+    return true;
   }
 
   const slashCommandName = invocation.name;
   const config = await getConfig(context);
   if (!config) {
     context.logger.debug("No configuration was found");
-    return;
+    return true;
   }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
@@ -281,7 +188,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
 
   if (!matchedPluginWithManifest) {
     context.logger.debug({ slashCommandName }, "No plugin found for slash command.");
-    return;
+    return false;
   }
 
   const commandSpec = matchedPluginWithManifest.manifest.commands?.[slashCommandName];
@@ -320,6 +227,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
   }
+  return true;
 }
 
 export function truncateForRouter(text?: string | null): string {

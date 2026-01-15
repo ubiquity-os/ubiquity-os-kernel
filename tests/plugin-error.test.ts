@@ -164,9 +164,11 @@ describe(PLUGIN_ERROR_EVENT, () => {
     try {
       process.env = {
         ENVIRONMENT: "production",
-        APP_WEBHOOK_SECRET: secret,
-        APP_ID: "1",
-        APP_PRIVATE_KEY: "1234",
+        UOS_GITHUB: JSON.stringify({
+          appId: "1",
+          webhookSecret: secret,
+          privateKey: "1234",
+        }),
       };
 
       const app = (await import("../src/kernel")).app;
@@ -259,9 +261,11 @@ describe(PLUGIN_ERROR_EVENT, () => {
     try {
       process.env = {
         ENVIRONMENT: "production",
-        APP_WEBHOOK_SECRET: secret,
-        APP_ID: "1",
-        APP_PRIVATE_KEY: "1234",
+        UOS_GITHUB: JSON.stringify({
+          appId: "1",
+          webhookSecret: secret,
+          privateKey: "1234",
+        }),
       };
 
       const app = (await import("../src/kernel")).app;

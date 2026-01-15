@@ -7,7 +7,8 @@ import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { ResolvedPlugin, getPluginsForEvent } from "../utils/plugins.ts";
+import { classifyTextIngress } from "../utils/reaction.ts";
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
@@ -21,6 +22,8 @@ const ERROR_MESSAGE_MAX_LENGTH = 280;
 const LOG_TRAIL_MAX_LINES = 40;
 const LOG_TRAIL_MAX_LINE_LENGTH = 240;
 const KERNEL_REPO = "ubiquity-os/ubiquity-os-kernel";
+const ISSUE_COMMENT_CREATED_EVENT = "issue_comment.created";
+const PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT = "pull_request_review_comment.created";
 
 function isWorkflowLoopProtectedEvent(key: string): boolean {
   return (
@@ -539,7 +542,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
 }
 
 export function bindHandlers(eventHandler: GitHubEventHandler) {
-  eventHandler.on("issue_comment.created", issueCommentCreated);
+  eventHandler.on(ISSUE_COMMENT_CREATED_EVENT, issueCommentCreated);
   eventHandler.on("issue_comment.edited", async (context) => {
     const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
     if (!issueNumber) {
@@ -548,7 +551,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
     }
     await handleAgentRunCommentEdited(context as GitHubContext<"issue_comment.edited">, issueNumber);
   });
-  eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
+  eventHandler.on(PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT, pullRequestReviewCommentCreated);
   eventHandler.on("pull_request_review_comment.edited", async (context) => {
     const prNumber = typeof context.payload?.pull_request?.number === "number" ? context.payload.pull_request.number : null;
     if (!prNumber) {
@@ -562,59 +565,30 @@ export function bindHandlers(eventHandler: GitHubEventHandler) {
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler), eventHandler.logger, eventHandler)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
-function extractLeadingSlashCommandName(body: string): string | null {
-  const trimmed = body.trimStart();
-  const match = /^\/([\w-]+)/u.exec(trimmed);
-  return match?.[1] ? match[1].toLowerCase() : null;
-}
-
-function extractSlashCommandNameFromCommentBody(body: string): string | null {
-  const direct = extractLeadingSlashCommandName(body);
-  if (direct) return direct;
-
-  const mention = /@ubiquityos\b/i.exec(body);
-  if (!mention || mention.index === undefined) return null;
-  const afterMention = body.slice(mention.index + mention[0].length);
-  return extractLeadingSlashCommandName(afterMention);
-}
-
-async function filterPluginsForSlashCommandEvent(context: GitHubContext, plugins: ResolvedPlugin[], slashCommandName: string): Promise<ResolvedPlugin[]> {
-  const filtered: ResolvedPlugin[] = [];
-  for (const plugin of plugins) {
-    try {
-      const manifest = await getManifest(context, plugin.target);
-      if (!manifest?.commands) {
-        filtered.push(plugin);
-        continue;
-      }
-      const commandNames = Object.keys(manifest.commands).map((name) => name.toLowerCase());
-      const listeners = Array.isArray(manifest["ubiquity:listeners"]) ? manifest["ubiquity:listeners"].map((name) => name.toLowerCase()) : [];
-      const doesListenToEvent = listeners.includes(context.key.toLowerCase());
-      if (commandNames.includes(slashCommandName)) {
-        context.logger.debug({ plugin: plugin.key, command: slashCommandName }, "Skipping global dispatch for command plugin; slash handler will dispatch");
-      } else if (doesListenToEvent) {
-        filtered.push(plugin);
-      } else {
-        context.logger.debug(
-          { plugin: plugin.key, command: slashCommandName },
-          "Skipping global dispatch for non-matching command plugin on slash-command comment"
-        );
-      }
-      continue;
-    } catch (error) {
-      context.logger.debug({ plugin: plugin.key, err: error }, "Failed to inspect plugin manifest for slash-command filtering; allowing dispatch");
-    }
-    filtered.push(plugin);
-  }
-  return filtered;
-}
-
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>) {
   const context = eventHandler.transformEvent(event);
 
   if (context.key === "deployment_status.created" || String(context.key) === "repository_dispatch.return-data-to-ubiquity-os-kernel") {
     context.logger.debug({ event: context.key }, "Skipping plugin processing for internal event");
     return;
+  }
+
+  if (context.key === ISSUE_COMMENT_CREATED_EVENT || context.key === PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT) {
+    const commentBody =
+      context.key === ISSUE_COMMENT_CREATED_EVENT
+        ? String((context.payload as GitHubContext<"issue_comment.created">["payload"]).comment?.body ?? "")
+        : String((context.payload as GitHubContext<"pull_request_review_comment.created">["payload"]).comment?.body ?? "");
+    const stimulus = classifyTextIngress(commentBody);
+    if (stimulus.reaction === "reflex") {
+      context.logger.debug(
+        {
+          reflex: stimulus.reflex,
+          command: stimulus.slashInvocation?.name ?? null,
+        },
+        "Skipping plugin dispatch for reflex comment"
+      );
+      return;
+    }
   }
 
   const config = await getConfig(context);
@@ -638,26 +612,6 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     }
     resolvedPlugins.length = 0;
     resolvedPlugins.push(...allowed);
-  }
-
-  if (context.key === "issue_comment.created") {
-    const issueContext = context as GitHubContext<"issue_comment.created">;
-    const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
-    if (commandName) {
-      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
-      resolvedPlugins.length = 0;
-      resolvedPlugins.push(...filtered);
-    }
-  }
-
-  if (context.key === "pull_request_review_comment.created") {
-    const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
-    const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
-    if (commandName) {
-      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName);
-      resolvedPlugins.length = 0;
-      resolvedPlugins.push(...filtered);
-    }
   }
 
   if (resolvedPlugins.length === 0) {

@@ -174,6 +174,16 @@ describe("Kernel Event Processing Tests", () => {
   });
 
   it("Should handle config loading and plugin resolution", async () => {
+    const mockDispatchWorkflow = jest.fn().mockResolvedValue(undefined);
+    const mockDispatchWorker = jest.fn().mockResolvedValue(undefined);
+
+    jest.resetModules();
+    jest.doMock("../src/github/utils/workflow-dispatch", () => ({
+      getDefaultBranch: jest.fn().mockResolvedValue("main"),
+      dispatchWorkflow: mockDispatchWorkflow,
+      dispatchWorker: mockDispatchWorker,
+    }));
+
     const fakeEvent = createFakeEvent(TEST_ORG, TEST_REPO, "/help");
 
     const eventHandler = new GitHubEventHandler({
@@ -214,5 +224,7 @@ describe("Kernel Event Processing Tests", () => {
         repo: TEST_REPO,
       })
     );
+    expect(mockDispatchWorker).not.toHaveBeenCalled();
+    expect(mockDispatchWorkflow).not.toHaveBeenCalled();
   });
 });
