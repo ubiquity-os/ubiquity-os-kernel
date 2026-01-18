@@ -7,7 +7,7 @@ import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { ResolvedPlugin, getManifest, getPluginsForEvent, getWorkerUrlFromManifest } from "../utils/plugins.ts";
 import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
@@ -21,6 +21,7 @@ const ERROR_MESSAGE_MAX_LENGTH = 280;
 const LOG_TRAIL_MAX_LINES = 40;
 const LOG_TRAIL_MAX_LINE_LENGTH = 240;
 const KERNEL_REPO = "ubiquity-os/ubiquity-os-kernel";
+const DISPATCH_EVENT_LOG = "Dispatching event";
 
 function isWorkflowLoopProtectedEvent(key: string): boolean {
   return (
@@ -673,30 +674,34 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     context.logger.debug({ plugin: pluginEntry.key }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
+    const manifest = await getManifest(context, plugin);
+    const workerUrl = getWorkerUrlFromManifest(manifest);
+    let ref: string;
+    if (workerUrl) {
+      ref = workerUrl;
+    } else if (typeof plugin !== "string") {
+      ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
+    } else {
+      ref = plugin;
+    }
     const token = await eventHandler.getToken(event.payload.installation.id);
-    let ref = "";
-    let isWorker = false;
+    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      if (!isGithubPlugin(plugin)) {
-        isWorker = true;
-        ref = plugin;
-        const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
-        context.logger.debug({ plugin: pluginEntry.key, worker: isWorker }, "Dispatching event");
-        const res = await dispatchWorker(plugin, await inputs.getInputs());
-        if (res?.status >= 300) {
-          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl: plugin }, "Error response on dispatch event");
+      context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, DISPATCH_EVENT_LOG);
+      if (workerUrl || typeof plugin === "string") {
+        const targetUrl = workerUrl ?? (typeof plugin === "string" ? plugin : null);
+        if (targetUrl === null) throw new Error("Invalid targetUrl for dispatch");
+        context.logger.debug({ plugin: pluginEntry.key, worker: true }, DISPATCH_EVENT_LOG);
+        const res = await dispatchWorker(targetUrl, await inputs.getInputs());
+        if (res.status >= 300) {
+          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl }, "Error response on dispatch event");
         }
       } else {
-        ref = plugin.ref ?? "";
-        if (!ref) {
-          ref = await getDefaultBranch(context, plugin.owner, plugin.repo);
-        }
-        const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
-        context.logger.debug({ plugin: pluginEntry.key, worker: isWorker }, "Dispatching event");
         const baseInputs = (await inputs.getInputs()) as Record<string, string>;
         const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => eventHandler.getKernelPublicKeyPem());
+        context.logger.debug({ plugin: pluginEntry.key, worker: false }, DISPATCH_EVENT_LOG);
         await dispatchWorkflow(context, {
           owner: plugin.owner,
           repository: plugin.repo,
