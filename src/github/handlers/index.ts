@@ -674,21 +674,22 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     context.logger.debug({ plugin: pluginEntry.key }, "Calling handler for event");
 
     const stateId = crypto.randomUUID();
-    const manifest = await getManifest(context, plugin);
-    const workerUrl = getWorkerUrlFromManifest(manifest);
-    let ref: string;
-    if (workerUrl) {
-      ref = workerUrl;
-    } else if (typeof plugin !== "string") {
-      ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
-    } else {
-      ref = plugin;
-    }
     const token = await eventHandler.getToken(event.payload.installation.id);
-    const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
+    let ref: string = "";
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
+      const manifest = await getManifest(context, plugin);
+      const workerUrl = getWorkerUrlFromManifest(manifest);
+      if (workerUrl) {
+        ref = workerUrl;
+      } else if (typeof plugin !== "string") {
+        ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
+      } else {
+        ref = plugin;
+      }
+      const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
+
       context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, DISPATCH_EVENT_LOG);
       if (workerUrl || typeof plugin === "string") {
         const targetUrl = workerUrl ?? (typeof plugin === "string" ? plugin : null);
