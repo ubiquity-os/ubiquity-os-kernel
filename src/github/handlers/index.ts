@@ -7,9 +7,8 @@ import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent, getWorkerUrlFromManifest } from "../utils/plugins.ts";
-import { withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
-import { dispatchWorker, dispatchWorkflow, getDefaultBranch } from "../utils/workflow-dispatch.ts";
+import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
 import handlePushEvent from "./push-event.ts";
@@ -416,27 +415,29 @@ async function emitKernelPluginErrorEvent({
   for (const pluginEntry of subscribers) {
     const plugin = pluginEntry.target;
     const settings = pluginEntry.settings;
-    const isGithub = isGithubPlugin(plugin);
     const stateId = crypto.randomUUID();
-    const ref = isGithub ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : String(plugin);
+    const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin });
     const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-    const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT_NAME, eventPayload, settings?.with, authToken, ref, null);
+    const inputs = new PluginInput(
+      context.eventHandler,
+      stateId,
+      KERNEL_PLUGIN_ERROR_EVENT_NAME,
+      eventPayload,
+      settings?.with,
+      authToken,
+      dispatchTarget.ref,
+      null
+    );
 
     try {
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
-      if (!isGithub) {
-        await dispatchWorker(String(plugin), await inputs.getInputs());
-      } else {
-        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-        await dispatchWorkflow(context, {
-          owner: plugin.owner,
-          repository: plugin.repo,
-          workflowId: plugin.workflowId,
-          ref,
-          inputs: workflowInputs,
-        });
-      }
+      await dispatchPluginTarget({
+        context,
+        plugin,
+        target: dispatchTarget,
+        pluginInput: inputs,
+        getKernelPublicKeyPem: () => context.eventHandler.getKernelPublicKeyPem(),
+      });
     } catch (dispatchError) {
       context.logger.error({ plugin: pluginEntry.key, err: dispatchError }, `Error dispatching ${KERNEL_PLUGIN_ERROR_EVENT}; skipping`);
     }
@@ -497,27 +498,29 @@ async function emitKernelErrorEvent({ eventHandler, event, error }: { eventHandl
   for (const pluginEntry of subscribers) {
     const plugin = pluginEntry.target;
     const settings = pluginEntry.settings;
-    const isGithub = isGithubPlugin(plugin);
     const stateId = crypto.randomUUID();
-    const ref = isGithub ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : String(plugin);
+    const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin });
     const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-    const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT_NAME, eventPayload, settings?.with, authToken, ref, null);
+    const inputs = new PluginInput(
+      context.eventHandler,
+      stateId,
+      KERNEL_PLUGIN_ERROR_EVENT_NAME,
+      eventPayload,
+      settings?.with,
+      authToken,
+      dispatchTarget.ref,
+      null
+    );
 
     try {
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
-      if (!isGithub) {
-        await dispatchWorker(String(plugin), await inputs.getInputs());
-      } else {
-        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-        await dispatchWorkflow(context, {
-          owner: plugin.owner,
-          repository: plugin.repo,
-          workflowId: plugin.workflowId,
-          ref,
-          inputs: workflowInputs,
-        });
-      }
+      await dispatchPluginTarget({
+        context,
+        plugin,
+        target: dispatchTarget,
+        pluginInput: inputs,
+        getKernelPublicKeyPem: () => context.eventHandler.getKernelPublicKeyPem(),
+      });
     } catch (dispatchError) {
       context.logger.error({ plugin: pluginEntry.key, err: dispatchError }, `Error dispatching ${KERNEL_PLUGIN_ERROR_EVENT}; skipping`);
     }
@@ -679,37 +682,33 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      const manifest = await getManifest(context, plugin);
-      const workerUrl = getWorkerUrlFromManifest(manifest);
-      if (workerUrl) {
-        ref = workerUrl;
-      } else if (typeof plugin !== "string") {
-        ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
-      } else {
-        ref = plugin;
-      }
+      const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin });
+      ref = dispatchTarget.ref;
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
-      context.logger.debug({ plugin: pluginEntry.key, worker: Boolean(workerUrl) }, DISPATCH_EVENT_LOG);
-      if (workerUrl || typeof plugin === "string") {
-        const targetUrl = workerUrl ?? (typeof plugin === "string" ? plugin : null);
-        if (targetUrl === null) throw new Error("Invalid targetUrl for dispatch");
-        context.logger.debug({ plugin: pluginEntry.key, worker: true }, DISPATCH_EVENT_LOG);
-        const res = await dispatchWorker(targetUrl, await inputs.getInputs());
-        if (res.status >= 300) {
-          context.logger.warn({ plugin: pluginEntry.key, response: await safeJson(res), workerUrl }, "Error response on dispatch event");
+      context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);
+      const { target, response } = await dispatchPluginTarget({
+        context,
+        plugin,
+        target: dispatchTarget,
+        pluginInput: inputs,
+        getKernelPublicKeyPem: () => eventHandler.getKernelPublicKeyPem(),
+      });
+      if (target.kind === "worker") {
+        const maybeResponse = response as Response | null | undefined;
+        if (
+          maybeResponse &&
+          typeof maybeResponse.status === "number" &&
+          maybeResponse.status >= 300 &&
+          typeof maybeResponse.headers?.get === "function" &&
+          typeof maybeResponse.text === "function" &&
+          typeof maybeResponse.json === "function"
+        ) {
+          context.logger.warn(
+            { plugin: pluginEntry.key, response: await safeJson(maybeResponse), workerUrl: target.targetUrl },
+            "Error response on dispatch event"
+          );
         }
-      } else {
-        const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-        const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => eventHandler.getKernelPublicKeyPem());
-        context.logger.debug({ plugin: pluginEntry.key, worker: false }, DISPATCH_EVENT_LOG);
-        await dispatchWorkflow(context, {
-          owner: plugin.owner,
-          repository: plugin.repo,
-          workflowId: plugin.workflowId,
-          ref,
-          inputs: workflowInputs,
-        });
       }
       context.logger.debug({ plugin: pluginEntry.key }, "Event dispatched");
     } catch (e) {

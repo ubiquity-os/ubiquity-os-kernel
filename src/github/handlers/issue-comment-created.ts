@@ -1,13 +1,13 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getAgentMemorySnippet, listAgentMemoryEntries, upsertAgentRunMemory } from "../utils/agent-memory.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
 import { getConfig } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
-import { withKernelContextSettingsIfNeeded, withKernelContextWorkflowInputsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
-import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../utils/workflow-dispatch.ts";
+import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
+import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { postHelpCommand } from "./help-command.ts";
 import { dispatchInternalAgent } from "./internal-agent.ts";
 import { buildRouterPrompt } from "./router-prompt.ts";
@@ -295,27 +295,23 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const plugin = matchedPluginWithManifest.target;
   const settings = withKernelContextSettingsIfNeeded(matchedPluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
-  const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
-  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
   const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
+  const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: matchedPluginWithManifest.manifest });
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch slash command plugin.");
+  context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch slash command plugin.");
   try {
-    if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, await inputs.getInputs());
-    } else {
-      const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-      const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-      const runUrl = await dispatchWorkflowWithRunUrl(context, {
-        owner: plugin.owner,
-        repository: plugin.repo,
-        workflowId: plugin.workflowId,
-        ref,
-        inputs: workflowInputs,
-      });
-      await updateRequestCommentRunUrl(context, runUrl);
+    const { target, runUrl } = await dispatchPluginTarget({
+      context,
+      plugin,
+      target: dispatchTarget,
+      pluginInput: inputs,
+      withRunUrl: true,
+      getKernelPublicKeyPem: () => context.eventHandler.getKernelPublicKeyPem(),
+    });
+    if (target.kind === "workflow") {
+      await updateRequestCommentRunUrl(context, runUrl ?? null);
     }
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
@@ -602,27 +598,23 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const plugin = pluginWithManifest.target;
   const settings = withKernelContextSettingsIfNeeded(pluginWithManifest.settings?.with, plugin, context.eventHandler.environment);
 
-  const isGithubPluginObject = isGithubPlugin(plugin);
   const stateId = crypto.randomUUID();
-  const ref = isGithubPluginObject ? (plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo))) : plugin;
   const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, ref, command);
+  const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: pluginWithManifest.manifest });
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
-  context.logger.info({ plugin, isGithubPluginObject, command }, "Will dispatch command plugin.");
+  context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin.");
   try {
-    if (!isGithubPluginObject) {
-      await dispatchWorker(plugin, await inputs.getInputs());
-    } else {
-      const baseInputs = (await inputs.getInputs()) as Record<string, string>;
-      const workflowInputs = await withKernelContextWorkflowInputsIfNeeded(baseInputs, plugin, () => context.eventHandler.getKernelPublicKeyPem());
-      const runUrl = await dispatchWorkflowWithRunUrl(context, {
-        owner: plugin.owner,
-        repository: plugin.repo,
-        workflowId: plugin.workflowId,
-        ref,
-        inputs: workflowInputs,
-      });
-      await updateRequestCommentRunUrl(context, runUrl);
+    const { target, runUrl } = await dispatchPluginTarget({
+      context,
+      plugin,
+      target: dispatchTarget,
+      pluginInput: inputs,
+      withRunUrl: true,
+      getKernelPublicKeyPem: () => context.eventHandler.getKernelPublicKeyPem(),
+    });
+    if (target.kind === "workflow") {
+      await updateRequestCommentRunUrl(context, runUrl ?? null);
     }
   } catch (e) {
     context.logger.error({ plugin, err: e }, "An error occurred while processing plugin; skipping plugin");
