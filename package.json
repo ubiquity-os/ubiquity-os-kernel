@@ -1,5 +1,6 @@
 {
   "name": "@ubiquity-os/ubiquity-os-kernel",
+  "version": "7.3.0",
   "private": false,
   "scripts": {
     "test": "deno test --allow-all"
