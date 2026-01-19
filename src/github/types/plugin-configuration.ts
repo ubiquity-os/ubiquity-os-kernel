@@ -98,7 +98,7 @@ const runsOnSchema = T.Array(emitterType, { default: [] });
 // We accept null when a key has no following body
 export const pluginSettingsObjectSchema = T.Object(
   {
-    with: T.Record(T.String(), T.Unknown(), { default: {} }),
+    with: T.Optional(T.Record(T.String(), T.Unknown(), { default: {} })),
     runsOn: T.Optional(runsOnSchema),
     skipBotEvents: T.Optional(T.Boolean()),
   },

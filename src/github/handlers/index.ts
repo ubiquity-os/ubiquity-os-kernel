@@ -397,7 +397,7 @@ async function emitKernelPluginErrorEvent({
     commit: await getKernelCommit(),
   };
   const requestId = readRequestIdFromLogger(context.logger);
-  const logTrail = requestId ? getRequestLogTrail(requestId) : null;
+  const logTrail = getRequestLogTrail(context.logger);
   const configSources = (config as ConfigWithSources).__sources ?? [];
 
   const payload = buildKernelPluginErrorPayload({
@@ -479,7 +479,7 @@ async function emitKernelErrorEvent({ eventHandler, event, error }: { eventHandl
     commit: await getKernelCommit(),
   };
   const requestId = readRequestIdFromLogger(context.logger);
-  const logTrail = requestId ? getRequestLogTrail(requestId) : null;
+  const logTrail = getRequestLogTrail(context.logger);
   const configSources = (config as ConfigWithSources).__sources ?? [];
   const authContextRepo = parseOwnerRepo(extractRepositoryFullName(context.payload));
   const kernelErrorStateId = crypto.randomUUID();

@@ -140,7 +140,7 @@ export const logger = createLogger(
               levelLabel = String(level);
             }
             const line = formatLogLine(levelLabel, args, bindings as Record<string, unknown>);
-            if (line) recordRequestLog(requestId, line);
+            if (line) recordRequestLog(this, line);
           }
         } catch {
           // Avoid logging failures impacting primary flow.
