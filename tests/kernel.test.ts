@@ -16,6 +16,7 @@ const TEST_APP_ID = "12345";
 const TEST_PRIVATE_KEY = "test-private-key";
 const TEST_WEBHOOK_SECRET = "test-secret";
 const TEST_MODEL = "test-model";
+const ISSUE_COMMENT_CREATED = "issue_comment.created";
 
 function createFakeIssueCommentCreatedEvent({ org, repo, commentBody }: { org: string; repo: string; commentBody: string }): EmitterWebhookEvent {
   return {
@@ -68,7 +69,7 @@ Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", asy
   eventHandler.transformEvent = () =>
     ({
       id: "test-context-id",
-      key: "issue_comment.created",
+      key: ISSUE_COMMENT_CREATED,
       octokit: {},
       eventHandler,
       payload: fakeEvent.payload,
@@ -82,7 +83,7 @@ Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", asy
       ({
         plugins: {
           [TEST_WORKER_URL]: {
-            runsOn: ["issue_comment.created"],
+            runsOn: [ISSUE_COMMENT_CREATED],
             skipBotEvents: false,
             with: {},
           },
@@ -92,12 +93,12 @@ Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", asy
       {
         key: TEST_WORKER_URL,
         target: TEST_WORKER_URL,
-        settings: { runsOn: ["issue_comment.created"], skipBotEvents: false, with: {} },
+        settings: { runsOn: [ISSUE_COMMENT_CREATED], skipBotEvents: false, with: {} },
       } as never,
     ],
     resolvePluginDispatchTarget: async () => ({ kind: "worker", targetUrl: TEST_WORKER_URL, ref: TEST_WORKER_URL }) as never,
     dispatchPluginTarget: async ({ target }) => {
-      dispatched.push({ targetUrl: (target as never).targetUrl });
+      dispatched.push({ targetUrl: (target as { targetUrl: string }).targetUrl });
       return { target, response: new Response(null, { status: 200 }) };
     },
   };

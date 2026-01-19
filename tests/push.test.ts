@@ -21,10 +21,10 @@ Deno.test("should handle push event correctly", async () => {
     },
   };
   let createCommitCommentCalls = 0;
-  const createCommitComment = async () => {
+  async function createCommitComment() {
     createCommitCommentCalls += 1;
     return {};
-  };
+  }
   const manifestMap = {
     "plugin-a": {
       name: "plugin",

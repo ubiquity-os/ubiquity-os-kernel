@@ -7,6 +7,13 @@ import { logger } from "../src/logger/logger.ts";
 import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error";
+const ISSUES_OPENED_EVENT = "issues.opened";
+type PluginErrorPayload = {
+  event?: string;
+  plugin?: { type?: string; id?: string };
+  trigger?: { githubEvent?: string; repo?: string };
+  error?: { category?: string };
+};
 
 const TEST_APP_ID = "1";
 const TEST_PRIVATE_KEY = "test-private-key";
@@ -57,7 +64,7 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
   eventHandler.transformEvent = () =>
     ({
       id: "state_1",
-      key: "issues.opened",
+      key: ISSUES_OPENED_EVENT,
       octokit: {},
       eventHandler,
       payload: triggerEvent.payload,
@@ -77,8 +84,10 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
           [hotfixPluginUrl]: { skipBotEvents: false, with: {} },
         },
       }) as never,
-    getPluginsForEvent: async (_context, _plugins, event) => {
-      if (event === "issues.opened") {
+    getPluginsForEvent: async (context, plugins, event) => {
+      void context;
+      void plugins;
+      if (event === ISSUES_OPENED_EVENT) {
         return [{ key: failingPluginUrl, target: failingPluginUrl, settings: { skipBotEvents: false, with: {} } }] as never;
       }
       if (event === (KERNEL_PLUGIN_ERROR_EVENT as never)) {
@@ -86,10 +95,11 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
       }
       return [] as never;
     },
-    getManifest: async (_context, plugin) => {
+    getManifest: async (context, plugin) => {
+      void context;
       const id = typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`;
       if (id === failingPluginUrl) {
-        return { name: "failing-plugin", "ubiquity:listeners": ["issues.opened"], skipBotEvents: false } as never;
+        return { name: "failing-plugin", "ubiquity:listeners": [ISSUES_OPENED_EVENT], skipBotEvents: false } as never;
       }
       if (id === hotfixPluginUrl) {
         return { name: "daemon-hotfix", "ubiquity:listeners": [KERNEL_PLUGIN_ERROR_EVENT], skipBotEvents: false } as never;
@@ -116,11 +126,11 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
   assertEquals(captured[1].plugin, hotfixPluginUrl);
   assertEquals(captured[1].eventName, KERNEL_PLUGIN_ERROR_EVENT);
 
-  const payload = captured[1].eventPayload as never;
+  const payload = captured[1].eventPayload as PluginErrorPayload;
   assertEquals(payload?.event, KERNEL_PLUGIN_ERROR_EVENT);
   assertEquals(payload?.plugin?.type, "http");
   assertEquals(payload?.plugin?.id, failingPluginUrl);
-  assertEquals(payload?.trigger?.githubEvent, "issues.opened");
+  assertEquals(payload?.trigger?.githubEvent, ISSUES_OPENED_EVENT);
   assertEquals(payload?.trigger?.repo, `${owner}/${repo}`);
 });
 
@@ -138,7 +148,7 @@ Deno.test({
     eventHandler.transformEvent = () =>
       ({
         id: "state_2",
-        key: "issues.opened",
+        key: ISSUES_OPENED_EVENT,
         octokit: {},
         eventHandler,
         payload: triggerEvent.payload,
@@ -155,8 +165,10 @@ Deno.test({
             [hotfixPluginUrl]: { skipBotEvents: false, with: {} },
           },
         }) as never,
-      getPluginsForEvent: async (_context, _plugins, event) => {
-        if (event === "issues.opened") {
+      getPluginsForEvent: async (context, plugins, event) => {
+        void context;
+        void plugins;
+        if (event === ISSUES_OPENED_EVENT) {
           throw new Error("Kernel handler blew up");
         }
         if (event === (KERNEL_PLUGIN_ERROR_EVENT as never)) {
@@ -164,7 +176,8 @@ Deno.test({
         }
         return [] as never;
       },
-      getManifest: async (_context, plugin) => {
+      getManifest: async (context, plugin) => {
+        void context;
         const id = typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`;
         if (id === hotfixPluginUrl) {
           return { name: "daemon-hotfix", "ubiquity:listeners": [KERNEL_PLUGIN_ERROR_EVENT], skipBotEvents: false } as never;
@@ -186,13 +199,13 @@ Deno.test({
     assertEquals(captured[0].plugin, hotfixPluginUrl);
     assertEquals(captured[0].eventName, KERNEL_PLUGIN_ERROR_EVENT);
 
-    const payload = captured[0].eventPayload as never;
+    const payload = captured[0].eventPayload as PluginErrorPayload;
     assertExists(payload);
     assertEquals(payload?.event, KERNEL_PLUGIN_ERROR_EVENT);
     assertEquals(payload?.error?.category, "kernel");
     assertEquals(payload?.plugin?.type, "kernel");
     assertEquals(payload?.plugin?.id, "ubiquity-os/ubiquity-os-kernel");
-    assertEquals(payload?.trigger?.githubEvent, "issues.opened");
+    assertEquals(payload?.trigger?.githubEvent, ISSUES_OPENED_EVENT);
     assertEquals(payload?.trigger?.repo, `${owner}/${repo}`);
   },
 });

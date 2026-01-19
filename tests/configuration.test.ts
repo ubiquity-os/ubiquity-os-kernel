@@ -10,6 +10,7 @@ import { logger } from "../src/logger/logger.ts";
 
 const issueOpened = "issues.opened";
 const manifestPath = "manifest.json";
+const EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR = "Expected GitHub plugin identifier";
 const repo = {
   owner: { login: "ubiquity" },
   name: "conversation-rewards",
@@ -332,7 +333,7 @@ Deno.test({
     {
       const parsed = parsePluginIdentifier(pluginKey);
       if (typeof parsed === "string") {
-        throw new Error("Expected GitHub plugin identifier");
+        throw new Error(EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR);
       }
       assertEquals(parsed.owner, "ubiquity");
       assertEquals(parsed.repo, "test-plugin");
@@ -345,7 +346,7 @@ Deno.test({
     {
       const parsed = parsePluginIdentifier(pluginKey);
       if (typeof parsed === "string") {
-        throw new Error("Expected GitHub plugin identifier");
+        throw new Error(EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR);
       }
       assertEquals(parsed.owner, "ubiquity");
       assertEquals(parsed.repo, "test-env-plugin");
@@ -358,7 +359,7 @@ Deno.test({
     {
       const parsed = parsePluginIdentifier(pluginKey);
       if (typeof parsed === "string") {
-        throw new Error("Expected GitHub plugin identifier");
+        throw new Error(EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR);
       }
       assertEquals(parsed.owner, "ubiquity");
       assertEquals(parsed.repo, "production-plugin");

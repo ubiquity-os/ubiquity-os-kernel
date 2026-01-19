@@ -19,12 +19,13 @@ const logger = {
 
 const issueOpened = "issues.opened";
 const conversationRewardsRepo = "conversation-rewards";
+const ISSUE_COMMENT_CREATED = "issue_comment.created";
 
 const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
 
-function stubPluginAManifest() {
+function stubPluginAlphaManifest() {
   return stubFetch({
     "https://plugin-a.internal/manifest.json": new Response(
       JSON.stringify({
@@ -32,7 +33,7 @@ function stubPluginAManifest() {
         short_name: "plugin",
         homepage_url: "",
         description: "plugin-a for tests",
-        "ubiquity:listeners": ["issue_comment.created"],
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
         commands: {
           foo: {
             description: "foo command",
@@ -52,7 +53,7 @@ function stubPluginAManifest() {
         short_name: "plugin",
         homepage_url: "",
         description: "plugin-a for tests",
-        "ubiquity:listeners": ["issue_comment.created"],
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
         commands: {
           foo: {
             description: "foo command",
@@ -88,7 +89,7 @@ Deno.test("kernel: fails on missing env variables", async () => {
 });
 
 Deno.test("getConfig: generates default configuration when no repo defined", async () => {
-  const fetchStub = stubPluginAManifest();
+  const fetchStub = stubPluginAlphaManifest();
   try {
     const cfg = await getConfig({
       key: issueOpened,
@@ -108,7 +109,7 @@ Deno.test("getConfig: generates default configuration when no repo defined", asy
 });
 
 Deno.test("getConfig: generates default configuration when target repo lacks one", async () => {
-  const fetchStub = stubPluginAManifest();
+  const fetchStub = stubPluginAlphaManifest();
   try {
     const cfg = await getConfig({
       key: issueOpened,
@@ -139,7 +140,7 @@ Deno.test("getConfig: generates default configuration when target repo lacks one
 });
 
 Deno.test("getConfig: fills plugin config with defaults", async () => {
-  const fetchStub = stubPluginAManifest();
+  const fetchStub = stubPluginAlphaManifest();
   try {
     const cfg = await getConfig({
       key: issueOpened,
@@ -172,7 +173,7 @@ Deno.test("getConfig: fills plugin config with defaults", async () => {
     assertEquals(Boolean(cfg), true);
     assertEquals(cfg.plugins, {
       "https://plugin-a.internal": {
-        runsOn: ["issue_comment.created"],
+        runsOn: [ISSUE_COMMENT_CREATED],
         skipBotEvents: true,
         with: {},
       },
@@ -183,7 +184,7 @@ Deno.test("getConfig: fills plugin config with defaults", async () => {
 });
 
 Deno.test("getConfig: merges organization and repository configuration", async () => {
-  const fetchStub = stubPluginAManifest();
+  const fetchStub = stubPluginAlphaManifest();
   try {
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
       let data: string;
@@ -194,7 +195,7 @@ Deno.test("getConfig: merges organization and repository configuration", async (
           "short_name": "plugin",
           "homepage_url": "",
           "description": "plugin-b for tests",
-          "ubiquity:listeners": ["issue_comment.created"],
+          "ubiquity:listeners": ["${ISSUE_COMMENT_CREATED}"],
           "commands": {
             "command": {
               "description": "description",
@@ -260,28 +261,28 @@ Deno.test("getConfig: merges organization and repository configuration", async (
     } as unknown as GitHubContext);
 
     assertEquals(cfg.plugins["repo-3/plugin-3"], {
-      runsOn: ["issue_comment.created"],
+      runsOn: [ISSUE_COMMENT_CREATED],
       skipBotEvents: true,
       with: {
         setting1: false,
       },
     });
     assertEquals(cfg.plugins["repo-1/plugin-1"], {
-      runsOn: ["issue_comment.created"],
+      runsOn: [ISSUE_COMMENT_CREATED],
       skipBotEvents: true,
       with: {
         setting2: true,
       },
     });
     assertEquals(cfg.plugins["uses-1/plugin-1"], {
-      runsOn: ["issue_comment.created"],
+      runsOn: [ISSUE_COMMENT_CREATED],
       skipBotEvents: true,
       with: {
         settings1: "enabled",
       },
     });
     assertEquals(cfg.plugins["repo-2/plugin-2"], {
-      runsOn: ["issue_comment.created"],
+      runsOn: [ISSUE_COMMENT_CREATED],
       skipBotEvents: true,
       with: {
         setting2: true,
@@ -293,7 +294,7 @@ Deno.test("getConfig: merges organization and repository configuration", async (
 });
 
 Deno.test("getConfig: resolves imports before merging repo configuration", async () => {
-  const fetchStub = stubPluginAManifest();
+  const fetchStub = stubPluginAlphaManifest();
   try {
     const orgYaml = `
       imports:

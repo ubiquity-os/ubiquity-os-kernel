@@ -206,7 +206,8 @@ Deno.test("buildConversationContext: merges explicit and semantic threads", asyn
       ],
       findSimilarComments: async () => [],
       fetchVectorDocumentsByParentId: async () => [],
-      fetchVectorDocuments: async (_config, ids) => {
+      fetchVectorDocuments: async (config, ids) => {
+        void config;
         fetchVectorDocumentsCalls.push(ids);
         return ids.map((id) => documents.get(id)).filter(Boolean) as VectorDocument[];
       },

@@ -6,6 +6,7 @@ import { postHelpCommand } from "../src/github/handlers/help-command.ts";
 import { CONFIG_FULL_PATH } from "../src/github/utils/config.ts";
 
 const EXPECTED_COMMAND_RESPONSE_MARKER = '\n\n<!-- "commentKind": "command-response" -->';
+const ISSUE_COMMENT_CREATED = "issue_comment.created";
 
 Deno.test("/help: posts comment with commands + footer", async () => {
   const originalGitRevision = Deno.env.get("GIT_REVISION");
@@ -18,7 +19,7 @@ Deno.test("/help: posts comment with commands + footer", async () => {
         short_name: "plugin-a",
         homepage_url: "",
         description: "plugin-a for tests",
-        "ubiquity:listeners": ["issue_comment.created"],
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
         commands: {
           foo: { description: "foo command", "ubiquity:example": "/foo bar" },
         },
@@ -31,7 +32,7 @@ Deno.test("/help: posts comment with commands + footer", async () => {
         short_name: "plugin-a",
         homepage_url: "",
         description: "plugin-a for tests",
-        "ubiquity:listeners": ["issue_comment.created"],
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
         commands: {
           foo: { description: "foo command", "ubiquity:example": "/foo bar" },
         },
@@ -73,7 +74,7 @@ Deno.test("/help: posts comment with commands + footer", async () => {
                     short_name: "plugin-b",
                     homepage_url: "",
                     description: "plugin-b for tests",
-                    "ubiquity:listeners": ["issue_comment.created"],
+                    "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
                     commands: {
                       hello: {
                         description: "hello command",
@@ -94,8 +95,8 @@ Deno.test("/help: posts comment with commands + footer", async () => {
 
   const context = {
     id: "",
-    key: "issue_comment.created",
-    name: "issue_comment.created",
+    key: ISSUE_COMMENT_CREATED,
+    name: ISSUE_COMMENT_CREATED,
     payload: {
       repository: { owner: { login: "ubiquity" }, name: "ubiquity-os-kernel" },
       issue: { number: 1 },
@@ -107,7 +108,7 @@ Deno.test("/help: posts comment with commands + footer", async () => {
     logger: { trace: () => {}, info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, github: () => {} } as never,
     llm: "",
     configurationHandler: {} as never,
-  } as GitHubContext<"issue_comment.created">;
+  } as GitHubContext<typeof ISSUE_COMMENT_CREATED>;
 
   try {
     await postHelpCommand(context);

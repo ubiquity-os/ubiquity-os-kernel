@@ -9,17 +9,19 @@ Deno.test("dispatchWorkflow: dispatches provided workflow id", async () => {
   const getRepoInstallationCalls: Array<{ owner: string; repo: string }> = [];
   const createWorkflowDispatchCalls: Array<{ owner: string; repo: string; workflow_id: string; ref: string; inputs: Record<string, string> }> = [];
 
-  const getRepoInstallation = async ({ owner, repo }: { owner: string; repo: string }) => {
+  async function getRepoInstallation({ owner, repo }: { owner: string; repo: string }) {
     getRepoInstallationCalls.push({ owner, repo });
     return { data: { id: 123 } };
-  };
+  }
 
-  const getRepo = async () => ({ data: { default_branch: "main" } });
+  async function getRepo() {
+    return { data: { default_branch: "main" } };
+  }
 
-  const createWorkflowDispatch = async (args: { owner: string; repo: string; workflow_id: string; ref: string; inputs: Record<string, string> }) => {
+  async function createWorkflowDispatch(args: { owner: string; repo: string; workflow_id: string; ref: string; inputs: Record<string, string> }) {
     createWorkflowDispatchCalls.push(args);
     return { ok: true };
-  };
+  }
 
   const context = {
     octokit: {
