@@ -31,13 +31,11 @@ type FetchVectorDocumentByParentOptions = Readonly<{
   docTypes?: string[];
 }>;
 
-const warned = new Set<string>();
 const VECTOR_DB_SIMILARITY_FETCH_FAILED = "Vector DB similarity fetch failed";
 const DOCUMENTS_ENDPOINT = "/rest/v1/documents";
 
-function warnOnce(logger: LoggerLike | undefined, key: string, message: string) {
-  if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
-  warned.add(key);
+function logWarn(logger: LoggerLike | undefined, message: string) {
+  if (!logger || typeof logger.warn !== "function") return;
   logger.warn(message);
 }
 
@@ -59,12 +57,12 @@ function withTimeoutSignal() {
 export function getVectorDbConfig(logger?: LoggerLike): VectorDbConfig | null {
   const configResult = parseSupabaseConfig(getEnvValue("UOS_SUPABASE"));
   if (!configResult.ok) {
-    warnOnce(logger, "vector-db-invalid-config", configResult.error);
+    logWarn(logger, configResult.error);
     return null;
   }
   if (!configResult.config) {
     if (configResult.warning) {
-      warnOnce(logger, "vector-db-missing-config", `Vector DB disabled: ${configResult.warning}`);
+      logWarn(logger, `Vector DB disabled: ${configResult.warning}`);
     }
     return null;
   }

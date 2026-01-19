@@ -1107,6 +1107,10 @@ jobs:
             `- Update: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "status" --kind "update" --body "Update <status>"`,
             `- Conflict: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "conflicts" --kind "blocked" --body "Conflict details"`,
           ].join("\n");
+          const contextHelper = [
+            "Context helper:",
+            '- Run `deno run -A --sloppy-imports scripts/agent-context.ts --query "<task>" --select --summary` for focused context (reads `.ubiquityos.issue.json` if no URL is supplied).',
+          ].join("\n");
 
           const sections = [
             "You are a matrix sub-agent running inside a GitHub Actions job.",
@@ -1118,6 +1122,7 @@ jobs:
             "- If changes are unnecessary, leave the repo unchanged.",
             `Allowed paths:\n${allowedList}`,
             busInstructions,
+            contextHelper,
             ["Task:", task || "(missing)"].join("\n"),
             issueContext ? ["Issue context:", issueContext].join("\n") : "",
             conversationKey ? ["Conversation key:", conversationKey].join("\n") : "",
@@ -2870,6 +2875,7 @@ jobs:
 
           const contextLines = [
             "- The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.",
+            '- For focused context, run: `deno run -A --sloppy-imports scripts/agent-context.ts --query "<task>" --select --summary` (reads `.ubiquityos.issue.json` if no URL is supplied).',
             "- Available repo labels are in `.ubiquityos.repo-labels.json`. Time labels are listed in `.ubiquityos.time-labels.txt`.",
             environment ? `- Kernel environment: ${environment}` : null,
             conversationKey ? `- Conversation key: ${conversationKey}` : null,

@@ -123,7 +123,42 @@ function indentBlock(text: string, indent: string): string {
 
 function normalizeMarkdown(markdown: string | null): string {
   if (!markdown) return "";
-  return markdown.trim();
+  const trimmed = markdown.trim();
+  if (!trimmed) return "";
+  return splitLeadingUrlLines(trimmed);
+}
+
+function splitLeadingUrlLines(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inFence = false;
+  let fence = "";
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      const marker = trimmed.slice(0, 3);
+      if (!inFence) {
+        inFence = true;
+        fence = marker;
+      } else if (marker === fence) {
+        inFence = false;
+      }
+      out.push(line);
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+    const match = /^(https?:\/\/[^\s<>"']+)\s+(.+)$/.exec(trimmed);
+    if (match) {
+      out.push(match[1]);
+      out.push(match[2]);
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 function formatDateLabel(value: string): string {

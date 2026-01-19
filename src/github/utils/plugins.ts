@@ -1,36 +1,21 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { Type as T, type TSchema } from "@sinclair/typebox";
+import { Type as T, type TProperties } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
+import { getKvClient, type KvKey } from "./kv-client.ts";
 import { isPlainObject } from "./helpers.ts";
 
-const MAX_MANIFEST_CACHE_SIZE = 100;
-const manifestCache = new Map<string, Manifest>();
-const kernelManifestSchema = T.Intersect([
-  T.Omit(sdkManifestSchema as unknown as TSchema, ["ubiquity:listeners"]),
-  T.Object({
-    // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
-    "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
-  }),
-]);
-
-function readManifestCache(key: string): Manifest | null {
-  return manifestCache.get(key) ?? null;
-}
-
-function setManifestCache(key: string, manifest: Manifest) {
-  if (manifestCache.has(key)) {
-    manifestCache.delete(key);
-  } else if (manifestCache.size >= MAX_MANIFEST_CACHE_SIZE) {
-    const oldestKey = manifestCache.keys().next().value;
-    if (oldestKey) manifestCache.delete(oldestKey);
-  }
-  manifestCache.set(key, manifest);
-}
+const MANIFEST_CACHE_TTL_MS = 10 * 60_000;
+const MANIFEST_CACHE_PREFIX: KvKey = ["ubiquityos", "kernel", "manifest"];
+const kernelManifestSchema = T.Object({
+  ...(sdkManifestSchema.properties as unknown as TProperties),
+  // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
+  "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
+});
 
 export type ResolvedPlugin = {
   key: string;
@@ -54,6 +39,40 @@ function formatPluginTarget(target: string | GithubPlugin) {
   return typeof target === "string"
     ? target
     : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+}
+
+function buildManifestCacheKeyForAction(owner: string, repo: string, ref?: string): KvKey {
+  return [...MANIFEST_CACHE_PREFIX, "action", owner, repo, ref ?? "default"];
+}
+
+function buildManifestCacheKeyForWorker(url: string): KvKey {
+  return [...MANIFEST_CACHE_PREFIX, "worker", url];
+}
+
+async function readManifestCache(context: GitHubContext, kv: Awaited<ReturnType<typeof getKvClient>>, key: KvKey): Promise<Manifest | null> {
+  if (!kv) return null;
+  try {
+    const { value } = await kv.get(key);
+    if (!value || typeof value !== "object") return null;
+    return value as Manifest;
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to read manifest cache (non-fatal).");
+    return null;
+  }
+}
+
+async function writeManifestCache(
+  context: GitHubContext,
+  kv: Awaited<ReturnType<typeof getKvClient>>,
+  key: KvKey,
+  manifest: Manifest
+): Promise<void> {
+  if (!kv) return;
+  try {
+    await kv.set(key, manifest, { expireIn: MANIFEST_CACHE_TTL_MS });
+  } catch (error) {
+    context.logger.debug({ err: error }, "Failed to write manifest cache (non-fatal).");
+  }
 }
 
 export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
@@ -122,10 +141,10 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
 }
 
 async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
-  const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
+  const kv = useCache ? await getKvClient(context.logger) : null;
   if (useCache) {
-    const cached = readManifestCache(manifestKey);
+    const cached = await readManifestCache(context, kv, buildManifestCacheKeyForAction(owner, repo, ref));
     if (cached) return cached;
   }
   try {
@@ -144,7 +163,7 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
         const contentParsed = JSON.parse(content);
         const manifest = decodeManifest(context, contentParsed);
         if (useCache) {
-          setManifestCache(manifestKey, manifest);
+          await writeManifestCache(context, kv, buildManifestCacheKeyForAction(owner, repo, ref), manifest);
         }
         return manifest;
       }
@@ -159,8 +178,9 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
 
 async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
   const useCache = isManifestCacheEnabled(context);
+  const kv = useCache ? await getKvClient(context.logger) : null;
   if (useCache) {
-    const cached = readManifestCache(url);
+    const cached = await readManifestCache(context, kv, buildManifestCacheKeyForWorker(url));
     if (cached) return cached;
   }
   const manifestUrl = `${url}/manifest.json`;
@@ -185,7 +205,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
       if (useCache) {
-        setManifestCache(url, manifest);
+        await writeManifestCache(context, kv, buildManifestCacheKeyForWorker(url), manifest);
       }
       return manifest;
     } finally {

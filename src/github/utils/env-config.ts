@@ -18,7 +18,6 @@ export type KernelConfig = Readonly<{
 }>;
 
 export type AgentMemoryConfig = Readonly<{
-  url?: string;
   key?: string;
 }>;
 
@@ -110,15 +109,17 @@ export function parseAgentMemoryConfig(raw?: string | null): OptionalParseResult
   const parsed = parseJsonRecord(trimmed, "UOS_AGENT_MEMORY");
   if (!parsed.ok) return parsed;
   const record = parsed.record;
-  const url = normalizeOptionalString(record.url);
   const key = normalizeOptionalString(record.key);
-  if (!url && !key) {
+  const url = normalizeOptionalString(record.url);
+  if (url) {
+    return { ok: false, error: "UOS_AGENT_MEMORY.url is no longer supported; use Deno KV with optional UOS_AGENT_MEMORY.key." };
+  }
+  if (!key) {
     return { ok: true, config: null };
   }
   return {
     ok: true,
     config: {
-      ...(url ? { url } : {}),
       ...(key ? { key } : {}),
     },
   };

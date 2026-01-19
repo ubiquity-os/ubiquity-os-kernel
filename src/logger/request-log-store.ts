@@ -11,30 +11,26 @@ export type RequestLogTrail = {
   lines: string[];
 };
 
-const MAX_REQUESTS = 120;
 const MAX_LINES_PER_REQUEST = 200;
 const MAX_LINE_LENGTH = 800;
 
-const store = new Map<string, LogTrailBucket>();
+const REQUEST_LOG_TRAIL = Symbol("request-log-trail");
+
+type LoggerWithTrail = {
+  [REQUEST_LOG_TRAIL]?: LogTrailBucket;
+};
 
 function truncateLine(line: string): string {
   if (line.length <= MAX_LINE_LENGTH) return line;
   return `${line.slice(0, MAX_LINE_LENGTH - 14)}...[truncated]`;
 }
 
-function pruneStore() {
-  while (store.size > MAX_REQUESTS) {
-    const oldest = store.keys().next().value;
-    if (!oldest) break;
-    store.delete(oldest);
-  }
-}
-
-export function recordRequestLog(requestId: string, line: string) {
-  if (!requestId) return;
+export function recordRequestLog(logger: unknown, line: string) {
+  if (!logger || typeof logger !== "object") return;
   const now = Date.now();
   const normalizedLine = truncateLine(line);
-  const existing = store.get(requestId);
+  const target = logger as LoggerWithTrail;
+  const existing = target[REQUEST_LOG_TRAIL];
   if (existing) {
     existing.lastTimestampMs = now;
     existing.lines.push(normalizedLine);
@@ -44,17 +40,18 @@ export function recordRequestLog(requestId: string, line: string) {
     return;
   }
 
-  store.set(requestId, {
+  target[REQUEST_LOG_TRAIL] = {
     firstTimestampMs: now,
     lastTimestampMs: now,
     lines: [normalizedLine],
-  });
-  pruneStore();
+  };
 }
 
-export function getRequestLogTrail(requestId: string): RequestLogTrail | null {
+export function getRequestLogTrail(logger: { bindings?: () => Record<string, unknown> } | undefined): RequestLogTrail | null {
+  if (!logger || typeof logger !== "object") return null;
+  const requestId = readRequestIdFromLogger(logger);
   if (!requestId) return null;
-  const entry = store.get(requestId);
+  const entry = (logger as LoggerWithTrail)[REQUEST_LOG_TRAIL];
   if (!entry) return null;
   return {
     requestId,

@@ -37,10 +37,12 @@ Optional JSON configs:
 
 - `UOS_AI`: `{"baseUrl":"https://ai-ubq-fi.deno.dev","token":"YOUR_AI_TOKEN"}`
 - `UOS_AGENT`: `{"owner":"ubiquity-os","repo":"ubiquity-os-kernel","workflow":"agent.yml","ref":"main"}`
-- `UOS_AGENT_MEMORY`: `{"url":"https://example.com/agent-memory","key":"BASE64_32_BYTE_KEY"}`
+- `UOS_AGENT_MEMORY`: `{"key":"BASE64_32_BYTE_KEY"}`
 - `UOS_DIAGNOSTICS`: `{"token":"YOUR_DIAGNOSTICS_TOKEN"}`
 - `UOS_SUPABASE`: `{"url":"https://your-project.supabase.co","anonKey":"YOUR_SUPABASE_ANON_KEY"}`
 - `UOS_KERNEL`: `{"refreshIntervalSeconds":3600}`
+
+Agent memory uses Deno KV by default and does not require any extra configuration; set `UOS_AGENT_MEMORY.key` only if you want to encrypt stored entries.
 
 For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host unless `UOS_KERNEL_BASE_URL` (or `UOS_KERNEL_TRUSTED_HOSTS`) is set.
 

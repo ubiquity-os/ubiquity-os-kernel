@@ -13,6 +13,10 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 - Never use `UBQ_` in secret/property/key names; use `UOS_` instead.
 - When defining TypeBox schemas, do not mark fields as optional if a default is provided; keep them required with defaults.
 
+## ☁️ Serverless Constraints
+
+- Never rely on in-memory storage or caches for correctness; assume stateless Deno Deploy instances and use durable storage (e.g., KV) for cross-request state.
+
 ## 🧭 Routing & Prompting Policy
 
 - **Never** implement AI behavior based on keyword/regex triggers (e.g., `if (text.includes("install")) …`) to pick tools/plugins. If the model is making a decision, that decision must be prompt-driven.
