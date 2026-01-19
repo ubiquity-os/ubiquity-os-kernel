@@ -1,9 +1,6 @@
 {
   "nodeModulesDir": "auto",
-  "exclude": [
-    "lib",
-    "coverage"
-  ],
+  "exclude": ["lib", "coverage"],
   "tasks": {
     "dev": "deno run --allow-run --allow-env predev.ts && deno task dev:serve",
     "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
