@@ -1,4 +1,4 @@
-name: Run Jest testing suite
+name: Run Testing Suite
 on:
   workflow_dispatch:
   pull_request:
