@@ -49,3 +49,6 @@
 [submodule "lib/plugins/daemon-hotfix"]
 	path = lib/plugins/daemon-hotfix
 	url = https://github.com/0x4007-ubiquity-os/daemon-hotfix.git
+[submodule "lib/external/clawdbot"]
+	path = lib/external/clawdbot
+	url = https://github.com/clawdbot/clawdbot.git
