@@ -53,6 +53,7 @@ jobs:
           # SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
           # SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || '' }}
           NODE_ENV: "production"
+          GIT_REVISION: ${{ github.sha }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
