@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { drop } from "@mswjs/data";
 import { customOctokit as Octokit } from "@ubiquity-os/plugin-sdk/octokit";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { logger } from "../src/logger/logger";
-import { db } from "./__mocks__/db";
-import { server } from "./__mocks__/node";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { GitHubContext } from "../src/github/github-context.ts";
+import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
+import { logger } from "../src/logger/logger.ts";
+import { db } from "./__mocks__/db.ts";
+import { server } from "./__mocks__/node.ts";
+import { createConfigurationHandler } from "./test-utils/configuration-handler.ts";
 
 const createWorkflowDispatch = jest.fn(() => ({}));
 const commentCreateEvent = "issue_comment.created";
@@ -23,7 +23,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("Personal Agent tests", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     nextCommentId = 1000;
     drop(db);
   });
