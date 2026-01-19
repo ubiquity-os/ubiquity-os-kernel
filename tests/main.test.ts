@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
@@ -27,8 +26,6 @@ const conversationRewardsRepo = "conversation-rewards";
 const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
-
-config({ path: ".env" });
 
 beforeAll(() => {
   server.listen();

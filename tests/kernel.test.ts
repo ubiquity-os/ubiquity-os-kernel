@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { EmitterWebhookEvent } from "@octokit/webhooks";
-import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
@@ -14,8 +13,6 @@ jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
 jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
-
-config({ path: ".env" });
 
 beforeAll(() => {
   server.listen();

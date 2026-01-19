@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { config } from "dotenv";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../src/github/github-context.ts";
 import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
@@ -11,8 +10,6 @@ import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
 import { logger } from "../src/logger/logger.ts";
 import { server } from "./__mocks__/node.ts";
 import "./__mocks__/webhooks.ts";
-
-config({ path: ".env" });
 
 const issueOpened = "issues.opened";
 const manifestPath = "manifest.json";

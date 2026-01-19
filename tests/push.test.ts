@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { config } from "dotenv";
 import { GitHubContext } from "../src/github/github-context";
 import { GitHubEventHandler } from "../src/github/github-event-handler";
 import handlePushEvent from "../src/github/handlers/push-event";
@@ -14,8 +13,6 @@ jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
 jest.mock("@octokit/plugin-retry", () => ({}));
 jest.mock("@octokit/plugin-throttling", () => ({}));
 jest.mock("@octokit/auth-app", () => ({}));
-
-config({ path: ".env" });
 
 const name = "ubiquity-os-kernel";
 

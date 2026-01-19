@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { config } from "dotenv";
 import { http, HttpResponse } from "msw";
 import { readFileSync } from "node:fs";
 import { GitHubContext } from "../src/github/github-context";
@@ -21,8 +20,6 @@ jest.mock("../src/github/utils/workflow-dispatch", () => ({
   dispatchWorkflowWithRunUrl: jest.fn().mockResolvedValue("https://example.com/runs/1"),
   dispatchWorker: jest.fn(),
 }));
-
-config({ path: ".env" });
 
 const kernelRepo = "ubiquity-os-kernel";
 const name = kernelRepo;
