@@ -231,7 +231,7 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
 
   if (!result.ok) {
     const errText = await result.text();
-    throw new Error(`HTTP ${result.status}: ${errText}`);
+    throw new Error(`HTTP (target: ${targetUrl}) ${result.status}: ${errText}`);
   }
 
   return result.json();
