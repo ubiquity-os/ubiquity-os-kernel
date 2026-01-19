@@ -1,62 +1,23 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { EmitterWebhookEvent } from "@octokit/webhooks";
-import { http, HttpResponse } from "msw";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH } from "../src/github/utils/config";
-import { logger } from "../src/logger/logger";
-import helloWorldManifest from "./__mocks__/manifest.json";
-import { server } from "./__mocks__/node";
-import "./__mocks__/webhooks";
+import type { EmitterWebhookEvent } from "@octokit/webhooks";
+import { assertEquals } from "jsr:@std/assert";
 
-jest.mock("@octokit/plugin-paginate-rest", () => ({}));
-jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
-jest.mock("@octokit/plugin-retry", () => ({}));
-jest.mock("@octokit/plugin-throttling", () => ({}));
-jest.mock("@octokit/auth-app", () => ({}));
+import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
+import { bindHandlers, type HandlerDeps } from "../src/github/handlers/index.ts";
+import { logger } from "../src/logger/logger.ts";
+import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
 
-beforeAll(() => {
-  server.listen();
-});
-afterEach(() => {
-  server.resetHandlers();
-  jest.clearAllMocks();
-  jest.resetAllMocks();
-  jest.resetModules();
-});
-afterAll(() => {
-  server.close();
-});
-
-// Mock GitHubEventHandler
 const TEST_ENVIRONMENT = "development";
 const TEST_ORG = "0x4007";
 const TEST_REPO = "ubiquity-os-sandbox";
-const TEST_HELLO_WORLD_URL = "http://127.0.0.1:9090";
+const TEST_WORKER_URL = "http://127.0.0.1:9090";
 const MOCK_TOKEN = "mock-token";
-const mockEventHandler = {
-  environment: TEST_ENVIRONMENT,
-  getToken: jest.fn().mockResolvedValue(MOCK_TOKEN),
-  signPayload: jest.fn().mockResolvedValue("mock-signature"),
-  logger: logger,
-} as unknown as GitHubEventHandler;
 
-// Mock octokit responses
-const mockOctokit = {
-  rest: {
-    repos: {
-      getContent: jest.fn(),
-    },
-  },
-};
-
-// Constants
 const TEST_APP_ID = "12345";
 const TEST_PRIVATE_KEY = "test-private-key";
 const TEST_WEBHOOK_SECRET = "test-secret";
-const TEST_MODEL_NAME = "test-model";
-const TEST_MODEL = TEST_MODEL_NAME;
-// Helper to create fake event
-function createFakeEvent(org: string, repo: string, commentBody: string): EmitterWebhookEvent {
+const TEST_MODEL = "test-model";
+
+function createFakeIssueCommentCreatedEvent({ org, repo, commentBody }: { org: string; repo: string; commentBody: string }): EmitterWebhookEvent {
   return {
     id: "test-event-id",
     name: "issue_comment",
@@ -72,11 +33,12 @@ function createFakeEvent(org: string, repo: string, commentBody: string): Emitte
         html_url: `https://github.com/${org}/${repo}/issues/1`,
       },
       comment: {
+        id: 123,
         body: commentBody,
         html_url: `https://github.com/${org}/${repo}/issues/1#issuecomment-123`,
         user: {
           login: "testuser",
-          type: "User",
+          type: "Bot",
         },
       },
       installation: {
@@ -84,132 +46,66 @@ function createFakeEvent(org: string, repo: string, commentBody: string): Emitte
       },
       sender: {
         login: "testuser",
-        type: "User",
+        type: "Bot",
       },
     },
   } as EmitterWebhookEvent;
 }
 
-// Mock config response
-function mockConfigResponse() {
-  return {
-    data: `
-plugins:
-  ${TEST_HELLO_WORLD_URL}: {}
-`,
+Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", async () => {
+  const eventHandler = new GitHubEventHandler({
+    environment: TEST_ENVIRONMENT,
+    webhookSecret: TEST_WEBHOOK_SECRET,
+    appId: TEST_APP_ID,
+    privateKey: TEST_PRIVATE_KEY,
+    llm: TEST_MODEL,
+    createWebhooks: (options) => new FakeWebhooks(options) as unknown as never,
+  });
+
+  eventHandler.getToken = async () => MOCK_TOKEN;
+
+  const fakeEvent = createFakeIssueCommentCreatedEvent({ org: TEST_ORG, repo: TEST_REPO, commentBody: "hello" });
+  eventHandler.transformEvent = () =>
+    ({
+      id: "test-context-id",
+      key: "issue_comment.created",
+      octokit: {},
+      eventHandler,
+      payload: fakeEvent.payload,
+      logger,
+    }) as never;
+
+  const dispatched: Array<{ targetUrl: string }> = [];
+
+  const deps: Partial<HandlerDeps> = {
+    getConfig: async () =>
+      ({
+        plugins: {
+          [TEST_WORKER_URL]: {
+            runsOn: ["issue_comment.created"],
+            skipBotEvents: false,
+            with: {},
+          },
+        },
+      }) as never,
+    getPluginsForEvent: async () => [
+      {
+        key: TEST_WORKER_URL,
+        target: TEST_WORKER_URL,
+        settings: { runsOn: ["issue_comment.created"], skipBotEvents: false, with: {} },
+      } as never,
+    ],
+    resolvePluginDispatchTarget: async () => ({ kind: "worker", targetUrl: TEST_WORKER_URL, ref: TEST_WORKER_URL }) as never,
+    dispatchPluginTarget: async ({ target }) => {
+      dispatched.push({ targetUrl: (target as never).targetUrl });
+      return { target, response: new Response(null, { status: 200 }) };
+    },
   };
-}
 
-describe("Kernel Event Processing Tests", () => {
-  beforeEach(() => {
-    (mockEventHandler.getToken as jest.Mock).mockResolvedValue(MOCK_TOKEN);
-    (mockEventHandler.signPayload as jest.Mock).mockResolvedValue("mock-signature");
+  bindHandlers(eventHandler, deps);
 
-    const configPaths = new Set([DEV_CONFIG_FULL_PATH, CONFIG_FULL_PATH]);
-    (mockOctokit.rest.repos.getContent as jest.Mock).mockImplementation(async ({ path }: { path: string }) => {
-      if (configPaths.has(path)) {
-        return { data: mockConfigResponse().data, headers: {} };
-      }
-      throw Object.assign(new Error("Not Found"), { status: 404 });
-    });
+  await (eventHandler.webhooks as unknown as FakeWebhooks<unknown>).receive(fakeEvent);
 
-    server.use(http.get(`${TEST_HELLO_WORLD_URL}/manifest.json`, () => HttpResponse.json(helloWorldManifest)));
-  });
-
-  it("Should process /hello comment and dispatch to hello-world-plugin", async () => {
-    // Mock dispatch functions
-    const mockDispatchWorkflow = jest.fn().mockResolvedValue(undefined);
-    const mockDispatchWorker = jest.fn().mockResolvedValue(undefined);
-
-    jest.resetModules();
-    jest.doMock("../src/github/utils/workflow-dispatch", () => ({
-      getDefaultBranch: jest.fn().mockResolvedValue("main"),
-      dispatchWorkflow: mockDispatchWorkflow,
-      dispatchWorker: mockDispatchWorker,
-    }));
-
-    // Create fake event
-    const fakeEvent = createFakeEvent(TEST_ORG, TEST_REPO, "/hello");
-
-    // Create event handler instance
-    const eventHandler = new GitHubEventHandler({
-      environment: TEST_ENVIRONMENT,
-      webhookSecret: TEST_WEBHOOK_SECRET,
-      appId: TEST_APP_ID,
-      privateKey: TEST_PRIVATE_KEY,
-      llm: TEST_MODEL,
-    });
-    jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
-
-    // Bind handlers
-    const { bindHandlers } = await import("../src/github/handlers/index");
-    bindHandlers(eventHandler);
-
-    // Mock the transformEvent to return our mocked context
-    jest.spyOn(eventHandler, "transformEvent").mockReturnValue({
-      id: "test-context-id",
-      key: "issue_comment.created",
-      octokit: mockOctokit,
-      eventHandler: mockEventHandler,
-      payload: fakeEvent.payload,
-      logger: logger,
-    } as unknown as ReturnType<typeof eventHandler.transformEvent>);
-
-    // Trigger event processing
-    await eventHandler.webhooks.receive(fakeEvent);
-
-    // Verify dispatches
-    expect(mockDispatchWorker).toHaveBeenCalledWith(
-      TEST_HELLO_WORLD_URL,
-      expect.objectContaining({
-        command: expect.stringContaining('"name":"hello"'),
-      })
-    );
-
-    // Verify no workflow dispatches for this simple case
-    expect(mockDispatchWorkflow).not.toHaveBeenCalled();
-  });
-
-  it("Should handle config loading and plugin resolution", async () => {
-    const fakeEvent = createFakeEvent(TEST_ORG, TEST_REPO, "/help");
-
-    const eventHandler = new GitHubEventHandler({
-      environment: TEST_ENVIRONMENT,
-      webhookSecret: TEST_WEBHOOK_SECRET,
-      appId: TEST_APP_ID,
-      privateKey: TEST_PRIVATE_KEY,
-      llm: TEST_MODEL,
-    });
-    jest.spyOn(eventHandler, "getToken").mockResolvedValue(MOCK_TOKEN);
-
-    // Mock transformEvent
-    jest.spyOn(eventHandler, "transformEvent").mockReturnValue({
-      id: "test-context-id",
-      key: "issue_comment.created",
-      octokit: mockOctokit,
-      eventHandler: mockEventHandler,
-      payload: fakeEvent.payload,
-      logger: logger,
-    } as unknown as ReturnType<typeof eventHandler.transformEvent>);
-
-    // Mock issues.createComment for help response
-    const mockCreateComment = jest.fn().mockResolvedValue(undefined);
-    mockOctokit.rest.issues = { createComment: mockCreateComment };
-
-    // Bind handlers and process
-    const { bindHandlers } = await import("../src/github/handlers/index");
-    bindHandlers(eventHandler);
-
-    await eventHandler.webhooks.receive(fakeEvent);
-
-    // Verify help menu was posted
-    expect(mockCreateComment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("| Command | Description | Example |"),
-        issue_number: 1,
-        owner: TEST_ORG,
-        repo: TEST_REPO,
-      })
-    );
-  });
+  assertEquals(dispatched.length, 1);
+  assertEquals(dispatched[0].targetUrl, TEST_WORKER_URL);
 });

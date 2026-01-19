@@ -3,31 +3,19 @@ on:
   workflow_dispatch:
   pull_request:
 
-env:
-  NODE_ENV: "test"
-
 jobs:
   testing:
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24.11.1"
-
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
-      - name: Install toolchain
-        run: bun install
-
-      - name: Jest With Coverage
-        run: bun jest --coverage
-
-      - name: Add Jest Report to Summary
-        if: always()
-        run: echo "$(cat test-dashboard.md)" >> $GITHUB_STEP_SUMMARY
+      - name: Deno Test
+        run: deno test --allow-all

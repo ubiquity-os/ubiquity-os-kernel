@@ -1,59 +1,84 @@
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
+import { assertEquals } from "jsr:@std/assert";
 import type { GitHubContext } from "../src/github/github-context.ts";
 import type { GithubPlugin } from "../src/github/types/plugin-configuration.ts";
 
-const WORKFLOW_DISPATCH_MODULE = "../src/github/utils/workflow-dispatch";
-const PLUGIN_DISPATCH_MODULE = "../src/github/utils/plugin-dispatch";
+import { resolvePluginDispatchTarget } from "../src/github/utils/plugin-dispatch.ts";
+
 const URL_EXAMPLE = "https://worker.example";
 const WORKFLOW_ID = "action.yml";
 
-jest.mock(WORKFLOW_DISPATCH_MODULE, () => ({
-  ...(jest.requireActual(WORKFLOW_DISPATCH_MODULE) as object),
-  getDefaultBranch: jest.fn(),
-}));
+Deno.test("resolvePluginDispatchTarget: prefers manifest worker urls for github plugin targets", async () => {
+  let reposGetCalls = 0;
 
-beforeEach(() => {
-  jest.clearAllMocks();
+  const context = {
+    octokit: {
+      rest: {
+        apps: {
+          getRepoInstallation: async () => ({ data: { id: 123 } }),
+        },
+      },
+    },
+    eventHandler: {
+      getAuthenticatedOctokit: () => ({
+        rest: {
+          repos: {
+            get: async () => {
+              reposGetCalls += 1;
+              return { data: { default_branch: "main" } };
+            },
+          },
+        },
+      }),
+    },
+    logger: { debug: () => {} },
+  } as unknown as GitHubContext;
+
+  const plugin: GithubPlugin = { owner: "octo", repo: "demo", workflowId: WORKFLOW_ID };
+  const manifest = { homepage_url: URL_EXAMPLE } as Manifest;
+
+  const target = await resolvePluginDispatchTarget({ context, plugin, manifest });
+
+  assertEquals(target, { kind: "worker", targetUrl: URL_EXAMPLE, ref: URL_EXAMPLE });
+  assertEquals(reposGetCalls, 0);
 });
 
-describe("resolvePluginDispatchTarget", () => {
-  it("prefers manifest worker urls for github plugin targets", async () => {
-    const { resolvePluginDispatchTarget } = await import(PLUGIN_DISPATCH_MODULE);
-    const { getDefaultBranch } = await import(WORKFLOW_DISPATCH_MODULE);
-    const getDefaultBranchMock = getDefaultBranch as jest.Mock;
-    const context = {} as GitHubContext;
-    const plugin: GithubPlugin = { owner: "octo", repo: "demo", workflowId: WORKFLOW_ID };
-    const manifest = { homepage_url: URL_EXAMPLE } as Manifest;
+Deno.test("resolvePluginDispatchTarget: falls back to workflow dispatch using the default branch", async () => {
+  let appsGetRepoInstallationCalls = 0;
+  let reposGetCalls = 0;
 
-    const target = await resolvePluginDispatchTarget({ context, plugin, manifest });
+  const context = {
+    octokit: {
+      rest: {
+        apps: {
+          getRepoInstallation: async () => {
+            appsGetRepoInstallationCalls += 1;
+            return { data: { id: 123 } };
+          },
+        },
+      },
+    },
+    eventHandler: {
+      getAuthenticatedOctokit: () => ({
+        rest: {
+          repos: {
+            get: async () => {
+              reposGetCalls += 1;
+              return { data: { default_branch: "main" } };
+            },
+          },
+        },
+      }),
+    },
+    logger: { debug: () => {} },
+  } as unknown as GitHubContext;
 
-    expect(target).toEqual({
-      kind: "worker",
-      targetUrl: URL_EXAMPLE,
-      ref: URL_EXAMPLE,
-    });
-    expect(getDefaultBranchMock).not.toHaveBeenCalled();
-  });
+  const plugin: GithubPlugin = { owner: "octo", repo: "demo", workflowId: WORKFLOW_ID };
+  const manifest = { homepage_url: "" } as Manifest;
 
-  it("falls back to workflow dispatch using the default branch", async () => {
-    const { resolvePluginDispatchTarget } = await import(PLUGIN_DISPATCH_MODULE);
-    const { getDefaultBranch } = await import(WORKFLOW_DISPATCH_MODULE);
-    const getDefaultBranchMock = getDefaultBranch as jest.Mock<() => Promise<string>>;
-    const context = {} as GitHubContext;
-    const plugin: GithubPlugin = { owner: "octo", repo: "demo", workflowId: WORKFLOW_ID };
-    const manifest = { homepage_url: "" } as Manifest;
+  const target = await resolvePluginDispatchTarget({ context, plugin, manifest });
 
-    getDefaultBranchMock.mockResolvedValueOnce("main");
-    const target = await resolvePluginDispatchTarget({ context, plugin, manifest });
-
-    expect(getDefaultBranchMock).toHaveBeenCalledWith(context, "octo", "demo");
-    expect(target).toEqual({
-      kind: "workflow",
-      owner: "octo",
-      repository: "demo",
-      workflowId: "action.yml",
-      ref: "main",
-    });
-  });
+  assertEquals(appsGetRepoInstallationCalls, 1);
+  assertEquals(reposGetCalls, 1);
+  assertEquals(target, { kind: "workflow", owner: "octo", repository: "demo", workflowId: WORKFLOW_ID, ref: "main" });
 });

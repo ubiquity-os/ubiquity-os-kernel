@@ -1,196 +1,102 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { Octokit } from "@octokit/rest";
-import crypto from "crypto";
-import { http, HttpResponse } from "msw";
-import { server } from "./__mocks__/node";
+import type { EmitterWebhookEvent } from "@octokit/webhooks";
+import { assertEquals } from "jsr:@std/assert";
 
-jest.mock("@octokit/plugin-paginate-rest", () => ({}));
-jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
-jest.mock("@octokit/plugin-retry", () => ({}));
-jest.mock("@octokit/plugin-throttling", () => ({}));
-jest.mock("@octokit/auth-app", () => ({
-  createAppAuth: jest.fn(() => () => jest.fn(() => "1234")),
-}));
+import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
+import { bindHandlers, type HandlerDeps } from "../src/github/handlers/index.ts";
+import { logger } from "../src/logger/logger.ts";
+import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
 
-const PLUGIN_INPUT_MODULE = "../src/github/types/plugin";
+const TEST_APP_ID = "1";
+const TEST_PRIVATE_KEY = "test-private-key";
+const TEST_WEBHOOK_SECRET = "test-secret";
+const TEST_MODEL = "test-model";
+const MOCK_TOKEN = "mock-token";
 
-jest.mock(PLUGIN_INPUT_MODULE, () => {
-  const originalModule = jest.requireActual<typeof import("../src/github/types/plugin")>(PLUGIN_INPUT_MODULE);
-
+function issueCommentCreatedEvent(commentBody: string): EmitterWebhookEvent {
   return {
-    ...originalModule,
-    PluginInput: class extends originalModule.PluginInput {
-      async getInputs() {
-        return {
-          stateId: this.stateId,
-          eventName: this.eventName,
-          eventPayload: JSON.stringify(this.eventPayload),
-          settings: JSON.stringify(this.settings),
-          authToken: this.authToken,
-          ref: this.ref,
-          signature: "",
-          command: JSON.stringify(this.command),
-        };
-      }
-    },
-  };
-});
-
-function calculateSignature(payload: string, secret: string) {
-  return `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
-}
-
-const issueCommentCreatedEvent = "issue_comment.created";
-const FOO_COMMAND = "foo";
-const PLUGIN_NAME = "plugin";
-
-beforeAll(() => {
-  server.listen();
-});
-afterEach(() => {
-  server.resetHandlers();
-});
-afterAll(() => {
-  server.close();
-});
-
-describe("handleEvent", () => {
-  beforeEach(() => {
-    server.use(
-      http.get("https://plugin-a.internal/manifest.json", () =>
-        HttpResponse.json({
-          name: PLUGIN_NAME,
-          short_name: "plugin-a",
-          "ubiquity:listeners": [issueCommentCreatedEvent],
-          commands: {
-            [FOO_COMMAND]: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        })
-      ),
-      http.get("https://plugin-b.internal/manifest.json", () =>
-        HttpResponse.json({
-          name: PLUGIN_NAME,
-          short_name: "plugin-b",
-          "ubiquity:listeners": [issueCommentCreatedEvent],
-          commands: {
-            [FOO_COMMAND]: {
-              description: "foo command",
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: "bar command",
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        })
-      ),
-      http.get("https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml", (req) => {
-        const acceptHeader = req.request.headers.get("accept");
-        const yamlContent = `plugins:\n  https://plugin-a.internal: {}\n  https://plugin-b.internal: {}`;
-        if (acceptHeader === "application/vnd.github.v3.raw") {
-          return HttpResponse.text(yamlContent);
-        } else {
-          return HttpResponse.json({
-            type: "file",
-            encoding: "base64",
-            size: 62,
-            name: ".ubiquity-os.config.yml",
-            path: ".github/.ubiquity-os.config.yml",
-            content: Buffer.from(yamlContent).toString("base64"),
-            sha: "3ffce0fe837a21b1237acd38f7b1c3d2f7d73656",
-            url: "https://api.github.com/repos/test-user/.ubiquity-os/contents/.github%2F.ubiquity-os.config.yml",
-            git_url: "https://api.github.com/repos/test-user/.ubiquity-os/git/blobs/3ffce0fe837a21b1237acd38f7b1c3d2f7d73656",
-            html_url: "https://github.com/test-user/.ubiquity-os/blob/main/.github/.ubiquity-os.config.yml",
-            download_url: "https://raw.githubusercontent.com/test-user/.ubiquity-os/main/.github/.ubiquity-os.config.yml",
-          });
-        }
-      })
-    );
-  });
-
-  it("should continue dispatching plugins if dispatch throws an error", async () => {
-    jest.mock("../src/github/github-client", () => {
-      return {
-        customOctokit: jest.fn().mockReturnValue(new Octokit()),
-      };
-    });
-    const dispatchWorker = jest
-      .fn()
-      .mockImplementationOnce(() => {
-        throw new Error("Test induced first call failure");
-      })
-      .mockImplementationOnce(() => Promise.resolve("success"));
-    jest.mock("../src/github/utils/workflow-dispatch", () => ({
-      ...(jest.requireActual("../src/github/utils/workflow-dispatch") as object),
-      dispatchWorker: dispatchWorker,
-    }));
-    const payload = {
-      installation: {
-        id: 1,
-      },
-      sender: {
-        type: "User",
-      },
+    id: "evt_1",
+    name: "issue_comment",
+    payload: {
+      action: "created",
+      installation: { id: 1 },
+      sender: { login: "test-user", type: "User" },
       comment: {
         id: 101,
-        body: "/foo",
-        user: {
-          login: "test-user",
-          type: "User",
-        },
+        body: commentBody,
+        user: { login: "test-user", type: "User" },
+        html_url: "https://github.com/test-user/test-repo/issues/1#issuecomment-101",
       },
-      issue: {
-        user: {
-          login: "test-user",
-        },
-        number: 1,
-      },
+      issue: { number: 1, user: { login: "test-user" }, html_url: "https://github.com/test-user/test-repo/issues/1" },
       repository: {
-        id: 123456,
-        name: ".ubiquity-os",
-        full_name: "test-user/.ubiquity-os",
-        owner: {
-          login: "test-user",
-          id: 654321,
-        },
+        id: 123,
+        name: "test-repo",
+        full_name: "test-user/test-repo",
+        owner: { login: "test-user", id: 456 },
       },
-    };
-    const secret = "1234";
-    const payloadString = JSON.stringify(payload);
-    const signature = calculateSignature(payloadString, secret);
+    },
+  } as EmitterWebhookEvent;
+}
 
-    const originalEnv = { ...process.env };
-    process.env = {
-      ENVIRONMENT: "production",
-      APP_WEBHOOK_SECRET: secret,
-      APP_ID: "1",
-      APP_PRIVATE_KEY: "1234",
-    };
+Deno.test("handleEvent: continues dispatching plugins if one throws", async () => {
+  const pluginA = "https://plugin-a.internal";
+  const pluginB = "https://plugin-b.internal";
 
-    const app = (await import("../src/kernel")).app;
-    const res = await app.request("http://localhost:8080", {
-      method: "POST",
-      headers: {
-        "x-github-event": issueCommentCreatedEvent,
-        "x-hub-signature-256": signature,
-        "x-github-delivery": "mocked_delivery_id",
-        "content-type": "application/json",
-      },
-      body: payloadString,
-    });
-
-    expect(res).toBeTruthy();
-    // Slash command dispatch should be attempted once; ensure execution didn't break.
-    expect(dispatchWorker).toHaveBeenCalledTimes(1);
-
-    dispatchWorker.mockReset();
-    process.env = originalEnv;
+  const eventHandler = new GitHubEventHandler({
+    environment: "production",
+    webhookSecret: TEST_WEBHOOK_SECRET,
+    appId: TEST_APP_ID,
+    privateKey: TEST_PRIVATE_KEY,
+    llm: TEST_MODEL,
+    createWebhooks: (options) => new FakeWebhooks(options) as unknown as never,
   });
+  eventHandler.getToken = async () => MOCK_TOKEN;
+
+  const fakeEvent = issueCommentCreatedEvent("/foo");
+  eventHandler.transformEvent = () =>
+    ({
+      id: "state_1",
+      key: "issue_comment.created",
+      octokit: {},
+      eventHandler,
+      payload: fakeEvent.payload,
+      logger,
+    }) as never;
+
+  const dispatches: Array<{ plugin: string; eventName: string }> = [];
+
+  let dispatchAttempt = 0;
+  const deps: Partial<HandlerDeps> = {
+    getKernelCommit: async () => "deadbeef",
+    getConfig: async () =>
+      ({
+        plugins: {
+          [pluginA]: { skipBotEvents: false, with: {} },
+          [pluginB]: { skipBotEvents: false, with: {} },
+        },
+      }) as never,
+    getPluginsForEvent: async (_context, _plugins, event) => {
+      if (event === ("kernel.plugin_error" as never)) return [] as never;
+      return [
+        { key: pluginA, target: pluginA, settings: { skipBotEvents: false, with: {} } },
+        { key: pluginB, target: pluginB, settings: { skipBotEvents: false, with: {} } },
+      ] as never;
+    },
+    getManifest: async () => ({ name: "plugin" }) as never,
+    resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin) }) as never,
+    dispatchPluginTarget: async ({ plugin, pluginInput }) => {
+      dispatches.push({ plugin: typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`, eventName: String(pluginInput.eventName) });
+      dispatchAttempt += 1;
+      if (dispatchAttempt === 1) {
+        throw new Error("Test induced first call failure");
+      }
+      return { target: { kind: "worker", targetUrl: "ok", ref: "ok" } } as never;
+    },
+  };
+
+  bindHandlers(eventHandler, deps);
+  await (eventHandler.webhooks as unknown as FakeWebhooks<unknown>).receive(fakeEvent);
+
+  assertEquals(dispatches.length, 2);
+  assertEquals(dispatches[0].plugin, pluginA);
+  assertEquals(dispatches[1].plugin, pluginB);
 });
