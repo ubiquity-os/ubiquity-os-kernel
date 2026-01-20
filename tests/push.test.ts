@@ -89,7 +89,7 @@ Deno.test("should handle push event correctly", async () => {
 
   const context = {
     id: "",
-    key: "issue_comment.created",
+    key: "push",
     octokit: {
       rest: {
         issues,

@@ -726,29 +726,13 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);
-      const { target, response } = await deps.dispatchPluginTarget({
+      await deps.dispatchPluginTarget({
         context,
         plugin,
         target: dispatchTarget,
         pluginInput: inputs,
         getKernelPublicKeyPem: () => eventHandler.getKernelPublicKeyPem(),
       });
-      if (target.kind === "worker") {
-        const maybeResponse = response as Response | null | undefined;
-        if (
-          maybeResponse &&
-          typeof maybeResponse.status === "number" &&
-          maybeResponse.status >= 300 &&
-          typeof maybeResponse.headers?.get === "function" &&
-          typeof maybeResponse.text === "function" &&
-          typeof maybeResponse.json === "function"
-        ) {
-          context.logger.warn(
-            { plugin: pluginEntry.key, response: await safeJson(maybeResponse), workerUrl: target.targetUrl },
-            "Error response on dispatch event"
-          );
-        }
-      }
       context.logger.debug({ plugin: pluginEntry.key }, "Event dispatched");
     } catch (e) {
       context.logger.error({ plugin: pluginEntry.key, err: e }, "Error processing plugin; skipping");
@@ -765,12 +749,4 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       });
     }
   }
-}
-
-async function safeJson(response: Response) {
-  const contentType = response.headers.get("content-type");
-  if (contentType && contentType.includes("application/json")) {
-    return response.json();
-  }
-  return await response.text();
 }
