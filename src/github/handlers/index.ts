@@ -532,20 +532,20 @@ async function emitKernelErrorEvent({
     const plugin = pluginEntry.target;
     const settings = pluginEntry.settings;
     const stateId = crypto.randomUUID();
-    const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-    const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-    const inputs = new PluginInput(
-      context.eventHandler,
-      stateId,
-      KERNEL_PLUGIN_ERROR_EVENT_NAME,
-      eventPayload,
-      settings?.with,
-      authToken,
-      dispatchTarget.ref,
-      null
-    );
-
     try {
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
+      const inputs = new PluginInput(
+        context.eventHandler,
+        stateId,
+        KERNEL_PLUGIN_ERROR_EVENT_NAME,
+        eventPayload,
+        settings?.with,
+        authToken,
+        dispatchTarget.ref,
+        null
+      );
+
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       await deps.dispatchPluginTarget({
         context,
