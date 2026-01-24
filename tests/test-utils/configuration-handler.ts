@@ -1,4 +1,4 @@
-import { GithubPlugin, PluginConfiguration } from "../../src/github/types/plugin-configuration";
+import { GithubPlugin, PluginConfiguration } from "../../src/github/types/plugin-configuration.ts";
 
 type CreateOptions = {
   configuration?: PluginConfiguration;

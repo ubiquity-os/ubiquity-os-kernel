@@ -1,8 +1,48 @@
 import { tokenOctokit } from "../github-client.ts";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
 import { toOctokitLogMeta } from "../utils/octokit-log.ts";
+import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
+
+type TokenOctokitLike = {
+  rest: {
+    repos: {
+      get: (args: { owner: string; repo: string }) => Promise<{ data: { default_branch: string } }>;
+    };
+    actions: {
+      createWorkflowDispatch: (args: { owner: string; repo: string; workflow_id: string; ref: string; inputs: Record<string, string> }) => Promise<unknown>;
+    };
+  };
+};
+
+type PersonalAgentDeps = Readonly<{
+  getInstallationTokenForRepo: typeof getInstallationTokenForRepo;
+  createTokenOctokit: (context: GitHubContext, token: string) => TokenOctokitLike;
+  getDefaultBranchWithToken: (octokit: TokenOctokitLike, owner: string, repository: string) => Promise<string>;
+  buildWorkflowDispatchInputs: (params: {
+    context: GitHubContext<"issue_comment.created">;
+    installationToken: string;
+    defaultBranch: string;
+  }) => Promise<Record<string, string>>;
+  updateRequestCommentRunUrl: typeof updateRequestCommentRunUrl;
+}>;
+
+function resolvePersonalAgentDeps(deps?: Partial<PersonalAgentDeps>): PersonalAgentDeps {
+  return {
+    getInstallationTokenForRepo,
+    createTokenOctokit,
+    getDefaultBranchWithToken: async (octokit, owner, repository) => {
+      const repo = await octokit.rest.repos.get({ owner, repo: repository });
+      return repo.data.default_branch;
+    },
+    buildWorkflowDispatchInputs: async ({ context, installationToken, defaultBranch }) => {
+      const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, installationToken, defaultBranch, null);
+      return await pluginInput.getInputs();
+    },
+    updateRequestCommentRunUrl,
+    ...deps,
+  };
+}
 
 function getErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
@@ -40,11 +80,6 @@ function createTokenOctokit(context: GitHubContext, token: string) {
   });
 }
 
-async function getDefaultBranchWithToken(octokit: InstanceType<typeof tokenOctokit>, owner: string, repository: string): Promise<string> {
-  const repo = await octokit.rest.repos.get({ owner, repo: repository });
-  return repo.data.default_branch;
-}
-
 async function getInstallationTokenForRepo(context: GitHubContext, owner: string, repository: string): Promise<string | null> {
   try {
     const appOctokit = context.eventHandler.getUnauthenticatedOctokit();
@@ -64,7 +99,8 @@ async function getInstallationTokenForRepo(context: GitHubContext, owner: string
   }
 }
 
-export async function callPersonalAgent(context: GitHubContext<"issue_comment.created">) {
+export async function callPersonalAgent(context: GitHubContext<"issue_comment.created">, deps?: Partial<PersonalAgentDeps>) {
+  const resolvedDeps = resolvePersonalAgentDeps(deps);
   const { logger, payload } = context;
 
   const owner = payload.repository.owner.login;
@@ -88,7 +124,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
   logger.debug({ owner, personalAgentOwner, comment: body }, `Comment received`);
 
   try {
-    const installationToken = await getInstallationTokenForRepo(context, personalAgentOwner, personalAgentRepo);
+    const installationToken = await resolvedDeps.getInstallationTokenForRepo(context, personalAgentOwner, personalAgentRepo);
     if (!installationToken) {
       logger.error({ owner, repo, commentId, personalAgentOwner }, "Missing installation token; cannot dispatch personal agent");
       return;
@@ -105,16 +141,15 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
       "Dispatching personal-agent workflow"
     );
 
-    const octokit = createTokenOctokit(context, installationToken);
-    const defaultBranch = await getDefaultBranchWithToken(octokit, personalAgentOwner, personalAgentRepo);
-    const pluginInput = new PluginInput(context.eventHandler, crypto.randomUUID(), context.key, context.payload, {}, installationToken, defaultBranch, null);
+    const octokit = resolvedDeps.createTokenOctokit(context, installationToken);
+    const defaultBranch = await resolvedDeps.getDefaultBranchWithToken(octokit, personalAgentOwner, personalAgentRepo);
 
     await octokit.rest.actions.createWorkflowDispatch({
       owner: personalAgentOwner,
       repo: personalAgentRepo,
       workflow_id: "compute.yml",
       ref: defaultBranch,
-      inputs: await pluginInput.getInputs(),
+      inputs: await resolvedDeps.buildWorkflowDispatchInputs({ context, installationToken, defaultBranch }),
     });
   } catch (error) {
     logger.error(
@@ -132,7 +167,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
   }
 
   try {
-    await updateRequestCommentRunUrl(context, null);
+    await resolvedDeps.updateRequestCommentRunUrl(context, null);
   } catch (error) {
     logger.warn({ err: error }, "Failed to update request comment run URL");
   }

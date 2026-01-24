@@ -206,3 +206,11 @@ function decodeManifest(context: GitHubContext, manifest: unknown) {
   }
   return manifestWithDefaults as Manifest;
 }
+
+export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
+  if (!manifest) {
+    return null;
+  }
+  const homepageUrl = manifest.homepage_url;
+  return typeof homepageUrl === "string" && homepageUrl.length ? homepageUrl : null;
+}

@@ -235,6 +235,7 @@ deno task dash-logs:human
 Auth uses the dashboard cookie token (no public API). Set `DENO_DEPLOY_TOKEN` in the shell, or pass `--token=...` explicitly.
 
 Findings:
+
 - The dashboard logs endpoint is internal (`dash.deno.com/_api/.../query_logs`) and has no public API docs; it is accessed via the dashboard cookie token (`token=...`).
 - The `message` field is sometimes a JSON string and sometimes plain text; keep raw NDJSON for AI parsing and avoid assuming schema.
 
