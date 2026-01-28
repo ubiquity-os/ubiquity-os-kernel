@@ -11,6 +11,7 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 ## Secrets & Env Naming
 
 - Never use `UBQ_` in secret/property/key names; use `UOS_` instead.
+- When defining TypeBox schemas, do not mark fields as optional if a default is provided; keep them required with defaults.
 
 ## 🧭 Routing & Prompting Policy
 
