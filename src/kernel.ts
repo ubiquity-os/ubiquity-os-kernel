@@ -11,10 +11,12 @@ import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
 import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
-import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./github/utils/rsa.ts";
+import { getCachedRsaPublicKeyPem, normalizeMultilineSecret } from "./github/utils/rsa.ts";
 import { listAgentMemoryEntries } from "./github/utils/agent-memory.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
+
+const KERNEL_REFRESH_ROUTE = "/internal/agent/refresh-token";
 
 export const app = new Hono();
 export default app;
@@ -69,7 +71,7 @@ app.get("/internal/agent-memory", async (ctx: Context) => {
   }
 });
 
-app.post("/internal/agent/refresh-token", async (ctx: Context) => {
+app.post(KERNEL_REFRESH_ROUTE, async (ctx: Context) => {
   try {
     const env = getEnvWithDefaults(ctx);
     const authHeader = ctx.req.header("authorization") ?? "";
@@ -92,14 +94,17 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
     if (!owner || !repo || !installationIdRaw) {
       return ctx.json({ error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id." }, 400);
     }
+    if (!isValidGitHubRepoSegment(owner) || !isValidGitHubRepoSegment(repo)) {
+      return ctx.json({ error: "Invalid X-GitHub-Owner/X-GitHub-Repo." }, 400);
+    }
 
     const installationId = Number(installationIdRaw);
-    if (!Number.isFinite(installationId)) {
+    if (!Number.isFinite(installationId) || installationId <= 0) {
       return ctx.json({ error: "Invalid X-GitHub-Installation-Id." }, 400);
     }
 
     const privateKey = normalizeMultilineSecret(env.APP_PRIVATE_KEY);
-    const publicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(privateKey);
+    const publicKeyPem = await getCachedRsaPublicKeyPem(privateKey);
     const verification = await verifyKernelAttestationToken({
       token: kernelToken,
       publicKeyPem,
@@ -150,13 +155,14 @@ app.post("/", async (ctx: Context) => {
       throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
     }
     const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
-    const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
+    const kernelRefreshUrl = resolveKernelRefreshUrl(ctx, env);
+    const environment = normalizeOptionalEnvValue(env.ENVIRONMENT) ?? "development";
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
     const id = getId(request);
     const eventHandler = new GitHubEventHandler({
-      environment: env.ENVIRONMENT,
+      environment,
       webhookSecret: env.APP_WEBHOOK_SECRET,
       appId: env.APP_ID,
       privateKey: env.APP_PRIVATE_KEY,
@@ -250,6 +256,33 @@ function parseBoundedInt(value: string | null | undefined, fallback: number, min
 function normalizeOptionalEnvValue(value?: string): string | undefined {
   const trimmed = value?.trim() ?? "";
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeEnvList(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function resolveKernelRefreshUrl(ctx: Context, env: Env): string {
+  const baseUrl = normalizeOptionalEnvValue(env.UOS_KERNEL_BASE_URL);
+  if (baseUrl) {
+    const parsed = new URL(baseUrl);
+    return new URL(KERNEL_REFRESH_ROUTE, parsed).toString();
+  }
+
+  const trustedHosts = normalizeEnvList(env.UOS_KERNEL_TRUSTED_HOSTS);
+  const requestUrl = new URL(ctx.req.url);
+  if (trustedHosts.length > 0 && !trustedHosts.includes(requestUrl.host.toLowerCase())) {
+    throw new Error(`Untrusted host for kernel refresh URL: ${requestUrl.host}`);
+  }
+  return new URL(KERNEL_REFRESH_ROUTE, requestUrl).toString();
+}
+
+function isValidGitHubRepoSegment(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(value);
 }
 
 function requireEnvValue(value: string | undefined, name: string, missing: string[]): string {

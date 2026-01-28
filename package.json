@@ -1,9 +1,11 @@
 {
   "name": "@ubiquity-os/ubiquity-os-kernel",
   "version": "7.3.0",
-  "private": false,
+  "private": true,
   "scripts": {
     "test": "deno test --allow-all"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@deno/types": "0.0.1"
+  }
 }

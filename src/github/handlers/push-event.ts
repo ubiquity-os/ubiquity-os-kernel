@@ -1,12 +1,15 @@
 import { Validator } from "@cfworker/json-schema";
+import { Type as T, type TSchema } from "@sinclair/typebox";
 import { ValueErrorType } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
 import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context.ts";
-import { configSchema, parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
+import { parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
+
+const CONFIG_SCHEMA_PLACEHOLDER: TSchema = T.Any();
 
 function encodePointerSegment(segment: string) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -140,7 +143,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
         message: "Failed to fetch the manifest configuration.",
         value: pluginKey,
         type: 0,
-        schema: configSchema,
+        schema: CONFIG_SCHEMA_PLACEHOLDER,
         errors: [],
       });
       continue;
@@ -160,7 +163,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
           message: error.error,
           value: JSON.stringify(value),
           type: 0,
-          schema: configSchema,
+          schema: CONFIG_SCHEMA_PLACEHOLDER,
           errors: [],
         });
       }

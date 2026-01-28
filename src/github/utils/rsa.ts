@@ -9,6 +9,8 @@ export function normalizeMultilineSecret(value: string): string {
   return trimmed.replace(/\r\n/g, "\n");
 }
 
+const rsaPublicKeyCache = new Map<string, string>();
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
@@ -44,4 +46,13 @@ export async function deriveRsaPublicKeyPemFromPrivateKey(privateKeyPem: string)
 
   const spkiDer = new Uint8Array(await crypto.subtle.exportKey("spki", publicKey));
   return wrapPem("PUBLIC KEY", bytesToBase64(spkiDer));
+}
+
+export async function getCachedRsaPublicKeyPem(privateKeyPem: string): Promise<string> {
+  const normalized = normalizeMultilineSecret(privateKeyPem);
+  const cached = rsaPublicKeyCache.get(normalized);
+  if (cached) return cached;
+  const derived = await deriveRsaPublicKeyPemFromPrivateKey(normalized);
+  rsaPublicKeyCache.set(normalized, derived);
+  return derived;
 }

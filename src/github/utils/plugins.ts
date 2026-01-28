@@ -1,5 +1,5 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { Type as T, type TProperties } from "@sinclair/typebox";
+import { Type as T, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
@@ -10,11 +10,13 @@ import { isPlainObject } from "./helpers.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
 const manifestCache = new Map<string, Manifest>();
-const kernelManifestSchema = T.Object({
-  ...(sdkManifestSchema.properties as unknown as TProperties),
-  // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
-  "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
-});
+const kernelManifestSchema = T.Intersect([
+  T.Omit(sdkManifestSchema as unknown as TSchema, ["ubiquity:listeners"]),
+  T.Object({
+    // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
+    "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
+  }),
+]);
 
 function readManifestCache(key: string): Manifest | null {
   return manifestCache.get(key) ?? null;
