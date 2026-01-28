@@ -1,5 +1,5 @@
 import { GithubPlugin, isGithubPlugin } from "../types/plugin-configuration.ts";
-import { getConfigPathCandidatesForEnvironment } from "./config.ts";
+import { getConfigFullPathForEnvironment } from "./config.ts";
 
 const WORKFLOW_KERNEL_KEY_OVERRIDE_OWNERS = new Set(["ubiquity-os", "ubiquity-os-marketplace", "0x4007-ubiquity-os"]);
 
@@ -10,9 +10,8 @@ export function withKernelContextSettingsIfNeeded(
 ): Record<string, unknown> {
   const settings = baseSettings && typeof baseSettings === "object" ? { ...baseSettings } : {};
 
-  if (isGithubPlugin(plugin) && plugin.repo === "command-config") {
-    settings.environment = environment;
-    settings.configPathCandidates = getConfigPathCandidatesForEnvironment(environment);
+  if (isGithubPlugin(plugin) && plugin.repo === "command-config" && (typeof settings.configPath !== "string" || settings.configPath.trim().length === 0)) {
+    settings.configPath = getConfigFullPathForEnvironment(environment);
   }
 
   return settings;
