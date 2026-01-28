@@ -2,7 +2,7 @@ import { Type as T, type Static } from "@sinclair/typebox";
 
 export const envSchema = T.Object({
   // Matches `.github/.ubiquity-os.config.<ENVIRONMENT>.yml` (with `production` mapping to `.github/.ubiquity-os.config.yml`).
-  ENVIRONMENT: T.Optional(T.String({ minLength: 1, default: "development", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$" })),
+  ENVIRONMENT: T.String({ minLength: 1, default: "development", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$" }),
   APP_WEBHOOK_SECRET: T.String({ minLength: 1 }),
   APP_ID: T.String({ minLength: 1, pattern: "^[0-9]+$" }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),

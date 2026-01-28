@@ -5,6 +5,4 @@ export const customOctokit = baseOctokit.defaults((instanceOptions: object) => {
   return Object.assign({}, { authStrategy: createAppAuth }, instanceOptions);
 });
 
-export const tokenOctokit = baseOctokit.defaults((instanceOptions: object) => {
-  return Object.assign({}, instanceOptions);
-});
+export const tokenOctokit = baseOctokit;

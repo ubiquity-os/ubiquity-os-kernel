@@ -156,7 +156,7 @@ app.post("/", async (ctx: Context) => {
     }
     const kernelRefreshIntervalSeconds = parseOptionalNumber(env.UOS_KERNEL_REFRESH_INTERVAL_SECONDS);
     const kernelRefreshUrl = resolveKernelRefreshUrl(ctx, env);
-    const environment = normalizeOptionalEnvValue(env.ENVIRONMENT) ?? "development";
+    const environment = env.ENVIRONMENT;
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
