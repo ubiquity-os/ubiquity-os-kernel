@@ -23,7 +23,7 @@
     "npm:@octokit/webhooks-types@7.6.1": "7.6.1",
     "npm:@octokit/webhooks@14.2.0": "14.2.0",
     "npm:@sinclair/typebox@0.34.30": "0.34.30",
-    "npm:@ubiquity-os/plugin-sdk@3.11.1": "3.11.1_@sinclair+typebox@0.34.30_@octokit+core@7.0.6",
+    "npm:@ubiquity-os/plugin-sdk@3.11.2": "3.11.2_@sinclair+typebox@0.34.30_@octokit+core@7.0.6",
     "npm:cspell@8.9.0": "8.9.0",
     "npm:dotenv@16.4.5": "16.4.5",
     "npm:eslint-plugin-check-file@2.8.0": "2.8.0_eslint@9.7.0",
@@ -1072,8 +1072,8 @@
         "eslint-visitor-keys@4.2.1"
       ]
     },
-    "@ubiquity-os/plugin-sdk@3.11.1_@sinclair+typebox@0.34.30_@octokit+core@7.0.6": {
-      "integrity": "sha512-tYnt+Xh5WqufV3StUJVROlu5KzbBtSHc86302G2x/+CbyH2e52qA2hu77XbWqdwWDRJa1j82U3SIAw8s9efQxA==",
+    "@ubiquity-os/plugin-sdk@3.11.2_@sinclair+typebox@0.34.30_@octokit+core@7.0.6": {
+      "integrity": "sha512-I7UPxVqbap3HN/foXcPQzqe3MBTHRhUta9oYV6NwcutOthZlyIZv7IMEnkcYYcrwzv3PUqsWp6jyXU5ZzVEsfA==",
       "dependencies": [
         "@actions/core",
         "@actions/github",
@@ -2148,8 +2148,8 @@
         "mimic-function"
       ]
     },
-    "openai@6.16.0": {
-      "integrity": "sha512-fZ1uBqjFUjXzbGc35fFtYKEOxd20kd9fDpFeqWtsOZWiubY8CZ1NAlXHW3iathaFvqmNtCWMIsosCuyeI7Joxg==",
+    "openai@6.17.0": {
+      "integrity": "sha512-NHRpPEUPzAvFOAFs9+9pC6+HCw/iWsYsKCMPXH5Kw7BpMxqd8g/A07/1o7Gx2TWtCnzevVRyKMRFqyiHyAlqcA==",
       "bin": true
     },
     "optionator@0.9.4": {
@@ -2706,7 +2706,7 @@
       "npm:@octokit/webhooks-types@7.6.1",
       "npm:@octokit/webhooks@14.2.0",
       "npm:@sinclair/typebox@0.34.30",
-      "npm:@ubiquity-os/plugin-sdk@3.11.1",
+      "npm:@ubiquity-os/plugin-sdk@3.11.2",
       "npm:cspell@8.9.0",
       "npm:dotenv@16.4.5",
       "npm:eslint-plugin-check-file@2.8.0",
