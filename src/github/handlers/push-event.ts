@@ -1,14 +1,14 @@
 import { Validator } from "@cfworker/json-schema";
-import type { TSchema } from "@sinclair/typebox";
 import { ValueErrorType } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
-import { configSchema } from "@ubiquity-os/plugin-sdk/configuration";
 import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context.ts";
 import { parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
+
+type ConfigValidationError = Pick<ValueError, "path" | "message" | "value" | "type">;
 
 function encodePointerSegment(segment: string) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -50,7 +50,7 @@ function parseInstanceSegments(instanceLocation: string) {
 }
 
 function constructErrorBody(
-  errors: Iterable<ValueError> | (YAML.YAMLError | ValueError)[],
+  errors: Iterable<ConfigValidationError> | (YAML.YAMLError | YAMLException | ConfigValidationError)[],
   rawData: string | null,
   repository: GitHubContext<"push">["payload"]["repository"],
   after: string,
@@ -129,7 +129,7 @@ async function createCommitComment(
 }
 
 async function checkPluginConfigurations(context: GitHubContext<"push">, config: PluginConfiguration, rawData: string | null) {
-  const errors: (ValueError | YAML.YAMLError)[] = [];
+  const errors: (YAML.YAMLError | YAMLException | ConfigValidationError)[] = [];
   const doc = rawData ? YAML.parseDocument(rawData) : null;
 
   for (const [pluginKey, settings] of Object.entries(config.plugins)) {
@@ -142,8 +142,6 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
         message: "Failed to fetch the manifest configuration.",
         value: pluginKey,
         type: 0,
-        schema: configSchema as unknown as TSchema,
-        errors: [],
       });
       continue;
     }
@@ -162,8 +160,6 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
           message: error.error,
           value: JSON.stringify(value),
           type: 0,
-          schema: configSchema as unknown as TSchema,
-          errors: [],
         });
       }
     }
@@ -193,7 +189,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   context.logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
 
   const { config, errors: configurationErrors, rawData } = await getConfigurationFromRepo(context, repository.name, repository.owner.login);
-  const errors: (ValueError | YAML.YAMLError)[] = [];
+  const errors: (YAML.YAMLError | YAMLException | ConfigValidationError)[] = [];
   if (!configurationErrors && config) {
     errors.push(...(await checkPluginConfigurations(context, config, rawData)));
   } else if (configurationErrors) {
