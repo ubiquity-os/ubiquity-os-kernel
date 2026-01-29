@@ -1,4 +1,5 @@
 import { Validator } from "@cfworker/json-schema";
+import type { TSchema } from "@sinclair/typebox";
 import { ValueErrorType } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
 import { configSchema } from "@ubiquity-os/plugin-sdk/configuration";
@@ -141,7 +142,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
         message: "Failed to fetch the manifest configuration.",
         value: pluginKey,
         type: 0,
-        schema: configSchema,
+        schema: configSchema as unknown as TSchema,
         errors: [],
       });
       continue;
@@ -161,7 +162,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
           message: error.error,
           value: JSON.stringify(value),
           type: 0,
-          schema: configSchema,
+          schema: configSchema as unknown as TSchema,
           errors: [],
         });
       }

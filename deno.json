@@ -42,8 +42,8 @@
     "@octokit/types": "npm:@octokit/types@14.1.0",
     "@octokit/webhooks": "npm:@octokit/webhooks@14.2.0",
     "@octokit/webhooks-types": "npm:@octokit/webhooks-types@7.6.1",
-    "@sinclair/typebox": "npm:@sinclair/typebox@0.34.30",
-    "@sinclair/typebox/value": "npm:@sinclair/typebox@0.34.30/value",
+    "@sinclair/typebox": "npm:@sinclair/typebox@0.34.41",
+    "@sinclair/typebox/value": "npm:@sinclair/typebox@0.34.41/value",
     "@ubiquity-os/plugin-sdk": "npm:@ubiquity-os/plugin-sdk@3.11.2",
     "@ubiquity-os/plugin-sdk/compression": "npm:@ubiquity-os/plugin-sdk@3.11.2/compression",
     "@ubiquity-os/plugin-sdk/configuration": "npm:@ubiquity-os/plugin-sdk@3.11.2/configuration",
@@ -75,4 +75,5 @@
   },
   "allowScripts": ["npm:@swc/core@1.15.8", "npm:fsevents@2.3.3", "npm:msw@2.12.7"]
 }
+
 

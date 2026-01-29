@@ -22,8 +22,8 @@
     "npm:@octokit/types@14.1.0": "14.1.0",
     "npm:@octokit/webhooks-types@7.6.1": "7.6.1",
     "npm:@octokit/webhooks@14.2.0": "14.2.0",
-    "npm:@sinclair/typebox@0.34.30": "0.34.30",
-    "npm:@ubiquity-os/plugin-sdk@3.11.2": "3.11.2_@sinclair+typebox@0.34.30_@octokit+core@7.0.6",
+    "npm:@sinclair/typebox@0.34.41": "0.34.41",
+    "npm:@ubiquity-os/plugin-sdk@3.11.2": "3.11.2_@sinclair+typebox@0.34.41_@octokit+core@7.0.6",
     "npm:cspell@8.9.0": "8.9.0",
     "npm:dotenv@16.4.5": "16.4.5",
     "npm:eslint-plugin-check-file@2.8.0": "2.8.0_eslint@9.7.0",
@@ -932,8 +932,8 @@
     "@sinclair/typebox@0.27.8": {
       "integrity": "sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA=="
     },
-    "@sinclair/typebox@0.34.30": {
-      "integrity": "sha512-gFB3BiqjDxEoadW0zn+xyMVb7cLxPCoblVn2C/BKpI41WPYi2d6fwHAlynPNZ5O/Q4WEiujdnJzVtvG/Jc2CBQ=="
+    "@sinclair/typebox@0.34.41": {
+      "integrity": "sha512-6gS8pZzSXdyRHTIqoqSVknxolr1kzfy4/CeDnrzsVz8TTIWUbOBr6gnzOmTYJ3eXQNh4IYHIGi5aIL7sOZ2G/g=="
     },
     "@types/conventional-commits-parser@5.0.2": {
       "integrity": "sha512-BgT2szDXnVypgpNxOK8aL5SGjUdaQbC++WZNjF1Qge3Og2+zhHj+RWhmehLhYyvQwqAmvezruVfOf8+3m74W+g==",
@@ -1072,7 +1072,7 @@
         "eslint-visitor-keys@4.2.1"
       ]
     },
-    "@ubiquity-os/plugin-sdk@3.11.2_@sinclair+typebox@0.34.30_@octokit+core@7.0.6": {
+    "@ubiquity-os/plugin-sdk@3.11.2_@sinclair+typebox@0.34.41_@octokit+core@7.0.6": {
       "integrity": "sha512-I7UPxVqbap3HN/foXcPQzqe3MBTHRhUta9oYV6NwcutOthZlyIZv7IMEnkcYYcrwzv3PUqsWp6jyXU5ZzVEsfA==",
       "dependencies": [
         "@actions/core",
@@ -1085,7 +1085,7 @@
         "@octokit/plugin-throttling@11.0.3_@octokit+core@7.0.6",
         "@octokit/types@16.0.0",
         "@octokit/webhooks",
-        "@sinclair/typebox@0.34.30",
+        "@sinclair/typebox@0.34.41",
         "@ubiquity-os/ubiquity-os-logger",
         "hono@4.11.7",
         "js-yaml@4.1.1",
@@ -2705,7 +2705,7 @@
       "npm:@octokit/types@14.1.0",
       "npm:@octokit/webhooks-types@7.6.1",
       "npm:@octokit/webhooks@14.2.0",
-      "npm:@sinclair/typebox@0.34.30",
+      "npm:@sinclair/typebox@0.34.41",
       "npm:@ubiquity-os/plugin-sdk@3.11.2",
       "npm:cspell@8.9.0",
       "npm:dotenv@16.4.5",
