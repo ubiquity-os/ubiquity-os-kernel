@@ -75,5 +75,3 @@
   },
   "allowScripts": ["npm:@swc/core@1.15.8", "npm:fsevents@2.3.3", "npm:msw@2.12.7"]
 }
-
-
