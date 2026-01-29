@@ -69,7 +69,8 @@ function constructErrorBody(
         const lineCounter = new LineCounter();
         const doc = YAML.parseDocument(rawData, { lineCounter });
         // Convert the JSON pointer emitted by the validator into YAML path segments so we can locate the node.
-        const pathSegments = pointerStringToSegments(error.path);
+        // path can be null if we are at the root of the "plugins" key
+        const pathSegments = pointerStringToSegments(error.path ?? "");
         if (error.type === ValueErrorType.ObjectRequiredProperty) {
           pathSegments.splice(pathSegments.length - 1, 1);
         }
