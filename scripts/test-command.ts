@@ -32,25 +32,6 @@ interface PluginConfiguration {
   plugins: Record<string, unknown>;
 }
 
-type OctokitGetContentParams = {
-  owner: string;
-  repo: string;
-  path: string;
-  mediaType?: { format?: string };
-};
-
-type OctokitGetContentResponse = {
-  data: unknown;
-};
-
-type MinimalOctokit = {
-  rest: {
-    repos: {
-      getContent: (params: OctokitGetContentParams) => Promise<OctokitGetContentResponse>;
-    };
-  };
-};
-
 type IssueComment = {
   id: number;
   html_url: string;
@@ -209,29 +190,6 @@ async function waitForAgentFeedbackComment(
   return null;
 }
 
-function getErrorStatus(error: unknown): number | null {
-  if (!isRecord(error)) return null;
-  const status = error.status;
-  return typeof status === "number" && Number.isFinite(status) ? status : null;
-}
-
-async function downloadGitHubFileRaw(octokit: MinimalOctokit, { owner, repo, path }: { owner: string; repo: string; path: string }): Promise<string | null> {
-  try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path,
-      mediaType: { format: "raw" },
-    });
-    if (typeof data === "string") return data;
-    console.log(`⚠️  Unexpected response for ${owner}/${repo}/${path}; expected raw string.`);
-    return null;
-  } catch (error: unknown) {
-    if (getErrorStatus(error) === 404) return null;
-    throw error;
-  }
-}
-
 function normalizePluginConfiguration(raw: unknown): PluginConfiguration | null {
   if (!isRecord(raw)) return null;
   const config = raw;
@@ -258,29 +216,6 @@ function normalizePluginConfiguration(raw: unknown): PluginConfiguration | null 
 
   if (!isRecord(pluginsRaw)) return { plugins: {} };
   return { ...config, plugins: pluginsRaw };
-}
-
-async function fetchFirstExistingRepoConfig(octokit: MinimalOctokit, { owner, repo }: { owner: string; repo: string }): Promise<PluginConfiguration | null> {
-  const candidates = getConfigPathCandidatesForEnvironment(process.env.ENVIRONMENT ?? "development");
-  for (const path of candidates) {
-    const raw = await downloadGitHubFileRaw(octokit, { owner, repo, path });
-    if (!raw) continue;
-    const parsed = YAML.load(raw);
-    const normalized = normalizePluginConfiguration(parsed);
-    if (normalized) return normalized;
-  }
-  return null;
-}
-
-function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
-  return {
-    ...configuration1,
-    ...configuration2,
-    plugins: {
-      ...configuration1.plugins,
-      ...configuration2.plugins,
-    },
-  };
 }
 
 // Cache configuration
@@ -366,15 +301,33 @@ async function fetchLatestConfig(org: string, repo: string): Promise<PluginConfi
       console.log("🔑 Using GITHUB_TOKEN to download config...");
       const { Octokit } = await import("@octokit/rest");
       const octokit = new Octokit({ auth: githubToken });
+      const environment = process.env.ENVIRONMENT ?? "development";
 
-      const orgConfig = await fetchFirstExistingRepoConfig(octokit, { owner: org, repo: ".ubiquity-os" });
-      const repoConfig = await fetchFirstExistingRepoConfig(octokit, { owner: org, repo });
+      // WARNING: This mock context is tightly coupled to kernel internals.
+      // If getConfig() or GitHubContext requirements change, update this stub.
+      const mockContext = {
+        octokit,
+        eventHandler: {
+          environment,
+        },
+        logger: {
+          debug: console.log,
+          error: console.error,
+          warn: console.warn,
+          info: console.log,
+          trace: console.log,
+        },
+        payload: {
+          repository: {
+            owner: { login: org },
+            name: repo,
+          },
+        },
+      };
 
-      const defaultConfig: PluginConfiguration = { plugins: {} };
-      const merged = mergeConfigurations(orgConfig ?? defaultConfig, repoConfig ?? defaultConfig);
-
+      const config = await getConfig(mockContext);
       console.log("✅ Config loaded successfully");
-      return merged;
+      return config;
     }
 
     // Create a GitHubEventHandler for app authentication
@@ -494,6 +447,7 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
   const configCachePath = getConfigCachePath(org, repo);
 
   const githubConfigResult = parseGitHubAppConfig(process.env as unknown as Record<string, string>);
+  const privateKey = githubConfigResult.ok ? githubConfigResult.config.privateKey : "";
   let installationToken: string | null = null;
   let installationId: number | null = null;
 
@@ -561,12 +515,14 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
     });
   }
 
-  // Load cached config
+  // Load cached config (fast path)
   const cachedConfig = loadCachedConfig(configCachePath);
+  let activeConfig = cachedConfig;
 
-  if (!cachedConfig) {
+  if (cachedConfig) {
+    console.log("📄 Loaded cached config");
+  } else {
     console.log("📄 No cached config found. Fetching latest config from GitHub...");
-
     const latestConfig = await fetchLatestConfig(org, repo);
     if (!latestConfig) {
       console.log("❌ Failed to fetch config from GitHub. Please check your GITHUB_TOKEN and repository access.");
@@ -574,19 +530,12 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
       console.log(`💡 Make sure you have ${candidates.join(" or ")} in the repository.`);
       return;
     }
-
+    activeConfig = latestConfig;
     saveConfigToCache(configCachePath, latestConfig);
-    console.log("✅ Config downloaded and cached. Please rerun the command to use the cached config.");
-    return;
+    console.log("✅ Config downloaded and cached.");
   }
 
-  console.log("📄 Loaded cached config");
-
-  // Extract plugins from config
-  const plugins = extractPluginsFromConfig(cachedConfig);
-  console.log(`🔌 Found ${Object.keys(plugins).length} plugins in config`);
-
-  // Update cache in background (don't wait for it)
+  // Refresh cache in background so changes are picked up for subsequent runs
   fetchLatestConfig(org, repo)
     .then((latestConfig) => {
       if (latestConfig) {
@@ -596,6 +545,10 @@ async function processCommentWithRealPlugins(org: string, repo: string, commentB
     .catch((error) => {
       console.log(`⚠️  Failed to update cache in background: ${error}`);
     });
+
+  // Extract plugins from config
+  const plugins = extractPluginsFromConfig(activeConfig);
+  console.log(`🔌 Found ${Object.keys(plugins).length} plugins in config`);
 
   console.log("📄 Loading plugin configurations...");
 

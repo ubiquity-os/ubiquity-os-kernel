@@ -232,7 +232,7 @@ app.post("/", async (ctx: Context) => {
       },
       logger: ctx.var.logger,
     });
-    bindHandlers(eventHandler);
+    bindHandlers(eventHandler, env);
 
     const payload = await request.text();
     ctx.var.logger.debug(

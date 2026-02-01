@@ -1,10 +1,11 @@
 import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger.ts";
 import { getRequestLogTrail, readRequestIdFromLogger } from "../../logger/request-log-store.ts";
-import { GitHubContext } from "../github-context.ts";
 import { GitHubEventHandler } from "../github-event-handler.ts";
-import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
+import { GitHubContext } from "../github-context.ts";
+import { Env } from "../types/env.ts";
 import { PluginInput } from "../types/plugin.ts";
+import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
@@ -14,6 +15,7 @@ import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
 import handlePushEvent from "./push-event.ts";
+import { handleTelegramLinkIssueClosed } from "./telegram-link-issue-closed.ts";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
 const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
@@ -578,9 +580,27 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
   };
 }
 
-export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<HandlerDeps>) {
-  const resolvedDeps = resolveHandlerDeps(deps);
+function isHandlerDeps(value: unknown): value is Partial<HandlerDeps> {
+  if (!value || typeof value !== "object") return false;
+  return (
+    "getConfig" in value ||
+    "getPluginsForEvent" in value ||
+    "getManifest" in value ||
+    "resolvePluginDispatchTarget" in value ||
+    "dispatchPluginTarget" in value ||
+    "getKernelCommit" in value
+  );
+}
+
+export function bindHandlers(eventHandler: GitHubEventHandler, depsOrEnv?: Partial<HandlerDeps> | Env) {
+  const resolvedDeps = resolveHandlerDeps(isHandlerDeps(depsOrEnv) ? depsOrEnv : undefined);
+  const env = isHandlerDeps(depsOrEnv) ? undefined : depsOrEnv;
   eventHandler.on(ISSUE_COMMENT_CREATED_EVENT, issueCommentCreated);
+  if (env) {
+    eventHandler.on("issues.closed", async (context) => {
+      await handleTelegramLinkIssueClosed(context as GitHubContext<"issues.closed">, env);
+    });
+  }
   eventHandler.on("issue_comment.edited", async (context) => {
     const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
     if (!issueNumber) {

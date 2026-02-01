@@ -55,8 +55,7 @@ deno task dev
 ```
 
 `deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
-
-For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
+`deno task dev` loads `.env` and any `.secrets/*.json` files automatically.
 
 Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, [`command-config`](https://github.com/ubiquity-os-marketplace/command-config)).
 
@@ -130,23 +129,49 @@ Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml
 
 Configure the kernel to accept Telegram webhooks at `/telegram`:
 
-- `UOS_TELEGRAM` (JSON; required to enable ingress)
+- `UOS_TELEGRAM` (JSON; required to enable ingress, secrets only)
 
 Example:
 
 ```json
-{"mode":"github","botToken":"...","webhookSecret":"...","owner":"ubiquity-os-marketplace","repo":"ubiquity-os-marketplace","issueNumber":1,"installationId":123}
+{"botToken":"...","webhookSecret":"..."}
 ```
 
-Fields:
+Routing + policy live in the user’s `.ubiquity-os` repo under `.github/.ubiquity-os.config.yml`:
 
-- `mode` (optional; `github` or `shim`, defaults to `github`)
-- `shim` mode skips GitHub routing and only supports built-in Telegram commands.
-- `botToken` (required)
-- `issueNumber` (required in `github` mode; the GitHub issue used for routing/context)
-- `webhookSecret` (optional, validates `x-telegram-bot-api-secret-token`)
-- `owner` / `repo` (optional, defaults to `ubiquity-os-marketplace`)
-- `installationId` (optional override)
+```yaml
+channels:
+  telegram:
+    mode: github # or shim
+    owner: your-github-org-or-username
+    repo: your-target-repo
+    issueNumber: 1
+```
+
+Notes:
+
+- The kernel loads config from `https://github.com/<owner>/.ubiquity-os/.github/.ubiquity-os.config.yml`.
+- `mode: shim` skips GitHub routing until `/context` is set.
+- `issueNumber` is required in `github` mode.
+- `webhookSecret` validates `x-telegram-bot-api-secret-token`.
+- Telegram messages require a linked GitHub identity (stored in KV).
+
+#### Linking Telegram Identity
+
+Linking now happens entirely inside Telegram (no kernel-hosted UI).
+
+1. DM the bot and tap “Start linking”.
+2. Send the GitHub owner (username or org).
+3. The bot creates a link issue in `<owner>/.ubiquity-os` and sends the URL.
+4. Close the issue to approve linking (org member or owner). The bot confirms once linked.
+
+The kernel stores the Telegram user ID ↔ GitHub owner mapping in KV.
+
+Notes:
+
+- Orgs can link multiple Telegram accounts (any org member can approve).
+- Personal users are limited to a single linked Telegram account.
+- Use `/status` in Telegram to see current link state.
 
 ### Google Drive Ingress (Optional)
 
@@ -172,19 +197,14 @@ Example:
 {"webhookSecret":"..."}
 ```
 
-### Local Ingress Config Helper (Optional)
+### Local Ingress Config (Optional)
 
-For local dev, you can keep ingress JSON files on disk and let a helper task load them into env:
+For local dev, keep ingress JSON files in `.secrets/*.json` and `deno task dev` will load whichever exist. Example templates live under `.secrets/*.example.json` (copy them to `.secrets/*.json`).
 
-```bash
-mkdir -p .secrets
-deno task dev:ingress
-```
-
-Create any of `.secrets/github.json`, `.secrets/ai.json`, `.secrets/agent.json`, `.secrets/agent-memory.json`, `.secrets/diagnostics.json`, `.secrets/supabase.json`, `.secrets/kernel.json`, `.secrets/telegram.json`, `.secrets/google-drive.json`, `.secrets/x.json` and the task will load whichever exist. Example templates live under `.secrets/*.example.json` (copy them to `.secrets/*.json`). Use `deno task dev:ingress:easy` for `-A` local runs. You can override paths:
+If you need custom paths, run the loader directly:
 
 ```bash
-deno task dev:ingress -- --github=secrets/github.json --ai=secrets/ai.json --telegram=secrets/telegram.json --x=secrets/x.json
+deno run --allow-read --allow-env --allow-run scripts/with-ingress-env.ts -- --telegram=secrets/telegram.json -- deno task dev
 ```
 
 ### Plugin-Kernel Input/Output Interface
