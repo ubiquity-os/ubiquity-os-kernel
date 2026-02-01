@@ -10,6 +10,7 @@ import { getKvClient, type KvKey } from "./kv-client.ts";
 import { isPlainObject } from "./helpers.ts";
 
 const MANIFEST_CACHE_TTL_MS = 10 * 60_000;
+const MANIFEST_FETCH_TIMEOUT_MS = 5_000;
 const MANIFEST_CACHE_PREFIX: KvKey = ["ubiquityos", "kernel", "manifest"];
 const kernelManifestSchema = T.Object({
   ...(sdkManifestSchema.properties as unknown as TProperties),
@@ -61,12 +62,7 @@ async function readManifestCache(context: GitHubContext, kv: Awaited<ReturnType<
   }
 }
 
-async function writeManifestCache(
-  context: GitHubContext,
-  kv: Awaited<ReturnType<typeof getKvClient>>,
-  key: KvKey,
-  manifest: Manifest
-): Promise<void> {
+async function writeManifestCache(context: GitHubContext, kv: Awaited<ReturnType<typeof getKvClient>>, key: KvKey, manifest: Manifest): Promise<void> {
   if (!kv) return;
   try {
     await kv.set(key, manifest, { expireIn: MANIFEST_CACHE_TTL_MS });
@@ -149,7 +145,7 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
   }
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const timeout = setTimeout(() => controller.abort(), MANIFEST_FETCH_TIMEOUT_MS);
     try {
       const { data } = await context.octokit.rest.repos.getContent({
         owner,
@@ -158,20 +154,32 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
         ref,
         request: { signal: controller.signal },
       });
-      if ("content" in data) {
-        const content = Buffer.from(data.content, "base64").toString();
-        const contentParsed = JSON.parse(content);
-        const manifest = decodeManifest(context, contentParsed);
-        if (useCache) {
-          await writeManifestCache(context, kv, buildManifestCacheKeyForAction(owner, repo, ref), manifest);
-        }
-        return manifest;
+      if (!data || Array.isArray(data) || typeof data !== "object") {
+        context.logger.warn({ owner, repo, ref }, "Manifest payload missing for Action");
+        return null;
       }
+      if (!("content" in data) || typeof data.content !== "string") {
+        context.logger.warn({ owner, repo, ref }, "Manifest content missing for Action");
+        return null;
+      }
+      const content = Buffer.from(data.content, "base64").toString();
+      const contentParsed = JSON.parse(content);
+      const manifest = decodeManifest(context, contentParsed);
+      if (useCache) {
+        await writeManifestCache(context, kv, buildManifestCacheKeyForAction(owner, repo, ref), manifest);
+      }
+      return manifest;
     } finally {
       clearTimeout(timeout);
     }
   } catch (e) {
-    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
+    if (isAbortError(e)) {
+      const message = e instanceof Error ? e.message : String(e);
+      context.logger.warn({ owner, repo, timeoutMs: MANIFEST_FETCH_TIMEOUT_MS, error: message }, "Manifest fetch timed out for Action");
+    } else {
+      const message = e instanceof Error ? e.message : String(e);
+      context.logger.error({ owner, repo, error: message }, "Could not find a manifest for Action");
+    }
   }
   return null;
 }
@@ -186,7 +194,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
   const manifestUrl = `${url}/manifest.json`;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const timeout = setTimeout(() => controller.abort(), MANIFEST_FETCH_TIMEOUT_MS);
     try {
       const result = await fetch(manifestUrl, { signal: controller.signal });
       if (!result.ok) {
@@ -212,7 +220,11 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       clearTimeout(timeout);
     }
   } catch (e) {
-    context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
+    if (isAbortError(e)) {
+      context.logger.warn({ manifestUrl, timeoutMs: MANIFEST_FETCH_TIMEOUT_MS, err: e }, "Manifest fetch timed out for Worker");
+    } else {
+      context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
+    }
   }
   return null;
 }
@@ -227,6 +239,12 @@ function decodeManifest(context: GitHubContext, manifest: unknown) {
     throw new Error("Manifest is invalid.");
   }
   return manifestWithDefaults as Manifest;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; code?: number; message?: string };
+  return err.name === "AbortError" || err.code === 20 || err.message === "The signal has been aborted";
 }
 
 export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
