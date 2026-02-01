@@ -1,4 +1,4 @@
-import { TransformDecodeCheckError, Value, ValueError } from "@sinclair/typebox/value";
+import { Value, ValueError } from "@sinclair/typebox/value";
 import YAML from "js-yaml";
 import { YAMLError } from "yaml";
 import { Buffer } from "node:buffer";
@@ -271,6 +271,14 @@ function normalizePluginSettingsValue(value: PluginSettings): PluginSettings {
   return normalized as PluginSettings;
 }
 
+function unwrapTypeBoxError(error: unknown): unknown {
+  if (error && typeof error === "object" && "error" in error) {
+    const inner = (error as { error?: unknown }).error;
+    return inner ?? error;
+  }
+  return error;
+}
+
 export function decodeConfiguration(
   context: GitHubContext,
   location: ConfigLocation,
@@ -282,7 +290,7 @@ export function decodeConfiguration(
     if (errors) {
       const errorList = [...errors];
       for (const error of errorList) {
-        context.logger.error({ err: error }, "Configuration validation error");
+        context.logger.warn({ path: error.path, message: error.message }, "Configuration validation error");
       }
       return { config: null, errors: errorList };
     }
@@ -295,8 +303,10 @@ export function decodeConfiguration(
     };
     return { config: stripImports(configWithDefaults), errors: null };
   } catch (error) {
-    context.logger.error({ err: error, owner: location.owner, repository: location.repo }, "Error decoding configuration; Will ignore.");
-    return { config: null, errors: [error instanceof TransformDecodeCheckError ? error.error : error] as ValueError[] };
+    const message = error instanceof Error ? error.message : String(error);
+    context.logger.error({ owner: location.owner, repository: location.repo, error: message }, "Error decoding configuration; Will ignore.");
+    const decodedError = unwrapTypeBoxError(error);
+    return { config: null, errors: [decodedError] as ValueError[] };
   }
 }
 
@@ -542,11 +552,22 @@ async function download({
         context.logger.debug({ owner, repository, filePath }, "No configuration file found");
         continue;
       }
-      context.logger.error({ err, owner, repository, filePath }, "Failed to download the requested file");
-      return null;
+      if (isAbortError(err)) {
+        context.logger.info({ owner, repository, filePath, timeoutMs: 5000 }, "Configuration fetch timed out; skipping.");
+        continue;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      context.logger.warn({ owner, repository, filePath, error: message }, "Failed to download the requested file");
+      continue;
     }
   }
   return null;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; code?: number; message?: string };
+  return err.name === "AbortError" || err.code === 20 || err.message === "The signal has been aborted";
 }
 
 export function parseYaml(context: GitHubContext, data: null | string) {
