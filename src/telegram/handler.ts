@@ -12,7 +12,7 @@ import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier } from "../github/types/plugin-configuration.ts";
 import { PluginInput } from "../github/types/plugin.ts";
 import { callUbqAiRouter } from "../github/utils/ai-router.ts";
-import { CONFIG_ORG_REPO, getConfig } from "../github/utils/config.ts";
+import { CONFIG_ORG_REPO, getConfig, getConfigurationFromRepo } from "../github/utils/config.ts";
 import { buildConversationContext } from "../github/utils/conversation-context.ts";
 import { resolveConversationKeyForContext } from "../github/utils/conversation-graph.ts";
 import { parseAgentConfig, parseAiConfig, parseKernelConfig, type AgentConfig, type AiConfig, type KernelConfig } from "../github/utils/env-config.ts";
@@ -25,6 +25,20 @@ import { getErrorReply } from "../github/utils/router-error-messages.ts";
 import { updateRequestCommentRunUrl } from "../github/utils/request-comment-run-url.ts";
 import { dispatchWorker, dispatchWorkflowWithRunUrl, getDefaultBranch } from "../github/utils/workflow-dispatch.ts";
 import { logger as baseLogger } from "../logger/logger.ts";
+import { parseTelegramChannelConfig } from "./channel-config.ts";
+import {
+  clearTelegramLinkPending,
+  getOrCreateTelegramLinkCode,
+  getTelegramLinkIssue,
+  getTelegramLinkPending,
+  getTelegramLinkedIdentity,
+  saveTelegramLinkPending,
+  type TelegramLinkedIdentity,
+} from "./identity-store.ts";
+import { initiateTelegramLinkIssue } from "./link.ts";
+import { configSchema } from "../github/types/plugin-configuration.ts";
+import type { PluginConfiguration } from "../github/types/plugin-configuration.ts";
+import { Value } from "@sinclair/typebox/value";
 
 type TelegramUser = {
   id: number;
@@ -48,10 +62,18 @@ type TelegramMessage = {
   chat: TelegramChat;
 };
 
+type TelegramCallbackQuery = {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  data?: string;
+};
+
 type TelegramUpdate = {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 };
 
 type TelegramRoutingConfig = {
@@ -61,12 +83,9 @@ type TelegramRoutingConfig = {
   installationId?: number;
 };
 
-type TelegramMode = "github" | "shim";
-
-type TelegramIngressConfig = TelegramRoutingConfig & {
+type TelegramSecretsConfig = {
   botToken: string;
   webhookSecret?: string;
-  mode: TelegramMode;
 };
 
 type TelegramContextKind = "issue" | "repo" | "org";
@@ -86,15 +105,44 @@ type PluginWithManifest = {
   manifest: Manifest;
 };
 
+type PluginCommandSummary = {
+  total: number;
+  withCommands: number;
+  missingManifest: number;
+  noCommands: number;
+  invalid: number;
+  skippedBotEvents: number;
+};
+
+function mergePluginConfigurations(base: PluginConfiguration, override: PluginConfiguration): PluginConfiguration {
+  const mergedPlugins = {
+    ...(base.plugins ?? {}),
+    ...(override.plugins ?? {}),
+  };
+  return {
+    ...base,
+    ...override,
+    plugins: mergedPlugins,
+  };
+}
+
+type TelegramInlineKeyboardButton = {
+  text: string;
+  callback_data?: string;
+  url?: string;
+};
+
+type TelegramReplyMarkup = {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+};
+
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_SESSION_TITLE_MAX_CHARS = 120;
 const TELEGRAM_SESSION_BODY_MAX_CHARS = 8000;
-const TELEGRAM_SHIM_GITHUB_LOGIN = "0x4007";
-const TELEGRAM_SHIM_ORG = "0x4007-ubiquity-os";
 const TELEGRAM_ALLOWED_AUTHOR_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR", "NONE"];
 // TODO: Swap this shim registry for org plugin-derived commands once GitHub wiring lands.
 const TELEGRAM_SHIM_COMMANDS = [
-  { name: "s", description: "Connect your account (stubbed).", example: "/s" },
+  { name: "status", description: "Check account link status.", example: "/status" },
   { name: "ping", description: "Check if the bot is alive.", example: "/ping" },
   {
     name: "context",
@@ -111,23 +159,23 @@ const TELEGRAM_SHIM_COMMANDS = [
 const TELEGRAM_COMMAND_SYNC_MIN_INTERVAL_MS = 60_000;
 const telegramCommandSyncState: { lastSignature?: string; lastSyncAt?: number } = {};
 const TELEGRAM_CONTEXT_PREFIX: KvKey = ["ubiquityos", "telegram", "context"];
-let telegramKvWarningIssued = false;
+let hasTelegramKvWarningIssued = false;
 
 type Logger = typeof baseLogger;
 
 export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Response> {
   const logger = ctx.var.logger ?? baseLogger;
-  const configResult = parseTelegramConfig(env);
-  if (!configResult.ok) {
-    return ctx.json({ error: configResult.error }, configResult.status);
+  const secretsResult = parseTelegramSecretsConfig(env);
+  if (!secretsResult.ok) {
+    return ctx.json({ error: secretsResult.error }, secretsResult.status);
   }
-  const config = configResult.config;
-  const botToken = config.botToken;
-  logger.info({ mode: config.mode }, "Telegram ingress request");
+  const secrets = secretsResult.config;
+  const botToken = secrets.botToken;
 
-  if (config.webhookSecret) {
+  if (secrets.webhookSecret) {
     const provided = ctx.req.header("x-telegram-bot-api-secret-token") ?? "";
-    if (provided !== config.webhookSecret) {
+    if (provided !== secrets.webhookSecret) {
+      logger.warn({ hasHeader: Boolean(provided) }, "Telegram webhook rejected (secret token mismatch).");
       return ctx.json({ error: "Unauthorized." }, 401);
     }
   }
@@ -138,6 +186,16 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   } catch (error) {
     logger.warn({ err: error }, "Failed to parse Telegram update payload");
     return ctx.json({ error: "Invalid JSON payload." }, 400);
+  }
+
+  const callbackQuery = getTelegramCallbackQuery(update);
+  if (callbackQuery) {
+    await handleTelegramCallbackQuery({
+      callbackQuery,
+      botToken,
+      logger,
+    });
+    return ctx.json({ ok: true }, 200);
   }
 
   const message = getTelegramMessage(update);
@@ -152,22 +210,295 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
 
   const classificationText = getClassificationText(rawText, message.chat);
   const stimulus = classifyTextIngress(classificationText);
+  logger.debug(
+    { event: "telegram-stimulus", command: stimulus.slashInvocation?.name },
+    `Telegram stimulus: reaction=${stimulus.reaction} reflex=${stimulus.reflex ?? "none"}`
+  );
   if (stimulus.reaction === "ignore") {
     return ctx.json({ ok: true }, 200);
   }
 
   const invocation = stimulus.reflex === "slash" ? stimulus.slashInvocation : null;
-  if (invocation?.name?.toLowerCase() === "context") {
+  const commandName = invocation?.name?.toLowerCase();
+  const telegramUserId = message.from?.id;
+  if (typeof telegramUserId !== "number") {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: "I couldn't identify your Telegram account. Please try again from a user message.",
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+
+  const identityResult = await getTelegramLinkedIdentity({ userId: telegramUserId, logger });
+  if (!identityResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: identityResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+  if (commandName === "status") {
+    const isHandled = await handleTelegramStatusCommand({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      userId: telegramUserId,
+      identity: identityResult.identity,
+      isPrivate: message.chat.type === "private",
+      logger,
+    });
+    if (isHandled) {
+      return ctx.text("", 200);
+    }
+  }
+
+  if (!identityResult.identity) {
+    if (message.chat.type && message.chat.type !== "private") {
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: "Linking is only available in a direct message. Please DM me to link your account.",
+        logger,
+      });
+      return ctx.text("", 200);
+    }
+
+    const pendingResult = await getTelegramLinkPending({ userId: telegramUserId, logger });
+    if (!pendingResult.ok) {
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: pendingResult.error,
+        logger,
+      });
+      return ctx.text("", 200);
+    }
+
+    let pending = pendingResult.pending;
+    if (pending && pending.expiresAtMs <= Date.now()) {
+      await clearTelegramLinkPending({ userId: telegramUserId, logger });
+      pending = null;
+    }
+
+    if (pending?.step === "awaiting_owner") {
+      const ownerInput = parseGithubOwnerFromText(rawText);
+      if (!ownerInput) {
+        await safeSendTelegramMessage({
+          botToken,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+          text: "Send just your GitHub owner (username or org), or paste a GitHub URL.",
+          logger,
+        });
+        return ctx.text("", 200);
+      }
+
+      const issueResult = await initiateTelegramLinkIssue({
+        env,
+        code: pending.code,
+        owner: ownerInput,
+        logger,
+        requestUrl: ctx.req.url,
+      });
+      if (!issueResult.ok) {
+        const normalizedError = issueResult.error.toLowerCase();
+        if (normalizedError.includes("expired") || normalizedError.includes("link code already claimed")) {
+          await clearTelegramLinkPending({ userId: telegramUserId, logger });
+        }
+        const lines = formatTelegramLinkError(issueResult.error, ownerInput);
+        await safeSendTelegramMessage({
+          botToken,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+          text: lines.join("\n"),
+          logger,
+        });
+        return ctx.text("", 200);
+      }
+
+      const pendingSave = await saveTelegramLinkPending({
+        userId: telegramUserId,
+        code: pending.code,
+        step: "awaiting_close",
+        expiresAtMs: pending.expiresAtMs,
+        owner: ownerInput,
+        logger,
+      });
+      if (!pendingSave.ok) {
+        await safeSendTelegramMessage({
+          botToken,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+          text: pendingSave.error,
+          logger,
+        });
+        return ctx.text("", 200);
+      }
+
+      const createdLines = [
+        `Link issue created for ${ownerInput}/.ubiquity-os.`,
+        `Issue: ${issueResult.issueUrl}`,
+        "",
+        "Close the issue to approve.",
+        "I'll DM you once it's linked.",
+      ];
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: createdLines.join("\n"),
+        replyMarkup: buildTelegramIssueKeyboard(issueResult.issueUrl),
+        logger,
+      });
+      return ctx.text("", 200);
+    }
+
+    if (pending?.step === "awaiting_close" || pending?.step === "awaiting_reaction") {
+      let issueUrl = "";
+      const issueResult = await getTelegramLinkIssue({ code: pending.code, logger });
+      if (issueResult.ok && issueResult.issue?.issueUrl) {
+        issueUrl = issueResult.issue.issueUrl;
+      }
+      const waitingLines = [
+        "Waiting for you to close the link issue.",
+        issueUrl ? `Issue: ${issueUrl}` : "",
+        "Close the issue and I'll DM you once linked.",
+      ].filter(Boolean);
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: waitingLines.join("\n"),
+        ...(issueUrl ? { replyMarkup: buildTelegramIssueKeyboard(issueUrl) } : {}),
+        logger,
+      });
+      return ctx.text("", 200);
+    }
+
+    const introLines = [
+      "This Telegram account isn't linked to a GitHub identity yet.",
+      "",
+      "Steps:",
+      "1) Create a repository named `.ubiquity-os` under the owner you want to link.",
+      "2) Install the UbiquityOS GitHub App on that repo (org-wide is best).",
+      "3) Approve linking by closing the link issue.",
+      "",
+      "Config path: <owner>/.ubiquity-os/.github/.ubiquity-os.config.yml",
+      "",
+      "Tap Start linking to continue here in Telegram.",
+    ];
+
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: introLines.join("\n"),
+      replyMarkup: buildTelegramLinkingKeyboard(),
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+
+  const githubConfigResult = parseGitHubAppConfig(env);
+  if (!githubConfigResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: githubConfigResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+  const aiConfigResult = parseAiConfig(env.UOS_AI);
+  if (!aiConfigResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: aiConfigResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+  const agentConfigResult = parseAgentConfig(env.UOS_AGENT);
+  if (!agentConfigResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: agentConfigResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+  const kernelConfigResult = parseKernelConfig(env.UOS_KERNEL);
+  if (!kernelConfigResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: kernelConfigResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+
+  const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
+  const kernelConfigLoad = await loadKernelConfigForOwner({
+    owner: identityResult.identity.owner,
+    env,
+    logger,
+    githubConfig: githubConfigResult.config,
+    aiConfig: aiConfigResult.config,
+    agentConfig: agentConfigResult.config,
+    kernelConfig: kernelConfigResult.config,
+    kernelRefreshUrl,
+  });
+  if (!kernelConfigLoad.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: kernelConfigLoad.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+
+  const channelConfigResult = parseTelegramChannelConfig(kernelConfigLoad.config, identityResult.identity.owner);
+  if (!channelConfigResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId: message.chat.id,
+      replyToMessageId: message.message_id,
+      text: channelConfigResult.error,
+      logger,
+    });
+    return ctx.text("", 200);
+  }
+  const channelConfig = channelConfigResult.config;
+  logger.info({ mode: channelConfig.mode, owner: channelConfig.owner, repo: channelConfig.repo }, "Telegram ingress request");
+
+  if (commandName === "context") {
     const isHandled = await handleTelegramContextCommand({
       botToken,
       chatId: message.chat.id,
       replyToMessageId: message.message_id,
       rawArgs: invocation.rawArgs,
-      allowOverride: config.mode === "shim",
+      allowOverride: channelConfig.mode === "shim",
       logger,
     });
     if (isHandled) {
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
   }
   if (invocation) {
@@ -179,12 +510,12 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       logger,
     });
     if (isHandled) {
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
   }
 
-  let routingOverride = config.mode === "shim" ? await loadTelegramRoutingOverride({ botToken, chatId: message.chat.id, logger }) : null;
-  if (config.mode === "shim" && !routingOverride) {
+  let routingOverride = channelConfig.mode === "shim" ? await loadTelegramRoutingOverride({ botToken, chatId: message.chat.id, logger }) : null;
+  if (channelConfig.mode === "shim" && !routingOverride) {
     void maybeSyncTelegramCommands({
       botToken,
       commands: TELEGRAM_SHIM_COMMANDS,
@@ -192,14 +523,20 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     });
     if (invocation?.name.toLowerCase() === "help") {
       const help = formatHelpForTelegram(TELEGRAM_SHIM_COMMANDS);
-      await safeSendTelegramMessage({
+      const envLabel = env.ENVIRONMENT?.trim() || "development";
+      const configNotice = kernelConfigLoad.hasConfig ? null : `No config found for ${identityResult.identity.owner} (env: ${envLabel}).`;
+      const helpText = [configNotice, "Context: not set. Use /context <github-issue-or-repo-url> to load repo commands.", help].filter(Boolean).join("\n\n");
+      const helpMessageId = await safeSendTelegramMessageWithFallback({
         botToken,
         chatId: message.chat.id,
         replyToMessageId: message.message_id,
-        text: help,
+        text: helpText,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      if (!helpMessageId) {
+        logger.warn({ command: "help", chatId: message.chat.id }, "Failed to send Telegram help response.");
+      }
+      return ctx.text("", 200);
     }
     if (invocation) {
       await safeSendTelegramMessage({
@@ -210,7 +547,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         logger,
       });
     }
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   void safeSendTelegramChatAction({
@@ -220,53 +557,8 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     logger,
   });
 
-  const githubConfigResult = parseGitHubAppConfig(env);
-  if (!githubConfigResult.ok) {
-    await safeSendTelegramMessage({
-      botToken,
-      chatId: message.chat.id,
-      replyToMessageId: message.message_id,
-      text: githubConfigResult.error,
-      logger,
-    });
-    return ctx.json({ ok: true }, 200);
-  }
-  const aiConfigResult = parseAiConfig(env.UOS_AI);
-  if (!aiConfigResult.ok) {
-    await safeSendTelegramMessage({
-      botToken,
-      chatId: message.chat.id,
-      replyToMessageId: message.message_id,
-      text: aiConfigResult.error,
-      logger,
-    });
-    return ctx.json({ ok: true }, 200);
-  }
-  const agentConfigResult = parseAgentConfig(env.UOS_AGENT);
-  if (!agentConfigResult.ok) {
-    await safeSendTelegramMessage({
-      botToken,
-      chatId: message.chat.id,
-      replyToMessageId: message.message_id,
-      text: agentConfigResult.error,
-      logger,
-    });
-    return ctx.json({ ok: true }, 200);
-  }
-  const kernelConfigResult = parseKernelConfig(env.UOS_KERNEL);
-  if (!kernelConfigResult.ok) {
-    await safeSendTelegramMessage({
-      botToken,
-      chatId: message.chat.id,
-      replyToMessageId: message.message_id,
-      text: kernelConfigResult.error,
-      logger,
-    });
-    return ctx.json({ ok: true }, 200);
-  }
-
   const routing: TelegramRoutingConfig =
-    config.mode === "shim"
+    channelConfig.mode === "shim"
       ? {
           owner: routingOverride?.owner,
           repo: routingOverride?.repo,
@@ -274,13 +566,12 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           installationId: routingOverride?.installationId,
         }
       : {
-          owner: config.owner,
-          repo: config.repo,
-          issueNumber: config.issueNumber,
-          installationId: config.installationId,
+          owner: channelConfig.owner,
+          repo: channelConfig.repo,
+          issueNumber: channelConfig.issueNumber,
+          installationId: channelConfig.installationId,
         };
 
-  const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
   const contextResult = await createGitHubContext({
     env,
     logger,
@@ -293,6 +584,9 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     aiConfig: aiConfigResult.config,
     agentConfig: agentConfigResult.config,
     kernelConfig: kernelConfigResult.config,
+    kernelConfigOverride: undefined,
+    fallbackOwner: identityResult.identity.owner,
+    eventHandlerOverride: kernelConfigLoad.eventHandler,
   });
 
   if (!contextResult.ok) {
@@ -307,7 +601,8 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     return ctx.json({ ok: true }, 200);
   }
 
-  let { context, pluginsWithManifest, manifests, hasIssueContext } = contextResult;
+  let { context, hasIssueContext } = contextResult;
+  const { pluginsWithManifest, manifests, pluginSummary, didUseFallbackConfig, fallbackOwner, hasTargetConfig } = contextResult;
   const commands = describeCommands(manifests);
   const helpCommands = getTelegramHelpCommands(commands);
   void maybeSyncTelegramCommands({
@@ -328,20 +623,54 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     }
 
     if (invocation.name.toLowerCase() === "help") {
+      const headerLines: string[] = [];
+      const target = routingOverride ? describeTelegramContextLabel(routingOverride) : formatRoutingLabel(routing);
+      const envLabel = env.ENVIRONMENT?.trim() || "development";
+      if (target) {
+        headerLines.push(`Context: ${target}.`);
+      }
+      if (target && !hasTargetConfig) {
+        if (didUseFallbackConfig && fallbackOwner) {
+          headerLines.push(`No config found for ${target} (env: ${envLabel}). Using ${fallbackOwner} defaults.`);
+        } else {
+          headerLines.push(`No config found for ${target} (env: ${envLabel}).`);
+        }
+      }
+      if (!commands.length) {
+        if (pluginSummary.total > 0) {
+          const summaryParts = ["No slash commands found.", `Plugins enabled: ${pluginSummary.total}`];
+          if (pluginSummary.missingManifest > 0) {
+            summaryParts.push(`missing manifests: ${pluginSummary.missingManifest}`);
+          }
+          if (pluginSummary.noCommands > 0) {
+            summaryParts.push(`no-command plugins: ${pluginSummary.noCommands}`);
+          }
+          if (pluginSummary.invalid > 0) {
+            summaryParts.push(`invalid plugins: ${pluginSummary.invalid}`);
+          }
+          headerLines.push(summaryParts.join(" "));
+        } else {
+          headerLines.push(target ? `No plugin commands found for ${target}.` : "No plugin commands found.");
+        }
+      }
       const help = formatHelpForTelegram(helpCommands);
-      await safeSendTelegramMessage({
+      const helpText = headerLines.length ? `${headerLines.join("\n")}\n\n${help}` : help;
+      const helpMessageId = await safeSendTelegramMessageWithFallback({
         botToken,
         chatId: message.chat.id,
         replyToMessageId: message.message_id,
-        text: help,
+        text: helpText,
         logger,
       });
+      if (!helpMessageId) {
+        logger.warn({ command: "help", chatId: message.chat.id }, "Failed to send Telegram help response.");
+      }
       return ctx.json({ ok: true }, 200);
     }
 
     const isConversationGraphCommand = ["conversation_graph", "conversation-graph"].includes(invocation.name.toLowerCase());
     if (isConversationGraphCommand) {
-      if (config.mode === "shim" && !hasIssueContext) {
+      if (channelConfig.mode === "shim" && !hasIssueContext) {
         const target = routingOverride ? describeTelegramContextLabel(routingOverride) : formatRoutingLabel(routing);
         const prefix = target ? `Context is set to ${target}. ` : "";
         await safeSendTelegramMessage({
@@ -402,7 +731,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       return ctx.json({ ok: true }, 200);
     }
 
-    if (config.mode === "shim" && !hasIssueContext) {
+    if (channelConfig.mode === "shim" && !hasIssueContext) {
       const ensured = await ensureTelegramIssueContext({
         context,
         routing,
@@ -465,7 +794,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   }
 
   if (stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent") {
-    if (config.mode === "shim" && !hasIssueContext) {
+    if (channelConfig.mode === "shim" && !hasIssueContext) {
       const ensured = await ensureTelegramIssueContext({
         context,
         routing,
@@ -592,7 +921,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       return ctx.json({ ok: true }, 200);
     }
 
-    if (config.mode === "shim" && !hasIssueContext) {
+    if (channelConfig.mode === "shim" && !hasIssueContext) {
       const ensured = await ensureTelegramIssueContext({
         context,
         routing,
@@ -654,7 +983,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   }
 
   if (decision.action === "agent") {
-    if (config.mode === "shim" && !hasIssueContext) {
+    if (channelConfig.mode === "shim" && !hasIssueContext) {
       const ensured = await ensureTelegramIssueContext({
         context,
         routing,
@@ -693,6 +1022,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       routingOverride = ensured.routingOverride;
     }
     const task = String(decision.task ?? "").trim() || rawText.trim();
+    logger.info({ event: "telegram-agent", issueNumber: context.payload.issue.number }, "Dispatching Telegram agent run");
     await safeSendTelegramMessage({
       botToken,
       chatId: message.chat.id,
@@ -717,6 +1047,214 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   }
 
   return ctx.json({ ok: true }, 200);
+}
+
+function buildTelegramLinkingKeyboard(): TelegramReplyMarkup {
+  return {
+    inline_keyboard: [[{ text: "Start linking", callback_data: "link:start" }]],
+  };
+}
+
+function buildTelegramIssueKeyboard(issueUrl: string): TelegramReplyMarkup {
+  return {
+    inline_keyboard: [[{ text: "Open link issue", url: issueUrl }]],
+  };
+}
+
+function formatTelegramLinkError(message: string, owner?: string): string[] {
+  const trimmed = message.trim();
+  if (!trimmed) return ["Linking failed. Try again."];
+  const normalized = trimmed.toLowerCase();
+  let hint = "";
+  if (normalized.includes("issues has been disabled")) {
+    hint = owner ? `Enable Issues in ${owner}/.ubiquity-os and try again.` : "Enable Issues in the .ubiquity-os repo.";
+  } else if (normalized.includes("no github app installation")) {
+    hint = owner ? `Install the UbiquityOS GitHub App on ${owner}.` : "Install the UbiquityOS GitHub App.";
+  } else if (normalized.includes("resource not accessible by integration")) {
+    hint = "Install the GitHub App on the .ubiquity-os repo.";
+  } else if (normalized.includes("invalid or expired link code")) {
+    hint = "Send a new message to restart linking.";
+  } else if (normalized.includes("link code already claimed")) {
+    hint = "Send a new message to restart linking.";
+  }
+  return hint ? [trimmed, hint] : [trimmed];
+}
+
+function parseGithubOwnerFromText(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  let urlCandidate: string | null = null;
+  if (withoutAt.startsWith("http://") || withoutAt.startsWith("https://")) {
+    urlCandidate = withoutAt;
+  } else if (withoutAt.includes("github.com/")) {
+    urlCandidate = `https://${withoutAt}`;
+  }
+  if (urlCandidate) {
+    try {
+      const url = new URL(urlCandidate);
+      if (url.hostname.toLowerCase().endsWith("github.com")) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+          return normalizeLogin(parts[0]);
+        }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  if (/\s/.test(withoutAt)) {
+    return null;
+  }
+
+  const ownerPart = withoutAt.split("/")[0] ?? "";
+  const normalized = normalizeLogin(ownerPart);
+  return normalized || null;
+}
+
+async function safeAnswerTelegramCallbackQuery(params: { botToken: string; callbackQueryId: string; text?: string; logger: Logger }): Promise<void> {
+  const { botToken, callbackQueryId, text, logger } = params;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        callback_query_id: callbackQueryId,
+        ...(text ? { text } : {}),
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      logger.warn({ status: response.status, detail }, "Failed to answer Telegram callback query");
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to answer Telegram callback query");
+  }
+}
+
+async function handleTelegramCallbackQuery(params: { callbackQuery: TelegramCallbackQuery; botToken: string; logger: Logger }): Promise<void> {
+  const { callbackQuery, botToken, logger } = params;
+  const data = (callbackQuery.data ?? "").trim();
+  if (!data) {
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  if (data !== "link:start") {
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  const userId = callbackQuery.from?.id;
+  const chatId = callbackQuery.message?.chat?.id;
+  if (typeof userId !== "number" || typeof chatId !== "number") {
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  const identityResult = await getTelegramLinkedIdentity({ userId, logger });
+  if (!identityResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId,
+      replyToMessageId: callbackQuery.message?.message_id,
+      text: identityResult.error,
+      logger,
+    });
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+  if (identityResult.identity?.owner) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId,
+      replyToMessageId: callbackQuery.message?.message_id,
+      text: `Already linked to ${identityResult.identity.owner}.`,
+      logger,
+    });
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  const linkCodeResult = await getOrCreateTelegramLinkCode({ userId, logger });
+  if (!linkCodeResult.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId,
+      replyToMessageId: callbackQuery.message?.message_id,
+      text: linkCodeResult.error,
+      logger,
+    });
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  const pendingSave = await saveTelegramLinkPending({
+    userId,
+    code: linkCodeResult.code,
+    step: "awaiting_owner",
+    expiresAtMs: linkCodeResult.expiresAtMs,
+    logger,
+  });
+  if (!pendingSave.ok) {
+    await safeSendTelegramMessage({
+      botToken,
+      chatId,
+      replyToMessageId: callbackQuery.message?.message_id,
+      text: pendingSave.error,
+      logger,
+    });
+    await safeAnswerTelegramCallbackQuery({
+      botToken,
+      callbackQueryId: callbackQuery.id,
+      logger,
+    });
+    return;
+  }
+
+  await safeSendTelegramMessage({
+    botToken,
+    chatId,
+    replyToMessageId: callbackQuery.message?.message_id,
+    text: "Send the GitHub owner (username or org) you want to link. Example: ubiquity-os",
+    logger,
+  });
+
+  await safeAnswerTelegramCallbackQuery({
+    botToken,
+    callbackQueryId: callbackQuery.id,
+    text: "Send the GitHub owner name.",
+    logger,
+  });
+}
+
+function getTelegramCallbackQuery(update: TelegramUpdate): TelegramCallbackQuery | null {
+  return update.callback_query ?? null;
 }
 
 function getTelegramMessage(update: TelegramUpdate): TelegramMessage | null {
@@ -770,7 +1308,7 @@ function normalizePositiveInt(value?: number): number | null {
   return normalized > 0 ? normalized : null;
 }
 
-function parseTelegramConfig(env: Env): { ok: true; config: TelegramIngressConfig } | { ok: false; status: number; error: string } {
+function parseTelegramSecretsConfig(env: Env): { ok: true; config: TelegramSecretsConfig } | { ok: false; status: number; error: string } {
   const raw = normalizeOptionalEnvValue(env.UOS_TELEGRAM);
   if (!raw) {
     return { ok: false, status: 404, error: "Telegram ingress disabled." };
@@ -789,29 +1327,12 @@ function parseTelegramConfig(env: Env): { ok: true; config: TelegramIngressConfi
   if (!botToken) {
     return { ok: false, status: 500, error: "UOS_TELEGRAM.botToken is required." };
   }
-  const modeRaw = normalizeOptionalString(record.mode);
-  const mode = (modeRaw ? modeRaw.toLowerCase() : "github") as TelegramMode;
-  if (mode !== "github" && mode !== "shim") {
-    return { ok: false, status: 500, error: "UOS_TELEGRAM.mode must be 'github' or 'shim'." };
-  }
-  const owner = normalizeOptionalString(record.owner) ?? (mode === "github" ? "ubiquity-os-marketplace" : undefined);
-  const repo = normalizeOptionalString(record.repo) ?? (mode === "github" ? "ubiquity-os-marketplace" : undefined);
-  const issueNumber = parseOptionalPositiveInt(record.issueNumber);
-  if (mode === "github" && !issueNumber) {
-    return { ok: false, status: 500, error: "UOS_TELEGRAM.issueNumber is required." };
-  }
   const webhookSecret = normalizeOptionalString(record.webhookSecret);
-  const installationId = parseOptionalPositiveInt(record.installationId);
   return {
     ok: true,
     config: {
       botToken,
       webhookSecret,
-      mode,
-      owner,
-      repo,
-      issueNumber,
-      installationId,
     },
   };
 }
@@ -896,19 +1417,22 @@ async function safeSendTelegramMessage(params: {
   parseMode?: "HTML" | "MarkdownV2";
   disablePreview?: boolean;
   disableNotification?: boolean;
-  truncate?: boolean;
+  shouldTruncate?: boolean;
+  replyMarkup?: TelegramReplyMarkup;
   logger: Logger;
 }): Promise<number | null> {
-  const { botToken, chatId, replyToMessageId, parseMode, disablePreview, disableNotification, truncate, logger } = params;
+  const { botToken, chatId, replyToMessageId, parseMode, disablePreview, disableNotification, shouldTruncate, replyMarkup, logger } = params;
   const normalized = params.text.trim();
   if (!normalized) return null;
+  const shouldTruncateMessage = shouldTruncate !== false;
   const body = {
     chat_id: chatId,
-    text: truncate === false ? normalized : truncateTelegramMessage(normalized),
+    text: shouldTruncateMessage ? truncateTelegramMessage(normalized) : normalized,
     ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
     ...(parseMode ? { parse_mode: parseMode } : {}),
     ...(disablePreview ? { disable_web_page_preview: true } : {}),
     ...(disableNotification ? { disable_notification: true } : {}),
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   };
 
   try {
@@ -928,6 +1452,14 @@ async function safeSendTelegramMessage(params: {
     logger.warn({ err: error }, "Failed to send Telegram reply");
     return null;
   }
+}
+
+async function safeSendTelegramMessageWithFallback(params: Parameters<typeof safeSendTelegramMessage>[0]): Promise<number | null> {
+  const first = await safeSendTelegramMessage(params);
+  if (first !== null || !params.replyToMessageId) {
+    return first;
+  }
+  return safeSendTelegramMessage({ ...params, replyToMessageId: undefined });
 }
 
 async function safeSendTelegramChatAction(params: {
@@ -1032,11 +1564,7 @@ function buildConversationGraphPlan(params: {
   return { headerLines, nodes };
 }
 
-function applyConversationGraphLimits(
-  nodes: ParsedConversationNode[],
-  maxNodes?: number,
-  maxComments?: number
-): ParsedConversationNode[] {
+function applyConversationGraphLimits(nodes: ParsedConversationNode[], maxNodes?: number, maxComments?: number): ParsedConversationNode[] {
   const normalizedNodes = normalizePositiveInt(maxNodes);
   const normalizedComments = normalizePositiveInt(maxComments);
   const limitedNodes = normalizedNodes ? nodes.slice(0, normalizedNodes) : nodes;
@@ -1078,9 +1606,9 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
   let currentNode: ParsedConversationNode | null = null;
   let currentComment: ParsedConversationComment | null = null;
   let section: string | undefined;
-  let inComments = false;
+  let isInComments = false;
 
-  const flushComment = () => {
+  function flushComment(): void {
     if (!currentComment || !currentNode) {
       currentComment = null;
       return;
@@ -1091,9 +1619,9 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
       currentNode.comments.push(currentComment);
     }
     currentComment = null;
-  };
+  }
 
-  const flushNode = () => {
+  function flushNode(): void {
     if (!currentNode) return;
     flushComment();
     if (currentNode.comments.length > 1) {
@@ -1101,8 +1629,8 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
     }
     nodes.push(currentNode);
     currentNode = null;
-    inComments = false;
-  };
+    isInComments = false;
+  }
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -1124,7 +1652,7 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
     }
 
     if (trimmed === "Comments:") {
-      inComments = true;
+      isInComments = true;
       flushComment();
       continue;
     }
@@ -1138,7 +1666,7 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
         comments: [],
         section,
       };
-      inComments = false;
+      isInComments = false;
       continue;
     }
 
@@ -1146,7 +1674,7 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
       continue;
     }
 
-    if (inComments) {
+    if (isInComments) {
       const commentMeta = parseCommentHeader(trimmed);
       if (commentMeta) {
         flushComment();
@@ -1159,11 +1687,9 @@ function parseConversationGraphNodes(conversationContext: string, filters: Conve
       }
 
       const url = parseLeadingUrl(trimmed);
-      if (url && !url.rest) {
-        if (currentComment && !currentComment.url) {
-          currentComment.url = url.url;
-          continue;
-        }
+      if (url && !url.rest && currentComment && !currentComment.url) {
+        currentComment.url = url.url;
+        continue;
       }
 
       if (currentComment) {
@@ -1238,18 +1764,18 @@ function formatConversationHeaderLink(text: string, url?: string): string {
 function formatConversationGraphLinesFromRaw(rawLines: string[]): string[] {
   const lines: string[] = [];
   let pendingBullet: { index: number; label: string; text: string } | null = null;
-  let inCodeBlock = false;
+  let isInCodeBlock = false;
   let codeFence = "```";
   let codeBuffer: string[] = [];
 
-  const emitLine = (rawLine: string) => {
+  function emitLine(rawLine: string): void {
     const trimmedRaw = rawLine.trimEnd();
     const trimmed = trimmedRaw.trim();
-    if (inCodeBlock) {
+    if (isInCodeBlock) {
       if (trimmed.startsWith(codeFence)) {
         const codeText = codeBuffer.join("\n");
         lines.push(`<pre><code>${escapeTelegramHtml(codeText)}</code></pre>`);
-        inCodeBlock = false;
+        isInCodeBlock = false;
         codeBuffer = [];
         return;
       }
@@ -1257,7 +1783,7 @@ function formatConversationGraphLinesFromRaw(rawLines: string[]): string[] {
       return;
     }
     if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      inCodeBlock = true;
+      isInCodeBlock = true;
       codeFence = trimmed.slice(0, 3);
       codeBuffer = [];
       return;
@@ -1300,12 +1826,12 @@ function formatConversationGraphLinesFromRaw(rawLines: string[]): string[] {
     const formatted = formatConversationBodyLine(trimmedRaw);
     if (!formatted) return;
     lines.push(formatted);
-  };
+  }
 
   for (const raw of rawLines) {
     emitLine(raw);
   }
-  if (inCodeBlock && codeBuffer.length > 0) {
+  if (isInCodeBlock && codeBuffer.length > 0) {
     const codeText = codeBuffer.join("\n");
     lines.push(`<pre><code>${escapeTelegramHtml(codeText)}</code></pre>`);
   }
@@ -1403,8 +1929,10 @@ function formatConversationInlineSegment(raw: string): string {
   return out.join("");
 }
 
+const TELEGRAM_URL_PATTERN = "https?:\\/\\/[^\\s<>\"']+";
+
 function splitUrls(raw: string): Array<{ kind: "text" | "url"; value: string }> {
-  const regex = /https?:\/\/[^\s<>"']+/g;
+  const regex = new RegExp(TELEGRAM_URL_PATTERN, "g");
   const segments: Array<{ kind: "text" | "url"; value: string }> = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -1423,7 +1951,7 @@ function splitUrls(raw: string): Array<{ kind: "text" | "url"; value: string }> 
 }
 
 function parseLeadingUrl(line: string): { url: string; rest: string } | null {
-  const match = /^(https?:\/\/[^\s<>"']+)(?:\s+(.*))?$/.exec(line.trim());
+  const match = new RegExp(`^(${TELEGRAM_URL_PATTERN})(?:\\s+(.*))?$`).exec(line.trim());
   if (!match) return null;
   return { url: match[1], rest: (match[2] ?? "").trim() };
 }
@@ -1436,40 +1964,37 @@ function formatConversationFilterLabel(filters: ConversationGraphFilters): strin
   return `hiding ${hidden.join(", ")}`;
 }
 
+const COMMENT_LABEL = "Comment";
+const REVIEW_LABEL = "Review";
+const REVIEW_COMMENT_LABEL = "Review Comment";
+const ISSUE_COMMENT_LABEL = "Issue Comment";
+
 function parseCommentHeader(line: string): { label: string; author?: string } | null {
   const match = /^-\s*\[([^\]]+)\]\s*(.+)$/.exec(line);
   if (!match) return null;
   const label = normalizeConversationLabel(match[1]);
-  if (label !== "Comment" && label !== "Review" && label !== "Review Comment") return null;
+  if (label !== COMMENT_LABEL && label !== REVIEW_LABEL && label !== REVIEW_COMMENT_LABEL) return null;
   const meta = match[2] ?? "";
   const authorMatch = /@([^\s]+)/.exec(meta);
   const author = authorMatch?.[1];
   return { label, author };
 }
 
-function shouldSkipCommentBlock(
-  meta: { label: string; author?: string } | null,
-  blockLines: string[],
-  filters: ConversationGraphFilters
-): boolean {
-  if (!meta) return false;
-  if (!filters.includeBots && meta.author && isBotAuthor(meta.author)) return true;
-  if (!filters.includeCommands && isCommandOnlyComment(blockLines)) return true;
-  return false;
+function shouldSkipCommentBlock(meta: { label: string; author?: string } | null, blockLines: string[], filters: ConversationGraphFilters): boolean {
+  const hasMeta = Boolean(meta);
+  const shouldSkipBots = hasMeta && !filters.includeBots && Boolean(meta?.author) && isBotAuthor(meta.author);
+  const shouldSkipCommands = hasMeta && !filters.includeCommands && isCommandOnlyComment(blockLines);
+  return shouldSkipBots || shouldSkipCommands;
 }
 
 function isBotAuthor(author: string): boolean {
   const normalized = author.trim().toLowerCase();
-  if (!normalized) return false;
-  if (normalized.includes("[bot]")) return true;
-  if (normalized.endsWith("-bot") || normalized.endsWith("_bot")) return true;
-  return false;
+  return Boolean(normalized) && (normalized.includes("[bot]") || normalized.endsWith("-bot") || normalized.endsWith("_bot"));
 }
 
 function isCommandOnlyComment(blockLines: string[]): boolean {
   const bodyLines = extractCommentBodyLines(blockLines);
-  if (bodyLines.length === 0) return true;
-  return bodyLines.every((line) => /^\/[\w-]+(\s|$)/.test(line));
+  return bodyLines.length === 0 || bodyLines.every((line) => /^\/[\w-]+(\s|$)/.test(line));
 }
 
 function extractCommentBodyLines(blockLines: string[]): string[] {
@@ -1507,12 +2032,7 @@ function applyInlineStyles(escaped: string): string {
 function normalizeConversationHeading(value: string): string | null {
   const trimmed = value.replace(/:$/, "").trim();
   if (!trimmed) return null;
-  if (
-    trimmed === "Current thread" ||
-    trimmed === "Conversation links (auto-merged)" ||
-    trimmed === "Comments" ||
-    trimmed === "Similar (semantic)"
-  ) {
+  if (trimmed === "Current thread" || trimmed === "Conversation links (auto-merged)" || trimmed === "Comments" || trimmed === "Similar (semantic)") {
     return trimmed;
   }
   return null;
@@ -1520,9 +2040,9 @@ function normalizeConversationHeading(value: string): string | null {
 
 function normalizeConversationLabel(value: string): string {
   const trimmed = value.trim();
-  if (trimmed === "Issue Comment") return "Comment";
-  if (trimmed === "Review Comment") return "Review Comment";
-  if (trimmed === "Review") return "Review";
+  if (trimmed === ISSUE_COMMENT_LABEL) return COMMENT_LABEL;
+  if (trimmed === REVIEW_COMMENT_LABEL) return REVIEW_COMMENT_LABEL;
+  if (trimmed === REVIEW_LABEL) return REVIEW_LABEL;
   if (trimmed === "PullRequest") return "PR";
   return trimmed || "Item";
 }
@@ -1596,7 +2116,7 @@ async function sendTelegramMessageChunked(params: {
       parseMode: params.parseMode,
       disablePreview: params.disablePreview,
       disableNotification: params.disableNotification,
-      truncate: false,
+      shouldTruncate: false,
       logger: params.logger,
     });
     if (!firstMessageId && messageId) {
@@ -1658,12 +2178,7 @@ async function sendTelegramConversationGraph(params: {
   }
 }
 
-async function safePinTelegramMessage(params: {
-  botToken: string;
-  chatId: number;
-  messageId: number | null;
-  logger: Logger;
-}): Promise<void> {
+async function safePinTelegramMessage(params: { botToken: string; chatId: number; messageId: number | null; logger: Logger }): Promise<void> {
   if (!params.messageId) return;
   try {
     const response = await fetch(`https://api.telegram.org/bot${params.botToken}/pinChatMessage`, {
@@ -1696,6 +2211,9 @@ async function createGitHubContext(params: {
   aiConfig: AiConfig;
   agentConfig: AgentConfig;
   kernelConfig: KernelConfig;
+  kernelConfigOverride?: PluginConfiguration;
+  fallbackOwner?: string;
+  eventHandlerOverride?: GitHubEventHandler;
 }): Promise<
   | {
       ok: true;
@@ -1703,13 +2221,31 @@ async function createGitHubContext(params: {
       pluginsWithManifest: PluginWithManifest[];
       manifests: PluginWithManifest["manifest"][];
       hasIssueContext: boolean;
+      pluginSummary: PluginCommandSummary;
+      didUseFallbackConfig: boolean;
+      fallbackOwner?: string;
+      hasTargetConfig: boolean;
     }
   | {
       ok: false;
       error: string;
     }
 > {
-  const { env, logger, updateId, message, rawText, kernelRefreshUrl, routing, githubConfig, aiConfig, agentConfig, kernelConfig } = params;
+  const {
+    env,
+    logger,
+    updateId,
+    message,
+    rawText,
+    kernelRefreshUrl,
+    routing,
+    githubConfig,
+    aiConfig,
+    agentConfig,
+    kernelConfig,
+    kernelConfigOverride,
+    eventHandlerOverride,
+  } = params;
   const { owner, repo, issueNumber } = routing;
   if (!owner || !repo) {
     return { ok: false, error: "Missing Telegram routing configuration." };
@@ -1717,24 +2253,26 @@ async function createGitHubContext(params: {
   const hasIssueContext = Number.isFinite(issueNumber) && Number(issueNumber) > 0;
   const normalizedIssueNumber = hasIssueContext ? Number(issueNumber) : 1;
 
-  const eventHandler = new GitHubEventHandler({
-    environment: env.ENVIRONMENT,
-    webhookSecret: githubConfig.webhookSecret,
-    appId: githubConfig.appId,
-    privateKey: githubConfig.privateKey,
-    llm: "gpt-5.2-chat-latest",
-    aiBaseUrl: aiConfig.baseUrl,
-    aiToken: aiConfig.token,
-    kernelRefreshUrl,
-    kernelRefreshIntervalSeconds: kernelConfig.refreshIntervalSeconds,
-    agent: {
-      owner: agentConfig.owner,
-      repo: agentConfig.repo,
-      workflowId: agentConfig.workflow,
-      ref: agentConfig.ref,
-    },
-    logger,
-  });
+  const eventHandler =
+    eventHandlerOverride ??
+    new GitHubEventHandler({
+      environment: env.ENVIRONMENT,
+      webhookSecret: githubConfig.webhookSecret,
+      appId: githubConfig.appId,
+      privateKey: githubConfig.privateKey,
+      llm: "gpt-5.2-chat-latest",
+      aiBaseUrl: aiConfig.baseUrl,
+      aiToken: aiConfig.token,
+      kernelRefreshUrl,
+      kernelRefreshIntervalSeconds: kernelConfig.refreshIntervalSeconds,
+      agent: {
+        owner: agentConfig.owner,
+        repo: agentConfig.repo,
+        workflowId: agentConfig.workflow,
+        ref: agentConfig.ref,
+      },
+      logger,
+    });
 
   const installationId = await resolveInstallationId(eventHandler, owner, repo, routing.installationId, logger);
   if (!installationId) {
@@ -1751,7 +2289,6 @@ async function createGitHubContext(params: {
     labels: [],
     user: { login: owner },
   };
-  let issueTitle = issueTitleFallback;
   if (hasIssueContext) {
     const hydrated = await hydrateTelegramIssuePayload({
       octokit,
@@ -1763,7 +2300,6 @@ async function createGitHubContext(params: {
     });
     if (hydrated) {
       issuePayload = hydrated.issue;
-      issueTitle = hydrated.title;
     }
   }
   const payload = {
@@ -1786,13 +2322,113 @@ async function createGitHubContext(params: {
   } as unknown as EmitterWebhookEvent;
   const context = new GitHubContext(eventHandler, event, octokit, logger);
 
-  const config = await getConfig(context);
-  if (!config) {
+  const targetConfig = kernelConfigOverride ?? (await getConfig(context));
+  const configSources = (targetConfig as { __sources?: Array<{ owner: string; repo: string; path: string }> }).__sources ?? [];
+  const hasTargetConfig = configSources.length > 0;
+  let didUseFallbackConfig = false;
+  const fallbackOwner = params.fallbackOwner?.trim();
+
+  let kernelConfigFromRepo = targetConfig;
+  if (!kernelConfigOverride && fallbackOwner && fallbackOwner.toLowerCase() !== owner.toLowerCase()) {
+    const fallbackConfigResult = await getConfigurationFromRepo(context, CONFIG_ORG_REPO, fallbackOwner);
+    if (fallbackConfigResult.config) {
+      kernelConfigFromRepo = mergePluginConfigurations(fallbackConfigResult.config, targetConfig);
+      didUseFallbackConfig = true;
+    }
+  }
+
+  if (!kernelConfigFromRepo) {
     return { ok: false, error: "No kernel configuration was found for Telegram routing." };
   }
 
-  const { pluginsWithManifest, manifests } = await loadPluginsWithManifest(context, config.plugins);
-  return { ok: true, context, pluginsWithManifest, manifests, hasIssueContext };
+  const { pluginsWithManifest, manifests, summary: pluginSummary } = await loadPluginsWithManifest(context, kernelConfigFromRepo.plugins);
+  return {
+    ok: true,
+    context,
+    pluginsWithManifest,
+    manifests,
+    hasIssueContext,
+    pluginSummary,
+    didUseFallbackConfig,
+    ...(didUseFallbackConfig && fallbackOwner ? { fallbackOwner } : {}),
+    hasTargetConfig,
+  };
+}
+
+async function loadKernelConfigForOwner(params: {
+  owner: string;
+  env: Env;
+  logger: Logger;
+  githubConfig: GitHubAppConfig;
+  aiConfig: AiConfig;
+  agentConfig: AgentConfig;
+  kernelConfig: KernelConfig;
+  kernelRefreshUrl: string;
+}): Promise<{ ok: true; config: PluginConfiguration; eventHandler: GitHubEventHandler; hasConfig: boolean } | { ok: false; error: string }> {
+  const { owner, env, logger, githubConfig, aiConfig, agentConfig, kernelConfig, kernelRefreshUrl } = params;
+  const eventHandler = new GitHubEventHandler({
+    environment: env.ENVIRONMENT,
+    webhookSecret: githubConfig.webhookSecret,
+    appId: githubConfig.appId,
+    privateKey: githubConfig.privateKey,
+    llm: "gpt-5.2-chat-latest",
+    aiBaseUrl: aiConfig.baseUrl,
+    aiToken: aiConfig.token,
+    kernelRefreshUrl,
+    kernelRefreshIntervalSeconds: kernelConfig.refreshIntervalSeconds,
+    agent: {
+      owner: agentConfig.owner,
+      repo: agentConfig.repo,
+      workflowId: agentConfig.workflow,
+      ref: agentConfig.ref,
+    },
+    logger,
+  });
+
+  const installationId = await resolveInstallationId(eventHandler, owner, CONFIG_ORG_REPO, undefined, logger);
+  if (!installationId) {
+    return { ok: false, error: `No GitHub App installation found for ${owner}/${CONFIG_ORG_REPO}.` };
+  }
+
+  const octokit = eventHandler.getAuthenticatedOctokit(installationId);
+  const payload = {
+    action: "created",
+    installation: { id: installationId },
+    repository: {
+      owner: { login: owner },
+      name: CONFIG_ORG_REPO,
+      html_url: `https://github.com/${owner}/${CONFIG_ORG_REPO}`,
+    },
+    issue: {
+      number: 1,
+      title: "UbiquityOS config",
+      body: "",
+      labels: [],
+      user: { login: owner },
+    },
+    comment: {
+      id: 0,
+      body: "",
+      user: { login: owner, type: "User" },
+      author_association: "OWNER",
+    },
+    sender: { login: owner, type: "User" },
+  };
+  const event = {
+    id: `telegram-config-${owner}-${Date.now()}`,
+    name: "issue_comment",
+    payload,
+  } as unknown as EmitterWebhookEvent;
+  const context = new GitHubContext(eventHandler, event, octokit, logger);
+
+  const { config } = await getConfigurationFromRepo(context, CONFIG_ORG_REPO, owner);
+  if (!config) {
+    logger.warn({ owner }, "No .ubiquity-os config found; falling back to shim defaults.");
+    const fallbackConfig = Value.Create(configSchema) as PluginConfiguration;
+    return { ok: true, config: fallbackConfig, eventHandler, hasConfig: false };
+  }
+
+  return { ok: true, config, eventHandler, hasConfig: true };
 }
 
 type TelegramIssueCreation = {
@@ -1910,6 +2546,7 @@ async function ensureTelegramIssueContext(params: {
     const context = new GitHubContext(params.context.eventHandler, event, params.context.octokit, params.logger);
 
     const issueUrl = issueResponse.data.html_url ?? buildIssueUrl({ owner, repo, issueNumber });
+    params.logger.info({ event: "telegram-session", owner, repo, issueNumber }, "Created Telegram session issue");
     const override: TelegramRoutingOverride = {
       kind: "issue",
       owner,
@@ -1918,10 +2555,10 @@ async function ensureTelegramIssueContext(params: {
       installationId,
       sourceUrl: issueUrl,
     };
-    let persisted = false;
+    let didPersist = false;
     const kv = await getTelegramKv(params.logger);
     if (kv) {
-      persisted = await saveTelegramRoutingOverride({
+      didPersist = await saveTelegramRoutingOverride({
         botToken: params.botToken,
         chatId: params.chatId,
         override,
@@ -1939,7 +2576,7 @@ async function ensureTelegramIssueContext(params: {
         repo,
         number: issueNumber,
         url: issueUrl,
-        persisted,
+        persisted: didPersist,
       },
       routingOverride: override,
     };
@@ -2011,23 +2648,90 @@ async function handleTelegramShimSlash(params: {
     });
     return true;
   }
-  if (command === "s") {
-    const message = [
-      "Login is stubbed for now.",
-      `GitHub identity: ${TELEGRAM_SHIM_GITHUB_LOGIN}`,
-      `Org: ${TELEGRAM_SHIM_ORG}`,
-      "Use /help to see available commands.",
-    ].join("\n");
-    await safeSendTelegramMessage({
-      botToken: params.botToken,
-      chatId: params.chatId,
-      replyToMessageId: params.replyToMessageId,
-      text: message,
-      logger: params.logger,
-    });
-    return true;
-  }
   return false;
+}
+
+function formatTelegramStatusTimestamp(value: string | number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return typeof value === "string" ? value : String(value);
+  }
+  return date.toISOString().replace("T", " ").replace("Z", " UTC");
+}
+
+async function handleTelegramStatusCommand(params: {
+  botToken: string;
+  chatId: number;
+  replyToMessageId: number;
+  userId: number;
+  identity: TelegramLinkedIdentity | null;
+  isPrivate: boolean;
+  logger: Logger;
+}): Promise<boolean> {
+  const lines: string[] = [];
+  let replyMarkup: TelegramReplyMarkup | undefined;
+
+  if (params.identity) {
+    lines.push("Status: linked");
+    lines.push(`GitHub owner: ${params.identity.owner}`);
+    // No timestamp or config path in status per UX guidance.
+  } else {
+    const pendingResult = await getTelegramLinkPending({ userId: params.userId, logger: params.logger });
+    if (!pendingResult.ok) {
+      await safeSendTelegramMessage({
+        botToken: params.botToken,
+        chatId: params.chatId,
+        replyToMessageId: params.replyToMessageId,
+        text: pendingResult.error,
+        logger: params.logger,
+      });
+      return true;
+    }
+
+    let pending = pendingResult.pending;
+    if (pending && pending.expiresAtMs <= Date.now()) {
+      await clearTelegramLinkPending({ userId: params.userId, logger: params.logger });
+      pending = null;
+    }
+
+    if (pending) {
+      lines.push("Status: linking");
+      if (pending.owner) {
+        lines.push(`Owner: ${pending.owner}`);
+      }
+      if (pending.step === "awaiting_owner") {
+        lines.push("Step: waiting for GitHub owner");
+        lines.push("Send the GitHub owner (username or org) to continue.");
+      } else {
+        lines.push("Step: waiting for link issue close");
+        const issueResult = await getTelegramLinkIssue({ code: pending.code, logger: params.logger });
+        if (issueResult.ok && issueResult.issue?.issueUrl) {
+          lines.push(`Issue: ${issueResult.issue.issueUrl}`);
+          replyMarkup = buildTelegramIssueKeyboard(issueResult.issue.issueUrl);
+        }
+        lines.push("Close the issue to approve linking.");
+      }
+      lines.push(`Expires: ${formatTelegramStatusTimestamp(pending.expiresAtMs)}`);
+    } else {
+      lines.push("Status: not linked");
+      if (!params.isPrivate) {
+        lines.push("Linking is only available in a direct message.");
+      } else {
+        lines.push("Tap Start linking to begin.");
+        replyMarkup = buildTelegramLinkingKeyboard();
+      }
+    }
+  }
+
+  await safeSendTelegramMessage({
+    botToken: params.botToken,
+    chatId: params.chatId,
+    replyToMessageId: params.replyToMessageId,
+    text: lines.join("\n"),
+    ...(replyMarkup ? { replyMarkup } : {}),
+    logger: params.logger,
+  });
+  return true;
 }
 
 function getTelegramHelpCommands(commands: Array<{ name: string; description: string; example: string }>) {
@@ -2353,9 +3057,9 @@ function formatRoutingLabel(routing: TelegramRoutingConfig): string | null {
 
 async function getTelegramKv(logger: Logger): Promise<KvLike | null> {
   const kv = await getKvClient(logger);
-  if (!kv && !telegramKvWarningIssued) {
+  if (!kv && !hasTelegramKvWarningIssued) {
     logger.warn({ feature: "telegram-context" }, "KV unavailable; Telegram context will not persist.");
-    telegramKvWarningIssued = true;
+    hasTelegramKvWarningIssued = true;
   }
   return kv;
 }
@@ -2422,12 +3126,14 @@ function parseTelegramRoutingOverride(value: unknown): TelegramRoutingOverride |
   const owner = normalizeOptionalString(record.owner);
   const repo = normalizeOptionalString(record.repo);
   const issueNumber = parseOptionalPositiveInt(record.issueNumber);
-  const kind =
-    kindRaw === "org" || kindRaw === "repo" || kindRaw === "issue"
-      ? (kindRaw as TelegramContextKind)
-      : issueNumber
-        ? "issue"
-        : "repo";
+  let kind: TelegramContextKind;
+  if (kindRaw === "org" || kindRaw === "repo" || kindRaw === "issue") {
+    kind = kindRaw as TelegramContextKind;
+  } else if (issueNumber) {
+    kind = "issue";
+  } else {
+    kind = "repo";
+  }
   const resolvedRepo = repo ?? (kind === "org" ? CONFIG_ORG_REPO : undefined);
   if (!owner || !resolvedRepo) return null;
   if (kind === "issue" && !issueNumber) return null;
@@ -2464,10 +3170,18 @@ async function resolveInstallationId(
 async function loadPluginsWithManifest(
   context: GitHubContext<"issue_comment.created">,
   plugins: Record<string, Record<string, unknown> | null | undefined>
-): Promise<{ pluginsWithManifest: PluginWithManifest[]; manifests: PluginWithManifest["manifest"][] }> {
+): Promise<{ pluginsWithManifest: PluginWithManifest[]; manifests: PluginWithManifest["manifest"][]; summary: PluginCommandSummary }> {
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: PluginWithManifest[] = [];
   const manifests: PluginWithManifest["manifest"][] = [];
+  const summary: PluginCommandSummary = {
+    total: Object.keys(plugins).length,
+    withCommands: 0,
+    missingManifest: 0,
+    noCommands: 0,
+    invalid: 0,
+    skippedBotEvents: 0,
+  };
 
   for (const [pluginKey, pluginSettings] of Object.entries(plugins)) {
     let target: string | GithubPlugin;
@@ -2475,18 +3189,29 @@ async function loadPluginsWithManifest(
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      summary.invalid += 1;
       continue;
     }
     if (isBotAuthor && (pluginSettings as { skipBotEvents?: boolean })?.skipBotEvents) {
+      summary.skippedBotEvents += 1;
       continue;
     }
     const manifest = await getManifest(context, target);
-    if (!manifest?.commands) continue;
+    if (!manifest) {
+      summary.missingManifest += 1;
+      continue;
+    }
+    const commandEntries = manifest.commands ? Object.keys(manifest.commands) : [];
+    if (!commandEntries.length) {
+      summary.noCommands += 1;
+      continue;
+    }
+    summary.withCommands += 1;
     const entry = { target, settings: pluginSettings, manifest };
     pluginsWithManifest.push(entry);
     manifests.push(manifest);
   }
-  return { pluginsWithManifest, manifests };
+  return { pluginsWithManifest, manifests, summary };
 }
 
 function resolvePluginCommand(pluginsWithManifest: PluginWithManifest[], commandName: string): PluginWithManifest | null {
@@ -2590,6 +3315,9 @@ async function getTelegramRouterDecision(
   try {
     const raw = await callUbqAiRouter(context, prompt, routerInput);
     const decision = tryParseRouterDecision(raw);
+    const action = decision?.action ?? "parse-error";
+    const commandName = decision?.action === "command" ? decision.command?.name : undefined;
+    context.logger.info({ event: "telegram-router", command: commandName }, `Telegram router decision: ${action}`);
     if (!decision) {
       await params.onError("I couldn't understand that request. Try /help.");
       return null;

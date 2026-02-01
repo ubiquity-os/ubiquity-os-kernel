@@ -221,7 +221,7 @@ app.post("/", async (ctx: Context) => {
       },
       logger: ctx.var.logger,
     });
-    bindHandlers(eventHandler);
+    bindHandlers(eventHandler, env);
 
     await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
     return ctx.text("ok\n", 200);

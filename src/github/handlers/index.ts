@@ -3,6 +3,7 @@ import { logger as pinoLogger } from "../../logger/logger.ts";
 import { getRequestLogTrail, readRequestIdFromLogger } from "../../logger/request-log-store.ts";
 import { GitHubEventHandler } from "../github-event-handler.ts";
 import { GitHubContext } from "../github-context.ts";
+import { Env } from "../types/env.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
@@ -15,6 +16,7 @@ import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
 import handlePushEvent from "./push-event.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
+import { handleTelegramLinkIssueClosed } from "./telegram-link-issue-closed.ts";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
 const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
@@ -541,8 +543,12 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
   };
 }
 
-export function bindHandlers(eventHandler: GitHubEventHandler) {
+export function bindHandlers(eventHandler: GitHubEventHandler, env?: Env) {
   eventHandler.on(ISSUE_COMMENT_CREATED_EVENT, issueCommentCreated);
+  eventHandler.on("issues.closed", async (context) => {
+    if (!env) return;
+    await handleTelegramLinkIssueClosed(context as GitHubContext<"issues.closed">, env);
+  });
   eventHandler.on("issue_comment.edited", async (context) => {
     const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
     if (!issueNumber) {

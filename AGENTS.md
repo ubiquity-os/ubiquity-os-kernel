@@ -215,8 +215,8 @@ chmod +x test-plugin-e2e.sh
 ## 🧩 Kernel Config Paths
 
 The kernel loads and merges plugin config from:
-
-- Repo config: `.github/.ubiquity-os.config.yml` (production) or `.github/.ubiquity-os.config.dev.yml` (development)
+- ENVIRONMENT variable: `UOS_ENVIRONMENT` (e.g., `dev`, `development`, `prod`, `production`, `pi`, `mac` etc)
+- Repo config: `.github/.ubiquity-os.config.yml` (production) or `.github/.ubiquity-os.config.ENVIRONMENT.yml` (i.e. .github/.ubiquity-os.config.dev.yml)
 - Org repo config: `<OWNER>/.ubiquity-os` using the same paths
 
 ## 📜 Deno Dashboard Logs (CLI)
