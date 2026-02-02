@@ -175,7 +175,17 @@ app.post("/", async (ctx: Context) => {
     });
     bindHandlers(eventHandler);
 
-    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
+    const payload = await request.text();
+    ctx.var.logger.debug(
+      {
+        eventName,
+        id,
+        signatureSha256Present: Boolean(signatureSha256),
+        payloadLength: payload.length,
+      },
+      "Webhook received"
+    );
+    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload, signature: signatureSha256 });
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);

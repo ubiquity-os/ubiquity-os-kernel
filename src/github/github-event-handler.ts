@@ -55,7 +55,7 @@ export class GitHubEventHandler {
     this.environment = options.environment;
     this._privateKey = normalizeMultilineSecret(options.privateKey);
     this._appId = Number(options.appId);
-    this._webhookSecret = options.webhookSecret;
+    this._webhookSecret = normalizeMultilineSecret(options.webhookSecret);
     this.llm = options.llm;
     this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
     this.aiToken = options.aiToken;
