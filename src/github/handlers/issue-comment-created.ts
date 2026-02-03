@@ -254,7 +254,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins ?? {})) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
@@ -448,7 +448,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins ?? {})) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
