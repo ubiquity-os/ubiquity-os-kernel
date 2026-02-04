@@ -21,6 +21,10 @@ export const envSchema = T.Object({
   UOS_AGENT_MEMORY_KEY: T.Optional(T.String({ minLength: 1 })),
   // Optional bearer token for diagnostics endpoints (e.g. agent memory queue).
   UOS_DIAGNOSTICS_TOKEN: T.Optional(T.String({ minLength: 1 })),
+  // Optional base URL for kernel refresh token callbacks (overrides Host header).
+  UOS_KERNEL_BASE_URL: T.Optional(T.String({ minLength: 1 })),
+  // Optional comma-separated list of trusted Host header values for refresh URL generation.
+  UOS_KERNEL_TRUSTED_HOSTS: T.Optional(T.String({ minLength: 1 })),
   SUPABASE_URL: T.Optional(T.String({ minLength: 1 })),
   SUPABASE_ANON_KEY: T.Optional(T.String({ minLength: 1 })),
   UOS_KERNEL_REFRESH_INTERVAL_SECONDS: T.Optional(T.String({ minLength: 1 })),
@@ -35,6 +39,7 @@ declare global {
       APP_ID: string;
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
+      ENVIRONMENT?: string;
       UOS_AGENT_OWNER?: string;
       UOS_AGENT_REPO?: string;
       UOS_AGENT_WORKFLOW?: string;
@@ -44,6 +49,8 @@ declare global {
       UOS_AGENT_MEMORY_URL?: string;
       UOS_AGENT_MEMORY_KEY?: string;
       UOS_DIAGNOSTICS_TOKEN?: string;
+      UOS_KERNEL_BASE_URL?: string;
+      UOS_KERNEL_TRUSTED_HOSTS?: string;
       SUPABASE_URL?: string;
       SUPABASE_ANON_KEY?: string;
       UOS_KERNEL_REFRESH_INTERVAL_SECONDS?: string;

@@ -24,7 +24,7 @@ Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (p
 - **`APP_ID`**
   Retrieve this from your GitHub App settings.
 
-For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host.
+For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host unless `UOS_KERNEL_BASE_URL` (or `UOS_KERNEL_TRUSTED_HOSTS`) is set.
 
 ### Quick Start
 
@@ -38,7 +38,13 @@ deno task dev
 
 For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
 
-Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, `command-config`: https://github.com/ubiquity-os-marketplace/command-config).
+Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, [`command-config`](https://github.com/ubiquity-os-marketplace/command-config)).
+
+We keep the `lib/plugins/hello-world-plugin` example in this repo to make local testing and CI smoke checks easy; production plugins should live in their own repositories.
+
+### Deno import map
+
+The Deno import map in `deno.json` is intentional: it centralizes version pins for npm packages and keeps source imports clean (no `npm:` specifiers in code). The root `package.json` is only for tooling integrations.
 
 ## Conversation Graph and Agent Context
 
@@ -96,7 +102,7 @@ Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml
    - `APP_ID`
    - `APP_PRIVATE_KEY`
 
-   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
+   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_KERNEL_BASE_URL`, `UOS_KERNEL_TRUSTED_HOSTS`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
 
 3. **Deploy:**
 
@@ -170,6 +176,8 @@ How it works:
 A screencast tutorial on how to set up and run a hello world plugin is available at [wiki](https://github.com/ubiquity-os/ubiquity-os-kernel/wiki/Hello-world-plugin-onboarding-tutorial).
 
 ## Testing
+
+CI runs the Deno test workflow (`.github/workflows/testing.yml`) in place of the previous bun-based workflow, and unused file checks are handled by `deno task deps:unused` (replacing knip).
 
 ### Jest
 

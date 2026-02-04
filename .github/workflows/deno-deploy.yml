@@ -22,6 +22,7 @@ jobs:
           echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
 
       - uses: actions/checkout@v6
+        # Submodules are not required for deploy; the kernel consumes the npm-published SDK.
 
       - name: Validate required secrets
         run: |
@@ -44,6 +45,8 @@ jobs:
           UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL || '' }}
           UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY || '' }}
           UOS_DIAGNOSTICS_TOKEN: ${{ secrets.UOS_DIAGNOSTICS_TOKEN || '' }}
+          UOS_KERNEL_BASE_URL: ${{ secrets.UOS_KERNEL_BASE_URL || '' }}
+          UOS_KERNEL_TRUSTED_HOSTS: ${{ secrets.UOS_KERNEL_TRUSTED_HOSTS || '' }}
           UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || '' }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || '' }}
