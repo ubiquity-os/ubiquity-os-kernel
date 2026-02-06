@@ -1,4 +1,4 @@
-import { getKvClient, type KvKey, type LoggerLike } from "../github/utils/kv-client.ts";
+import { getKvClient, type KvKey, type KvLike, type LoggerLike } from "../github/utils/kv-client.ts";
 
 export type TelegramLinkedIdentity = Readonly<{
   owner: string;

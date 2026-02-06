@@ -3,9 +3,7 @@ import { Kind, StaticDecode, Type as T, TLiteral, Union, type TSchema } from "@s
 import { Value } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
 
-const pluginNameRegex = new RegExp(
-  "^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)*))?$"
-);
+const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)*))?$");
 
 export type GithubPlugin = {
   owner: string;
@@ -95,7 +93,8 @@ export function stringLiteralUnion<T extends string[]>(values: readonly [...T]):
 
 // Synthetic kernel events that plugins may subscribe to.
 const customKernelEvents = ["kernel.plugin_error"] as const;
-const emitterType = T.Union([...emitterEventNames, ...customKernelEvents].map((event) => T.Literal(event)) as never);
+const emitterEvents = [...emitterEventNames, ...customKernelEvents] as readonly string[];
+const emitterType = T.Union(emitterEvents.map((event) => T.Literal(event)) as unknown as [TLiteral<string>, ...TLiteral<string>[]]);
 
 const runsOnSchema = T.Array(emitterType, { default: [] });
 
@@ -124,5 +123,4 @@ export const configSchema = T.Object(
 
 export const configSchemaValidator = createSchemaValidator(configSchema);
 
-export type PluginConfiguration = StaticDecode<typeof configSchema>;
-
+export type PluginConfiguration = StaticDecode<typeof configSchema> & Record<string, unknown>;

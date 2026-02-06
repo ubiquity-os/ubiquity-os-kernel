@@ -82,7 +82,7 @@ Deno.test("kernel: fails on missing env variables", async () => {
     const res = await app.request("http://localhost:8080", { method: "POST" });
     assertEquals(res.status, 500);
     const json = await res.json();
-    assertStringIncludes(String((json as { error: string })?.error ?? ""), "Unable to decode value");
+    assertStringIncludes(String((json as { error: string })?.error ?? ""), "Missing required environment variables");
   } finally {
     process.env = originalEnv;
   }
