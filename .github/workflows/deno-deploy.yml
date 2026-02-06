@@ -21,10 +21,8 @@ jobs:
           branch_name=$(echo '${{ github.event.ref || github.event.workflow_run.head_branch || github.ref }}' | sed 's#refs/heads/##')
           echo "ACTION_REF=${GITHUB_REPOSITORY}@${branch_name}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v4
-
-      - name: Init plugin-sdk submodule
-        run: git submodule update --init --depth 1 lib/plugin-sdk
+      - uses: actions/checkout@v6
+        # Submodules are not required for deploy; the kernel consumes the npm-published SDK.
 
       - name: Validate required secrets
         run: |
@@ -36,17 +34,19 @@ jobs:
         env:
           UOS_GITHUB: ${{ secrets.UOS_GITHUB }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'development' }}
-          UOS_AGENT: ${{ secrets.UOS_AGENT }}
-          UOS_AI: ${{ secrets.UOS_AI }}
-          UOS_AGENT_MEMORY: ${{ secrets.UOS_AGENT_MEMORY }}
-          UOS_DIAGNOSTICS: ${{ secrets.UOS_DIAGNOSTICS }}
-          UOS_SUPABASE: ${{ secrets.UOS_SUPABASE }}
-          UOS_KERNEL: ${{ secrets.UOS_KERNEL }}
-          UOS_TELEGRAM: ${{ secrets.UOS_TELEGRAM }}
-          UOS_GOOGLE_DRIVE: ${{ secrets.UOS_GOOGLE_DRIVE }}
-          UOS_X: ${{ secrets.UOS_X }}
-          GIT_REVISION: ${{ github.sha }}
+          UOS_KERNEL_BASE_URL: ${{ secrets.UOS_KERNEL_BASE_URL || '' }}
+          UOS_KERNEL_TRUSTED_HOSTS: ${{ secrets.UOS_KERNEL_TRUSTED_HOSTS || '' }}
+          UOS_AGENT: ${{ secrets.UOS_AGENT || '' }}
+          UOS_AI: ${{ secrets.UOS_AI || '' }}
+          UOS_AGENT_MEMORY: ${{ secrets.UOS_AGENT_MEMORY || '' }}
+          UOS_DIAGNOSTICS: ${{ secrets.UOS_DIAGNOSTICS || '' }}
+          UOS_SUPABASE: ${{ secrets.UOS_SUPABASE || '' }}
+          UOS_KERNEL: ${{ secrets.UOS_KERNEL || '' }}
+          UOS_TELEGRAM: ${{ secrets.UOS_TELEGRAM || '' }}
+          UOS_GOOGLE_DRIVE: ${{ secrets.UOS_GOOGLE_DRIVE || '' }}
+          UOS_X: ${{ secrets.UOS_X || '' }}
           NODE_ENV: "production"
+          GIT_REVISION: ${{ github.sha }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}

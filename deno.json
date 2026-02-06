@@ -1,9 +1,10 @@
 {
   "nodeModulesDir": "auto",
+  "exclude": ["lib", "coverage"],
   "tasks": {
     "dev": "deno run --allow-run --allow-env predev.ts && deno run --allow-read --allow-env --allow-run scripts/with-ingress-env.ts -- deno serve --watch --unstable-kv --allow-env --allow-net --allow-read --allow-write=logs --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
     "secrets:github": "deno run --allow-read --allow-write scripts/github-secrets.ts",
-    "test": "deno test --allow-env --allow-net --allow-read",
+    "test": "deno test --allow-env --allow-net --allow-read --allow-sys",
     "check": "deno check --sloppy-imports src/kernel.ts",
     "commitlint": "deno run --allow-env --allow-read --allow-run --allow-sys npm:@commitlint/cli@19.3.0",
     "fmt": "deno run --allow-read --allow-write --allow-run --allow-env --allow-sys npm:prettier@3.3.3 --write .",
@@ -23,7 +24,7 @@
     "dash-logs:human": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=table"
   },
   "compilerOptions": {
-    "lib": ["deno.window"],
+    "lib": ["deno.ns", "deno.window"],
     "strict": true
   },
   "imports": {
@@ -39,12 +40,14 @@
     "@octokit/types": "npm:@octokit/types@14.1.0",
     "@octokit/webhooks": "npm:@octokit/webhooks@14.2.0",
     "@octokit/webhooks-types": "npm:@octokit/webhooks-types@7.6.1",
-    "@sinclair/typebox": "npm:@sinclair/typebox@0.34.30",
-    "@sinclair/typebox/value": "npm:@sinclair/typebox@0.34.30/value",
-    "@ubiquity-os/plugin-sdk": "npm:@ubiquity-os/plugin-sdk@3.9.0",
-    "@ubiquity-os/plugin-sdk/compression": "npm:@ubiquity-os/plugin-sdk@3.9.0/compression",
-    "@ubiquity-os/plugin-sdk/manifest": "npm:@ubiquity-os/plugin-sdk@3.9.0/manifest",
-    "@ubiquity-os/plugin-sdk/signature": "npm:@ubiquity-os/plugin-sdk@3.9.0/signature",
+    "@sinclair/typebox": "npm:@sinclair/typebox@0.34.41",
+    "@sinclair/typebox/value": "npm:@sinclair/typebox@0.34.41/value",
+    "@ubiquity-os/plugin-sdk": "npm:@ubiquity-os/plugin-sdk@3.11.2",
+    "@ubiquity-os/plugin-sdk/compression": "npm:@ubiquity-os/plugin-sdk@3.11.2/compression",
+    "@ubiquity-os/plugin-sdk/configuration": "npm:@ubiquity-os/plugin-sdk@3.11.2/configuration",
+    "@ubiquity-os/plugin-sdk/manifest": "npm:@ubiquity-os/plugin-sdk@3.11.2/manifest",
+    "@ubiquity-os/plugin-sdk/octokit": "npm:@ubiquity-os/plugin-sdk@3.11.2/octokit",
+    "@ubiquity-os/plugin-sdk/signature": "npm:@ubiquity-os/plugin-sdk@3.11.2/signature",
     "@eslint/js": "npm:@eslint/js@9.7.0",
     "@cspell/dict-node/cspell-ext.json": "npm:@cspell/dict-node@5.0.1/cspell-ext.json",
     "@cspell/dict-software-terms": "npm:@cspell/dict-software-terms@3.4.6",

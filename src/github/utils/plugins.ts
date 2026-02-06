@@ -246,3 +246,11 @@ function isAbortError(error: unknown): boolean {
   const err = error as { name?: string; code?: number; message?: string };
   return err.name === "AbortError" || err.code === 20 || err.message === "The signal has been aborted";
 }
+
+export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
+  if (!manifest) {
+    return null;
+  }
+  const homepageUrl = manifest.homepage_url;
+  return typeof homepageUrl === "string" && homepageUrl.length ? homepageUrl : null;
+}

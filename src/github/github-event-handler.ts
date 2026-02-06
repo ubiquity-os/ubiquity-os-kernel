@@ -2,8 +2,8 @@ import { createAppAuth } from "@octokit/auth-app";
 import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 import { logger } from "../logger/logger.ts";
-import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
 import { toOctokitLogMeta } from "./utils/octokit-log.ts";
+import { deriveRsaPublicKeyPemFromPrivateKey, normalizeMultilineSecret } from "./utils/rsa.ts";
 
 import { customOctokit } from "./github-client.ts";
 import { GitHubContext, SimplifiedContext } from "./github-context.ts";
@@ -24,6 +24,7 @@ export type Options = {
     ref?: string;
   };
   logger?: typeof logger;
+  createWebhooks?: (options: { secret: string; transform: (event: EmitterWebhookEvent) => SimplifiedContext }) => Webhooks<SimplifiedContext>;
 };
 
 export class GitHubEventHandler {
@@ -54,7 +55,7 @@ export class GitHubEventHandler {
     this.environment = options.environment;
     this._privateKey = normalizeMultilineSecret(options.privateKey);
     this._appId = Number(options.appId);
-    this._webhookSecret = options.webhookSecret;
+    this._webhookSecret = normalizeMultilineSecret(options.webhookSecret);
     this.llm = options.llm;
     this.aiBaseUrl = options.aiBaseUrl ?? "https://ai-ubq-fi.deno.dev";
     this.aiToken = options.aiToken;
@@ -71,7 +72,11 @@ export class GitHubEventHandler {
       this.logger = options.logger;
     }
 
-    this.webhooks = new Webhooks<SimplifiedContext>({
+    const createWebhooks =
+      options.createWebhooks ??
+      ((webhooksOptions: { secret: string; transform: (event: EmitterWebhookEvent) => SimplifiedContext }) => new Webhooks<SimplifiedContext>(webhooksOptions));
+
+    this.webhooks = createWebhooks({
       secret: this._webhookSecret,
       transform: (event) => this.transformEvent(event), // it is important to use an arrow function here to keep the context of `this`
     });

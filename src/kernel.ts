@@ -11,7 +11,7 @@ import { bindHandlers } from "./github/handlers/index.ts";
 import { Env, envSchema } from "./github/types/env.ts";
 import { createKernelAttestationToken, verifyKernelAttestationToken } from "./github/utils/kernel-attestation.ts";
 import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
-import { deriveRsaPublicKeyPemFromPrivateKey } from "./github/utils/rsa.ts";
+import { getCachedRsaPublicKeyPem } from "./github/utils/rsa.ts";
 import { listAgentMemoryEntries } from "./github/utils/agent-memory.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
@@ -20,6 +20,8 @@ import { handleGoogleDriveWebhook } from "./google/drive/handler.ts";
 import { handleTwitterWebhook } from "./x/handler.ts";
 import { parseGitHubAppConfig } from "./github/utils/github-app-config.ts";
 import { parseAgentConfig, parseAiConfig, parseDiagnosticsConfig, parseKernelConfig } from "./github/utils/env-config.ts";
+
+const KERNEL_REFRESH_ROUTE = "/internal/agent/refresh-token";
 
 export const app = new Hono();
 export default app;
@@ -78,9 +80,15 @@ app.get("/internal/agent-memory", async (ctx: Context) => {
   }
 });
 
-app.post("/internal/agent/refresh-token", async (ctx: Context) => {
+app.post(KERNEL_REFRESH_ROUTE, async (ctx: Context) => {
   try {
-    const _env = getEnvWithDefaults(ctx);
+    const env = getEnvWithDefaults(ctx);
+    const githubConfigResult = parseGitHubAppConfig(env);
+    if (!githubConfigResult.ok) {
+      return ctx.json({ error: githubConfigResult.error }, 500);
+    }
+    const githubConfig = githubConfigResult.config;
+
     const authHeader = ctx.req.header("authorization") ?? "";
     const authToken = getBearerToken(authHeader);
     if (!authToken) {
@@ -101,14 +109,17 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
     if (!owner || !repo || !installationIdRaw) {
       return ctx.json({ error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id." }, 400);
     }
+    if (!isValidGitHubRepoSegment(owner) || !isValidGitHubRepoSegment(repo)) {
+      return ctx.json({ error: "Invalid X-GitHub-Owner/X-GitHub-Repo." }, 400);
+    }
 
     const installationId = Number(installationIdRaw);
-    if (!Number.isFinite(installationId)) {
+    if (!Number.isFinite(installationId) || installationId <= 0) {
       return ctx.json({ error: "Invalid X-GitHub-Installation-Id." }, 400);
     }
 
-    const privateKey = githubConfig.config.privateKey;
-    const publicKeyPem = await deriveRsaPublicKeyPemFromPrivateKey(privateKey);
+    const privateKey = githubConfig.privateKey;
+    const publicKeyPem = await getCachedRsaPublicKeyPem(privateKey);
     const verification = await verifyKernelAttestationToken({
       token: kernelToken,
       publicKeyPem,
@@ -123,13 +134,13 @@ app.post("/internal/agent/refresh-token", async (ctx: Context) => {
       return ctx.json({ error: verification.error }, 401);
     }
 
-    const auth = createAppAuth({ appId: Number(githubConfig.config.appId), privateKey });
-    const refreshed = await auth({ type: "installation", installationId });
+    const auth = createAppAuth({ appId: Number(githubConfig.appId), privateKey });
+    const refreshed = await auth({ type: "installation", installationId: Math.trunc(installationId) });
     const refreshedKernelToken = await createKernelAttestationToken({
       sign: (payload) => signPayload(payload, privateKey),
       owner,
       repo,
-      installationId,
+      installationId: Math.trunc(installationId),
       authToken: refreshed.token,
       stateId: verification.payload.state_id,
       ttlSeconds: 60 * 60,
@@ -198,7 +209,7 @@ app.post("/", async (ctx: Context) => {
     const aiConfig = aiConfigResult.config;
     const agentConfig = agentConfigResult.config;
     const kernelRefreshIntervalSeconds = kernelConfigResult.config.refreshIntervalSeconds;
-    const kernelRefreshUrl = new URL("/internal/agent/refresh-token", ctx.req.url).toString();
+    const kernelRefreshUrl = resolveKernelRefreshUrl(ctx, env);
     const request = ctx.req;
     const eventName = getEventName(request);
     const signatureSha256 = getSignature(request);
@@ -223,7 +234,17 @@ app.post("/", async (ctx: Context) => {
     });
     bindHandlers(eventHandler, env);
 
-    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload: await request.text(), signature: signatureSha256 });
+    const payload = await request.text();
+    ctx.var.logger.debug(
+      {
+        eventName,
+        id,
+        signatureSha256Present: Boolean(signatureSha256),
+        payloadLength: payload.length,
+      },
+      "Webhook received"
+    );
+    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload, signature: signatureSha256 });
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);
@@ -287,4 +308,36 @@ function parseBoundedInt(value: string | null | undefined, fallback: number, min
   const parsed = parseOptionalPositiveInt(value);
   if (!parsed) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeOptionalEnvValue(value?: string): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeEnvList(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function resolveKernelRefreshUrl(ctx: Context, env: Env): string {
+  const baseUrl = normalizeOptionalEnvValue(env.UOS_KERNEL_BASE_URL);
+  if (baseUrl) {
+    const parsed = new URL(baseUrl);
+    return new URL(KERNEL_REFRESH_ROUTE, parsed).toString();
+  }
+
+  const trustedHosts = normalizeEnvList(env.UOS_KERNEL_TRUSTED_HOSTS);
+  const requestUrl = new URL(ctx.req.url);
+  if (trustedHosts.length > 0 && !trustedHosts.includes(requestUrl.host.toLowerCase())) {
+    throw new Error(`Untrusted host for kernel refresh URL: ${requestUrl.host}`);
+  }
+  return new URL(KERNEL_REFRESH_ROUTE, requestUrl).toString();
+}
+
+function isValidGitHubRepoSegment(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(value);
 }

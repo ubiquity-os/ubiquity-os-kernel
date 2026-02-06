@@ -47,8 +47,8 @@ async function isOrgOwner(context: GitHubContext, owner: string, ownerType?: str
 
 async function isOrgMember(context: GitHubContext, org: string, username: string): Promise<boolean> {
   try {
-    const response = await context.octokit.rest.orgs.checkMembershipForUser({ org, username });
-    return response.status === 204;
+    await context.octokit.rest.orgs.checkMembershipForUser({ org, username });
+    return true;
   } catch {
     return false;
   }
