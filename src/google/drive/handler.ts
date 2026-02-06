@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { Env } from "../../github/types/env.ts";
 import { logger as baseLogger } from "../../logger/logger.ts";
 
@@ -34,7 +35,7 @@ export async function handleGoogleDriveWebhook(ctx: Context, env: Env): Promise<
     "Received Google Drive webhook"
   );
 
-  return ctx.json({ ok: true }, 200);
+  return ctx.json({}, 200);
 }
 
 function normalizeOptionalEnvValue(value?: string): string | undefined {
@@ -48,7 +49,7 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function parseGoogleDriveConfig(env: Env): { ok: true; config: GoogleDriveIngressConfig } | { ok: false; status: number; error: string } {
+function parseGoogleDriveConfig(env: Env): { ok: true; config: GoogleDriveIngressConfig } | { ok: false; status: ContentfulStatusCode; error: string } {
   const raw = normalizeOptionalEnvValue(env.UOS_GOOGLE_DRIVE);
   if (!raw) {
     return { ok: false, status: 404, error: "Google Drive ingress disabled." };

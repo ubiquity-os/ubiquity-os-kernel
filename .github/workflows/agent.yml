@@ -1,4 +1,6 @@
 name: "UbiquityOS Agent"
+# NOTE: This workflow stays inline to keep dispatch inputs, permissions, and secrets in one auditable place.
+# If we extract steps into composite actions later, ensure versioning and test coverage stay in sync with kernel changes.
 
 on:
   workflow_dispatch:

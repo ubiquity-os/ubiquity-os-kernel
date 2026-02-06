@@ -213,7 +213,7 @@ export async function dispatchWorkflowWithRunUrl(
 }
 
 export async function dispatchWorker(targetUrl: string, payload?: Record<string, unknown>) {
-  const { signature, ...body } = payload || {};
+  const { signature } = payload || {};
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -224,14 +224,14 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
   }
 
   const result = await fetch(targetUrl, {
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
     method: "POST",
     headers,
   });
 
   if (!result.ok) {
     const errText = await result.text();
-    throw new Error(`HTTP ${result.status}: ${errText}`);
+    throw new Error(`HTTP (target: ${targetUrl}) ${result.status}: ${errText}`);
   }
 
   return result.json();

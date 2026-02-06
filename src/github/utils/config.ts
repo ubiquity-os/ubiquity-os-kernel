@@ -25,6 +25,7 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 const MAX_IMPORT_DEPTH = 6;
+const CONFIG_FETCH_TIMEOUT_MS = 5_000;
 
 type ConfigLocation = { owner: string; repo: string; environment?: string | null };
 export type ConfigSource = { owner: string; repo: string; path: string; sha?: string | null };
@@ -129,7 +130,7 @@ function normalizeConfiguration(context: GitHubContext, source: ConfigLocation, 
     delete (yaml as { imports?: unknown }).imports;
   }
 
-  // Handle new array format: convert to old object format
+  // Handle new array format: convert to old object format.
   if (targetRepoConfiguration && Array.isArray(targetRepoConfiguration.plugins)) {
     context.logger.debug({ source }, "Converting array-format plugins to object format");
     const convertedPlugins: Record<string, PluginSettings> = {};
@@ -304,7 +305,7 @@ export function decodeConfiguration(
     return { config: stripImports(configWithDefaults), errors: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    context.logger.error({ owner: location.owner, repository: location.repo, error: message }, "Error decoding configuration; Will ignore.");
+    context.logger.error({ owner: location.owner, repository: location.repo, error: message }, "Error decoding configuration; will ignore.");
     const decodedError = unwrapTypeBoxError(error);
     return { config: null, errors: [decodedError] as ValueError[] };
   }
@@ -386,8 +387,8 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
 
   const importedConfigs: PluginConfiguration[] = [];
   for (const next of imports) {
-    const resolved = await resolveImportedConfiguration(context, next, state, 1);
-    if (resolved) importedConfigs.push(resolved);
+    const resolvedImport = await resolveImportedConfiguration(context, next, state, 1);
+    if (resolvedImport) importedConfigs.push(resolvedImport);
   }
   const mergedConfig = mergeImportedConfigs(importedConfigs, config);
   if (!mergedConfig) {
@@ -399,7 +400,7 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
 }
 
 /**
- * Merge configurations based on their 'plugins' keys
+ * Merge configurations based on their `plugins` keys.
  */
 function mergeConfigurations(configuration1: PluginConfiguration, configuration2: PluginConfiguration): PluginConfiguration {
   const mergedPlugins = {
@@ -440,7 +441,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   if (orgConfig.source) configSources.push(orgConfig.source);
   if (repoConfig.source) configSources.push(repoConfig.source);
 
-  context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Fetched configurations; Will merge them.");
+  context.logger.debug({ repo: `${payload.repository.owner.login}/${payload.repository.name}` }, "Fetched configurations; will merge them.");
 
   if (orgConfig.config) {
     mergedConfiguration = mergeConfigurations(mergedConfiguration, orgConfig.config);
@@ -478,10 +479,14 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
         shouldSkipBotEvents = manifest.skipBotEvents ?? true;
       }
     }
+    if (shouldSkipBotEvents === undefined) {
+      shouldSkipBotEvents = true;
+    }
 
+    const safePluginSettings = (pluginSettings ?? {}) as Exclude<PluginSettings, null>;
     resolvedPlugins[pluginKey] = {
-      ...pluginSettings,
-      with: pluginSettings?.with ?? {},
+      ...safePluginSettings,
+      with: isPlainObject((safePluginSettings as { with?: unknown }).with) ? (safePluginSettings as { with: Record<string, unknown> }).with : {},
       runsOn,
       skipBotEvents: shouldSkipBotEvents,
     };
@@ -519,7 +524,7 @@ async function download({
     try {
       context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timeout = setTimeout(() => controller.abort(), CONFIG_FETCH_TIMEOUT_MS);
       try {
         const { data, headers } = await octokit.rest.repos.getContent({
           owner,
@@ -553,7 +558,7 @@ async function download({
         continue;
       }
       if (isAbortError(err)) {
-        context.logger.info({ owner, repository, filePath, timeoutMs: 5000 }, "Configuration fetch timed out; skipping.");
+        context.logger.info({ owner, repository, filePath, timeoutMs: CONFIG_FETCH_TIMEOUT_MS }, "Configuration fetch timed out; skipping.");
         continue;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -585,3 +590,4 @@ export function parseYaml(context: GitHubContext, data: null | string) {
   context.logger.debug("Could not parse YAML");
   return { yaml: null, errors: null };
 }
+

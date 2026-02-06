@@ -11,6 +11,7 @@ Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest
 ## Secrets & Env Naming
 
 - Never use `UBQ_` in secret/property/key names; use `UOS_` instead.
+- When defining TypeBox schemas, do not mark fields as optional if a default is provided; keep them required with defaults.
 
 ## ☁️ Serverless Constraints
 
@@ -239,6 +240,7 @@ deno task dash-logs:human
 Auth uses the dashboard cookie token (no public API). Set `DENO_DEPLOY_TOKEN` in the shell, or pass `--token=...` explicitly.
 
 Findings:
+
 - The dashboard logs endpoint is internal (`dash.deno.com/_api/.../query_logs`) and has no public API docs; it is accessed via the dashboard cookie token (`token=...`).
 - The `message` field is sometimes a JSON string and sometimes plain text; keep raw NDJSON for AI parsing and avoid assuming schema.
 

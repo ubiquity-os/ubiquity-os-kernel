@@ -10,6 +10,10 @@ export const envSchema = T.Object({
   UOS_DIAGNOSTICS: T.Optional(T.String()),
   UOS_SUPABASE: T.Optional(T.String()),
   UOS_KERNEL: T.Optional(T.String()),
+  // Optional base URL for kernel refresh token callbacks (overrides Host header).
+  UOS_KERNEL_BASE_URL: T.Optional(T.String({ minLength: 1 })),
+  // Optional comma-separated list of trusted Host header values for refresh URL generation.
+  UOS_KERNEL_TRUSTED_HOSTS: T.Optional(T.String({ minLength: 1 })),
   UOS_TELEGRAM: T.Optional(T.String()),
   UOS_GOOGLE_DRIVE: T.Optional(T.String()),
   UOS_X: T.Optional(T.String()),
@@ -21,6 +25,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace NodeJS {
     interface ProcessEnv {
+      ENVIRONMENT?: string;
       UOS_GITHUB?: string;
       UOS_AGENT?: string;
       UOS_AI?: string;
@@ -28,6 +33,8 @@ declare global {
       UOS_DIAGNOSTICS?: string;
       UOS_SUPABASE?: string;
       UOS_KERNEL?: string;
+      UOS_KERNEL_BASE_URL?: string;
+      UOS_KERNEL_TRUSTED_HOSTS?: string;
       UOS_TELEGRAM?: string;
       UOS_GOOGLE_DRIVE?: string;
       UOS_X?: string;

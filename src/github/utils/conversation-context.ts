@@ -1,6 +1,6 @@
 import { GitHubContext } from "../github-context.ts";
-import { ConversationNode, ConversationKeyResult, listConversationNodesForKey } from "./conversation-graph.ts";
 import { callUbqAiRouter } from "./ai-router.ts";
+import { ConversationKeyResult, ConversationNode, listConversationNodesForKey } from "./conversation-graph.ts";
 import type { LoggerLike } from "./kv-client.ts";
 import {
   fetchVectorDocument,
@@ -11,6 +11,31 @@ import {
   getVectorDbConfig,
   VectorDocument,
 } from "./vector-db.ts";
+
+type ConversationContextDeps = Readonly<{
+  listConversationNodesForKey: typeof listConversationNodesForKey;
+  callUbqAiRouter: typeof callUbqAiRouter;
+  getVectorDbConfig: typeof getVectorDbConfig;
+  fetchVectorDocument: typeof fetchVectorDocument;
+  fetchVectorDocuments: typeof fetchVectorDocuments;
+  fetchVectorDocumentsByParentId: typeof fetchVectorDocumentsByParentId;
+  findSimilarIssues: typeof findSimilarIssues;
+  findSimilarComments: typeof findSimilarComments;
+}>;
+
+function resolveConversationContextDeps(deps?: Partial<ConversationContextDeps>): ConversationContextDeps {
+  return {
+    listConversationNodesForKey,
+    callUbqAiRouter,
+    getVectorDbConfig,
+    fetchVectorDocument,
+    fetchVectorDocuments,
+    fetchVectorDocumentsByParentId,
+    findSimilarIssues,
+    findSimilarComments,
+    ...deps,
+  };
+}
 
 const DEFAULT_MAX_ITEMS = 10;
 const DEFAULT_MAX_CHARS = 4000;
@@ -631,13 +656,14 @@ function getDocumentTimestamp(doc: VectorDocument): number | null {
 async function findSimilarForDocument(
   config: ReturnType<typeof getVectorDbConfig>,
   doc: VectorDocument,
+  deps: ConversationContextDeps,
   logger?: LoggerLike
 ): Promise<{ id: string; similarity: number }[]> {
   if (!config) return [];
   const embedding = Array.isArray(doc.embedding) ? doc.embedding : [];
   if (embedding.length === 0) return [];
   const [issueResults, commentResults] = await Promise.all([
-    findSimilarIssues(
+    deps.findSimilarIssues(
       config,
       {
         currentId: doc.id,
@@ -647,7 +673,7 @@ async function findSimilarForDocument(
       },
       logger
     ),
-    findSimilarComments(
+    deps.findSimilarComments(
       config,
       {
         currentId: doc.id,
@@ -756,6 +782,7 @@ async function selectConversationCandidates(
     root: SelectionCandidate;
     candidates: SelectionCandidate[];
     maxSelections: number;
+    deps: ConversationContextDeps;
   }>
 ): Promise<Set<string> | null> {
   const query = params.query.trim();
@@ -802,7 +829,7 @@ async function selectConversationCandidates(
     };
 
     try {
-      const raw = await callUbqAiRouter(params.context, prompt, input, { timeoutMs: DEFAULT_SELECTOR_TIMEOUT_MS });
+      const raw = await params.deps.callUbqAiRouter(params.context, prompt, input, { timeoutMs: DEFAULT_SELECTOR_TIMEOUT_MS });
       const parsed = parseSelectorResponse(raw);
       if (!parsed) {
         params.context.logger.debug("Selector response did not parse");
@@ -835,8 +862,10 @@ export async function buildConversationContext(
     maxCommentChars?: number;
     query?: string;
     useSelector?: boolean;
+    deps?: Partial<ConversationContextDeps>;
   }>
 ): Promise<string> {
+  const deps = resolveConversationContextDeps(params.deps);
   const maxItems = typeof params.maxItems === "number" && Number.isFinite(params.maxItems) ? Math.max(1, Math.trunc(params.maxItems)) : DEFAULT_MAX_ITEMS;
   const maxChars = typeof params.maxChars === "number" && Number.isFinite(params.maxChars) ? Math.max(200, Math.trunc(params.maxChars)) : DEFAULT_MAX_CHARS;
   const includeSemantic = params.includeSemantic !== false;
@@ -848,19 +877,19 @@ export async function buildConversationContext(
       : DEFAULT_MAX_COMMENT_CHARS;
   const includeComments = params.includeComments !== false && maxComments > 0;
 
-  const keyNodes = await listConversationNodesForKey(params.context, params.conversation.key, maxItems * 2, params.context.logger);
+  const keyNodes = await deps.listConversationNodesForKey(params.context, params.conversation.key, maxItems * 2, params.context.logger);
   const explicitNodes = dedupeNodes([...params.conversation.linked, ...keyNodes]).filter((node) => node.id !== params.conversation.root.id);
   const threadNodes = [params.conversation.root, ...explicitNodes];
 
   const commentMap = includeComments ? await fetchCommentsForNodes(params.context, threadNodes, maxComments) : new Map<string, CommentEntry[]>();
 
-  const config = includeSemantic ? getVectorDbConfig(params.context.logger) : null;
+  const config = includeSemantic ? deps.getVectorDbConfig(params.context.logger) : null;
   const docMap = new Map<string, VectorDocument>();
   const graphDocIds = new Set<string>([params.conversation.root.id]);
   const seedParentMap = new Map<string, string>();
   const semanticByParent = new Map<string, Array<{ doc: VectorDocument; descriptor: DocumentDescriptor; similarity: number; matchedBy: string }>>();
   if (config) {
-    const explicitDocs = await fetchVectorDocuments(
+    const explicitDocs = await deps.fetchVectorDocuments(
       config,
       explicitNodes.map((node) => node.id),
       { includeEmbedding: true },
@@ -875,7 +904,7 @@ export async function buildConversationContext(
 
   if (config) {
     const seedDocs: VectorDocument[] = [];
-    const rootDoc = await fetchVectorDocument(config, params.conversation.root.id, params.context.logger);
+    const rootDoc = await deps.fetchVectorDocument(config, params.conversation.root.id, params.context.logger);
     if (rootDoc) {
       docMap.set(rootDoc.id, rootDoc);
       graphDocIds.add(rootDoc.id);
@@ -893,7 +922,7 @@ export async function buildConversationContext(
 
     const commentSeedLimit = Math.max(DEFAULT_MAX_COMMENTS, maxComments);
     const commentDocsByNode = await mapWithConcurrency(threadNodes, DEFAULT_VECTOR_CONCURRENCY, async (node) => {
-      const comments = await fetchVectorDocumentsByParentId(
+      const comments = await deps.fetchVectorDocumentsByParentId(
         config,
         node.id,
         {
@@ -924,7 +953,7 @@ export async function buildConversationContext(
     const similarityById = new Map<string, { similarity: number; sources: Set<string> }>();
     const seedDocsList = [...seedMap.values()];
     const similarityResults = await mapWithConcurrency(seedDocsList, DEFAULT_VECTOR_CONCURRENCY, async (doc) => {
-      const matches = await findSimilarForDocument(config, doc, params.context.logger);
+      const matches = await findSimilarForDocument(config, doc, deps, params.context.logger);
       return { docId: doc.id, matches };
     });
     for (const result of similarityResults) {
@@ -942,7 +971,7 @@ export async function buildConversationContext(
 
     const candidateIds = [...similarityById.keys()];
     if (candidateIds.length > 0) {
-      const candidateDocs = await fetchVectorDocuments(config, candidateIds, undefined, params.context.logger);
+      const candidateDocs = await deps.fetchVectorDocuments(config, candidateIds, undefined, params.context.logger);
       for (const doc of candidateDocs) {
         docMap.set(doc.id, doc);
       }
@@ -1046,6 +1075,7 @@ export async function buildConversationContext(
       root: rootCandidate,
       candidates: [...candidateById.values()],
       maxSelections: maxItems,
+      deps,
     });
   }
 

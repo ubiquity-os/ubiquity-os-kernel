@@ -1,5 +1,6 @@
 import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { GitHubContext } from "../github/github-context.ts";
 import { GitHubEventHandler } from "../github/github-event-handler.ts";
 import { describeCommands, parseSlashCommandParameters } from "../github/handlers/issue-comment-created.ts";
@@ -195,17 +196,17 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       botToken,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   const message = getTelegramMessage(update);
   if (!message) {
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   const rawText = getTelegramText(message);
   if (!rawText.trim()) {
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   const classificationText = getClassificationText(rawText, message.chat);
@@ -215,7 +216,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     `Telegram stimulus: reaction=${stimulus.reaction} reflex=${stimulus.reflex ?? "none"}`
   );
   if (stimulus.reaction === "ignore") {
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   const invocation = stimulus.reflex === "slash" ? stimulus.slashInvocation : null;
@@ -488,7 +489,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   const channelConfig = channelConfigResult.config;
   logger.info({ mode: channelConfig.mode, owner: channelConfig.owner, repo: channelConfig.repo }, "Telegram ingress request");
 
-  if (commandName === "context") {
+  if (commandName === "context" && invocation) {
     const isHandled = await handleTelegramContextCommand({
       botToken,
       chatId: message.chat.id,
@@ -598,7 +599,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: messageText,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   let { context, hasIssueContext } = contextResult;
@@ -619,7 +620,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: "I couldn't understand that command. Try /help.",
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     if (invocation.name.toLowerCase() === "help") {
@@ -665,7 +666,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       if (!helpMessageId) {
         logger.warn({ command: "help", chatId: message.chat.id }, "Failed to send Telegram help response.");
       }
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     const isConversationGraphCommand = ["conversation_graph", "conversation-graph"].includes(invocation.name.toLowerCase());
@@ -680,7 +681,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           text: `${prefix}Use /context <github-issue-url> to generate a conversation graph.`,
           logger,
         });
-        return ctx.json({ ok: true }, 200);
+        return ctx.text("", 200);
       }
       const graphArgs = parseConversationGraphArgs(invocation.rawArgs);
       const query = graphArgs.query;
@@ -716,7 +717,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         disableNotification: true,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     const match = resolvePluginCommand(pluginsWithManifest, invocation.name);
@@ -728,7 +729,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: `I couldn't find a plugin for /${invocation.name}. Try /help.`,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     if (channelConfig.mode === "shim" && !hasIssueContext) {
@@ -751,7 +752,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           text: ensured.error,
           logger,
         });
-        return ctx.json({ ok: true }, 200);
+        return ctx.text("", 200);
       }
       if (ensured.createdIssue) {
         const link = buildTelegramIssueLink(ensured.createdIssue);
@@ -780,7 +781,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: `I couldn't start /${invocation.name}.`,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     await safeSendTelegramMessage({
@@ -790,7 +791,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: `Running /${invocation.name}.`,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent") {
@@ -814,7 +815,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           text: ensured.error,
           logger,
         });
-        return ctx.json({ ok: true }, 200);
+        return ctx.text("", 200);
       }
       if (ensured.createdIssue) {
         const link = buildTelegramIssueLink(ensured.createdIssue);
@@ -841,7 +842,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: response,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   const conversationContext = hasIssueContext
@@ -866,11 +867,11 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
   });
 
   if (!decision) {
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (decision.action === "ignore") {
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (decision.action === "help") {
@@ -882,7 +883,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: help,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (decision.action === "reply") {
@@ -893,7 +894,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: decision.reply,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (decision.action === "command") {
@@ -906,7 +907,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: "I couldn't determine which command to run. Try /help.",
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     const match = resolvePluginCommand(pluginsWithManifest, commandName);
@@ -918,7 +919,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: `I couldn't find a plugin for /${commandName}. Try /help.`,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     if (channelConfig.mode === "shim" && !hasIssueContext) {
@@ -941,7 +942,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           text: ensured.error,
           logger,
         });
-        return ctx.json({ ok: true }, 200);
+        return ctx.text("", 200);
       }
       if (ensured.createdIssue) {
         const link = buildTelegramIssueLink(ensured.createdIssue);
@@ -969,7 +970,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         text: `I couldn't start /${commandName}.`,
         logger,
       });
-      return ctx.json({ ok: true }, 200);
+      return ctx.text("", 200);
     }
 
     await safeSendTelegramMessage({
@@ -979,7 +980,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       text: `Running /${commandName}.`,
       logger,
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
   if (decision.action === "agent") {
@@ -1003,7 +1004,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
           text: ensured.error,
           logger,
         });
-        return ctx.json({ ok: true }, 200);
+        return ctx.text("", 200);
       }
       if (ensured.createdIssue) {
         const link = buildTelegramIssueLink(ensured.createdIssue);
@@ -1031,22 +1032,23 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       logger,
     });
     await dispatchInternalAgent(context, task, {
-      postReply: (body) =>
-        safeSendTelegramMessage({
+      postReply: async (body) => {
+        await safeSendTelegramMessage({
           botToken,
           chatId: message.chat.id,
           replyToMessageId: message.message_id,
           text: body,
           logger,
-        }),
+        });
+      },
       settingsOverrides: {
         allowedAuthorAssociations: TELEGRAM_ALLOWED_AUTHOR_ASSOCIATIONS,
       },
     });
-    return ctx.json({ ok: true }, 200);
+    return ctx.text("", 200);
   }
 
-  return ctx.json({ ok: true }, 200);
+  return ctx.text("", 200);
 }
 
 function buildTelegramLinkingKeyboard(): TelegramReplyMarkup {
@@ -1308,7 +1310,7 @@ function normalizePositiveInt(value?: number): number | null {
   return normalized > 0 ? normalized : null;
 }
 
-function parseTelegramSecretsConfig(env: Env): { ok: true; config: TelegramSecretsConfig } | { ok: false; status: number; error: string } {
+function parseTelegramSecretsConfig(env: Env): { ok: true; config: TelegramSecretsConfig } | { ok: false; status: ContentfulStatusCode; error: string } {
   const raw = normalizeOptionalEnvValue(env.UOS_TELEGRAM);
   if (!raw) {
     return { ok: false, status: 404, error: "Telegram ingress disabled." };
@@ -1981,9 +1983,9 @@ function parseCommentHeader(line: string): { label: string; author?: string } | 
 }
 
 function shouldSkipCommentBlock(meta: { label: string; author?: string } | null, blockLines: string[], filters: ConversationGraphFilters): boolean {
-  const hasMeta = Boolean(meta);
-  const shouldSkipBots = hasMeta && !filters.includeBots && Boolean(meta?.author) && isBotAuthor(meta.author);
-  const shouldSkipCommands = hasMeta && !filters.includeCommands && isCommandOnlyComment(blockLines);
+  const author = meta?.author;
+  const shouldSkipBots = !filters.includeBots && typeof author === "string" && Boolean(author.trim()) && isBotAuthor(author);
+  const shouldSkipCommands = Boolean(meta) && !filters.includeCommands && isCommandOnlyComment(blockLines);
   return shouldSkipBots || shouldSkipCommands;
 }
 

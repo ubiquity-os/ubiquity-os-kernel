@@ -42,7 +42,7 @@ function parseOptionalPositiveInt(value: unknown): number | undefined {
 }
 
 export function parseTelegramChannelConfig(config: PluginConfiguration, ownerFallback: string): TelegramChannelConfigResult {
-  const root = isRecord(config) ? config : {};
+  const root = config as Record<string, unknown>;
   const channels = isRecord(root.channels) ? root.channels : null;
   const telegram = channels && isRecord(channels.telegram) ? channels.telegram : null;
   if (!telegram) {

@@ -91,12 +91,14 @@ export function stringLiteralUnion<T extends string[]>(values: readonly [...T]):
   return T.Union(literals as never);
 }
 
+// Synthetic kernel events that plugins may subscribe to.
 const customKernelEvents = ["kernel.plugin_error"] as const;
-const emitterType = T.Union([...emitterEventNames, ...customKernelEvents].map((event) => T.Literal(event)) as never);
+const emitterEvents = [...emitterEventNames, ...customKernelEvents] as readonly string[];
+const emitterType = T.Union(emitterEvents.map((event) => T.Literal(event)) as unknown as [TLiteral<string>, ...TLiteral<string>[]]);
 
 const runsOnSchema = T.Array(emitterType, { default: [] });
 
-// We accept null when a key has no following body
+// We accept null when a key has no following body.
 export const pluginSettingsObjectSchema = T.Object(
   {
     with: T.Optional(T.Record(T.String(), T.Unknown(), { default: {} })),
@@ -121,4 +123,4 @@ export const configSchema = T.Object(
 
 export const configSchemaValidator = createSchemaValidator(configSchema);
 
-export type PluginConfiguration = StaticDecode<typeof configSchema>;
+export type PluginConfiguration = StaticDecode<typeof configSchema> & Record<string, unknown>;

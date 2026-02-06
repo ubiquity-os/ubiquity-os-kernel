@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { Env } from "../github/types/env.ts";
 import { classifyTextIngress } from "../github/utils/reaction.ts";
 import { logger as baseLogger } from "../logger/logger.ts";
@@ -64,7 +65,7 @@ export async function handleTwitterWebhook(ctx: Context, env: Env): Promise<Resp
     "Received X webhook"
   );
 
-  return ctx.json({ ok: true }, 200);
+  return ctx.json({}, 200);
 }
 
 async function signWebhook(secret: string, message: string): Promise<string> {
@@ -93,7 +94,7 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function parseTwitterConfig(env: Env): { ok: true; config: TwitterIngressConfig } | { ok: false; status: number; error: string } {
+function parseTwitterConfig(env: Env): { ok: true; config: TwitterIngressConfig } | { ok: false; status: ContentfulStatusCode; error: string } {
   const raw = normalizeOptionalEnvValue(env.UOS_X);
   if (!raw) {
     return { ok: false, status: 404, error: "X ingress disabled." };
