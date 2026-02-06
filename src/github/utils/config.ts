@@ -12,6 +12,7 @@ import {
   parsePluginIdentifier,
 } from "../types/plugin-configuration.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
+import { getKvClient, type KvKey } from "./kv-client.ts";
 import { getManifest } from "./plugins.ts";
 import { isPlainObject } from "./helpers.ts";
 
@@ -26,6 +27,9 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 const MAX_IMPORT_DEPTH = 6;
 const CONFIG_FETCH_TIMEOUT_MS = 5_000;
+const CONFIG_CACHE_TTL_MS = 5 * 60_000;
+const CONFIG_MISS_CACHE_TTL_MS = 30_000;
+const CONFIG_CACHE_PREFIX: KvKey = ["ubiquityos", "kernel", "config"];
 
 type ConfigLocation = { owner: string; repo: string; environment?: string | null };
 export type ConfigSource = { owner: string; repo: string; path: string; sha?: string | null };
@@ -35,10 +39,54 @@ type ImportState = {
   octokitByOwner: Map<string, GitHubContext["octokit"] | null>;
 };
 
+type CachedConfigDownload = Readonly<{
+  data: string;
+  source: ConfigSource;
+}>;
+
 function normalizeEnvironmentName(environment: string | null | undefined): string {
   return String(environment ?? "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeCacheRepoSegment(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function buildConfigCacheKey(owner: string, repo: string, path: string): KvKey {
+  return [...CONFIG_CACHE_PREFIX, "content", normalizeCacheRepoSegment(owner), normalizeCacheRepoSegment(repo), path];
+}
+
+function buildConfigMissCacheKey(owner: string, repo: string, path: string): KvKey {
+  return [...CONFIG_CACHE_PREFIX, "missing", normalizeCacheRepoSegment(owner), normalizeCacheRepoSegment(repo), path];
+}
+
+function parseCachedConfigDownload(value: unknown): CachedConfigDownload | null {
+  if (!isPlainObject(value)) return null;
+  const data = value.data;
+  const source = value.source;
+  if (typeof data !== "string") return null;
+  if (!isPlainObject(source)) return null;
+  const owner = typeof source.owner === "string" ? source.owner : "";
+  const repo = typeof source.repo === "string" ? source.repo : "";
+  const path = typeof source.path === "string" ? source.path : "";
+  const shaRaw = source.sha;
+  const sha = shaRaw === null || typeof shaRaw === "string" ? shaRaw : undefined;
+  if (!owner || !repo || !path) return null;
+  return {
+    data,
+    source: {
+      owner,
+      repo,
+      path,
+      ...(sha !== undefined ? { sha } : {}),
+    },
+  };
+}
+
+function isMissingConfigCacheRecord(value: unknown): boolean {
+  return isPlainObject(value) && value.missing === true;
 }
 
 /**
@@ -520,7 +568,30 @@ async function download({
     return null;
   }
   const candidates = getConfigPathCandidatesForEnvironment(environment ?? context.eventHandler.environment);
+  const kv = await getKvClient(context.logger);
   for (const filePath of candidates) {
+    if (kv) {
+      try {
+        const miss = await kv.get(buildConfigMissCacheKey(owner, repository, filePath));
+        if (isMissingConfigCacheRecord(miss.value)) {
+          context.logger.debug({ owner, repository, filePath }, "Configuration missing (KV cache hit)");
+          continue;
+        }
+      } catch (error) {
+        context.logger.debug({ err: error }, "Failed to read configuration miss cache (non-fatal).");
+      }
+      try {
+        const cached = await kv.get(buildConfigCacheKey(owner, repository, filePath));
+        const parsed = parseCachedConfigDownload(cached.value);
+        if (parsed) {
+          context.logger.debug({ owner, repository, filePath }, "Configuration cache hit (KV)");
+          return { data: parsed.data, source: parsed.source };
+        }
+      } catch (error) {
+        context.logger.debug({ err: error }, "Failed to read configuration cache (non-fatal).");
+      }
+    }
+
     try {
       context.logger.debug({ owner, repository, filePath }, "Attempting to fetch configuration");
       const controller = new AbortController();
@@ -534,7 +605,15 @@ async function download({
         });
         if (typeof data === "string") {
           context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"] }, "Configuration file found");
-          return { data, source: { owner, repo: repository, path: filePath, sha: null } };
+          const source = { owner, repo: repository, path: filePath, sha: null };
+          if (kv) {
+            try {
+              await kv.set(buildConfigCacheKey(owner, repository, filePath), { data, source }, { expireIn: CONFIG_CACHE_TTL_MS });
+            } catch (error) {
+              context.logger.debug({ err: error }, "Failed to write configuration cache (non-fatal).");
+            }
+          }
+          return { data, source };
         }
         if (!data || Array.isArray(data) || typeof data !== "object") {
           context.logger.warn({ owner, repository, filePath }, "Unexpected configuration payload type");
@@ -545,7 +624,15 @@ async function download({
           const decoded = encoding.toLowerCase() === "base64" ? Buffer.from(data.content, "base64").toString("utf8") : data.content;
           const sha = "sha" in data && typeof data.sha === "string" ? data.sha : null;
           context.logger.debug({ owner, repository, filePath, rateLimitRemaining: headers?.["x-ratelimit-remaining"], sha }, "Configuration file found");
-          return { data: decoded, source: { owner, repo: repository, path: filePath, sha } };
+          const source = { owner, repo: repository, path: filePath, sha };
+          if (kv) {
+            try {
+              await kv.set(buildConfigCacheKey(owner, repository, filePath), { data: decoded, source }, { expireIn: CONFIG_CACHE_TTL_MS });
+            } catch (error) {
+              context.logger.debug({ err: error }, "Failed to write configuration cache (non-fatal).");
+            }
+          }
+          return { data: decoded, source };
         }
         context.logger.warn({ owner, repository, filePath }, "Configuration content missing or invalid");
         return null;
@@ -555,6 +642,13 @@ async function download({
     } catch (err) {
       if (err && typeof err === "object" && "status" in err && err.status === 404) {
         context.logger.debug({ owner, repository, filePath }, "No configuration file found");
+        if (kv) {
+          try {
+            await kv.set(buildConfigMissCacheKey(owner, repository, filePath), { missing: true }, { expireIn: CONFIG_MISS_CACHE_TTL_MS });
+          } catch (error) {
+            context.logger.debug({ err: error }, "Failed to write configuration miss cache (non-fatal).");
+          }
+        }
         continue;
       }
       if (isAbortError(err)) {
@@ -590,4 +684,3 @@ export function parseYaml(context: GitHubContext, data: null | string) {
   context.logger.debug("Could not parse YAML");
   return { yaml: null, errors: null };
 }
-
