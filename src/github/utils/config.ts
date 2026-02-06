@@ -27,7 +27,7 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 const MAX_IMPORT_DEPTH = 6;
 const CONFIG_FETCH_TIMEOUT_MS = 5_000;
-const CONFIG_CACHE_TTL_MS = 5 * 60_000;
+const CONFIG_CACHE_TTL_MS = 60 * 60_000;
 const CONFIG_MISS_CACHE_TTL_MS = 30_000;
 const CONFIG_CACHE_PREFIX: KvKey = ["ubiquityos", "kernel", "config"];
 
@@ -60,6 +60,26 @@ function buildConfigCacheKey(owner: string, repo: string, path: string): KvKey {
 
 function buildConfigMissCacheKey(owner: string, repo: string, path: string): KvKey {
   return [...CONFIG_CACHE_PREFIX, "missing", normalizeCacheRepoSegment(owner), normalizeCacheRepoSegment(repo), path];
+}
+
+export async function invalidateConfigDownloadCache(
+  context: GitHubContext,
+  params: Readonly<{ owner: string; repo: string; paths: readonly string[] }>
+): Promise<void> {
+  const kv = await getKvClient(context.logger);
+  if (!kv || typeof kv.delete !== "function") return;
+  const owner = params.owner.trim();
+  const repo = params.repo.trim();
+  if (!owner || !repo) return;
+
+  for (const path of params.paths) {
+    try {
+      await kv.delete(buildConfigCacheKey(owner, repo, path));
+      await kv.delete(buildConfigMissCacheKey(owner, repo, path));
+    } catch (error) {
+      context.logger.debug({ err: error, owner, repo, path }, "Failed to invalidate configuration cache (non-fatal).");
+    }
+  }
 }
 
 function parseCachedConfigDownload(value: unknown): CachedConfigDownload | null {

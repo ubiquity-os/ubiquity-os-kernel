@@ -5,7 +5,7 @@ import { YAMLException } from "js-yaml";
 import YAML, { LineCounter, Node, YAMLError } from "yaml";
 import { GitHubContext } from "../github-context.ts";
 import { parsePluginIdentifier, PluginConfiguration } from "../types/plugin-configuration.ts";
-import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo } from "../utils/config.ts";
+import { getConfigPathCandidatesForEnvironment, getConfigurationFromRepo, invalidateConfigDownloadCache } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
 
 type ConfigValidationError = Pick<ValueError, "path" | "message" | "value" | "type">;
@@ -172,20 +172,24 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   const { payload } = context;
   const { repository, commits, after } = payload;
   const configPathCandidates = getConfigPathCandidatesForEnvironment(context.eventHandler.environment);
-  let changedConfigPath: string | null = null;
+  const changedConfigPaths = new Set<string>();
   for (const commit of commits) {
     for (const path of configPathCandidates) {
       if (commit.modified?.includes(path) || commit.added?.includes(path)) {
-        changedConfigPath = path;
-        break;
+        changedConfigPaths.add(path);
       }
     }
-    if (changedConfigPath) break;
   }
 
-  if (!changedConfigPath || !repository.owner) {
+  if (changedConfigPaths.size === 0 || !repository.owner) {
     return;
   }
+
+  await invalidateConfigDownloadCache(context, {
+    owner: repository.owner.login,
+    repo: repository.name,
+    paths: [...changedConfigPaths],
+  });
 
   context.logger.info({ repo: repository.full_name, after }, "Configuration file changed, will run configuration checks.");
 
@@ -199,7 +203,7 @@ export default async function handlePushEvent(context: GitHubContext<"push">) {
   try {
     if (errors.length) {
       const body = [];
-      body.push(...constructErrorBody(errors, rawData, repository, after, changedConfigPath));
+      body.push(...constructErrorBody(errors, rawData, repository, after, [...changedConfigPaths][0]));
       await createCommitComment(
         context,
         {
