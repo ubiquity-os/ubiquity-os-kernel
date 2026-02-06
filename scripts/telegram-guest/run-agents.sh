@@ -13,19 +13,25 @@ WORKTREE_ROOT="$REPO_ROOT/.worktrees/telegram-guest"
 LOG_ROOT="$REPO_ROOT/.codex-agent-logs/telegram-guest"
 mkdir -p "$LOG_ROOT"
 
-declare -A WORKTREES=(
-  ["kernel"]="$WORKTREE_ROOT/kernel"
-  ["memory"]="$WORKTREE_ROOT/memory"
-  ["plugins"]="$WORKTREE_ROOT/plugins"
-  ["security"]="$WORKTREE_ROOT/security"
-)
+worktree_for() {
+  case "$1" in
+    kernel) echo "$WORKTREE_ROOT/kernel" ;;
+    memory) echo "$WORKTREE_ROOT/memory" ;;
+    plugins) echo "$WORKTREE_ROOT/plugins" ;;
+    security) echo "$WORKTREE_ROOT/security" ;;
+    *) return 1 ;;
+  esac
+}
 
-declare -A SPECS=(
-  ["kernel"]="docs/architecture/telegram-guest/02-kernel-guest-ingress.md"
-  ["memory"]="docs/architecture/telegram-guest/04-memory-service.md"
-  ["plugins"]="docs/architecture/telegram-guest/05-telegram-plugins.md"
-  ["security"]="docs/architecture/telegram-guest/06-security-privacy.md"
-)
+spec_for() {
+  case "$1" in
+    kernel) echo "docs/architecture/telegram-guest/02-kernel-guest-ingress.md" ;;
+    memory) echo "docs/architecture/telegram-guest/04-memory-service.md" ;;
+    plugins) echo "docs/architecture/telegram-guest/05-telegram-plugins.md" ;;
+    security) echo "docs/architecture/telegram-guest/06-security-privacy.md" ;;
+    *) return 1 ;;
+  esac
+}
 
 usage() {
   cat <<'EOF'
@@ -42,13 +48,13 @@ if [[ "${#AGENTS[@]}" -eq 0 ]]; then
 fi
 
 for agent in "${AGENTS[@]}"; do
-  if [[ -z "${WORKTREES[$agent]:-}" ]]; then
+  if ! worktree="$(worktree_for "$agent")"; then
     echo "Unknown agent: $agent" >&2
     usage >&2
     exit 2
   fi
-  if [[ ! -d "${WORKTREES[$agent]}" ]]; then
-    echo "Missing worktree directory for agent '$agent': ${WORKTREES[$agent]}" >&2
+  if [[ ! -d "$worktree" ]]; then
+    echo "Missing worktree directory for agent '$agent': $worktree" >&2
     echo "Run: bash scripts/telegram-guest/bootstrap-worktrees.sh" >&2
     exit 2
   fi
@@ -56,8 +62,10 @@ done
 
 run_agent() {
   local agent="$1"
-  local workdir="${WORKTREES[$agent]}"
-  local spec="${SPECS[$agent]}"
+  local workdir
+  local spec
+  workdir="$(worktree_for "$agent")"
+  spec="$(spec_for "$agent")"
   local log="$LOG_ROOT/$agent.log"
   local last="$LOG_ROOT/$agent.last.txt"
 
@@ -103,4 +111,3 @@ echo
 echo "All agents finished."
 echo "Review logs under: $LOG_ROOT"
 echo "Next: bash scripts/telegram-guest/merge-branches.sh"
-
