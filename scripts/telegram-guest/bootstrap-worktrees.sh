@@ -9,6 +9,11 @@ WORKTREE_ROOT="$REPO_ROOT/.worktrees/telegram-guest"
 
 mkdir -p "$WORKTREE_ROOT"
 
+SKIP_SUBMODULES="false"
+if [[ "${1:-}" == "--skip-submodules" ]]; then
+  SKIP_SUBMODULES="true"
+fi
+
 declare -a SPECS=(
   "kernel|telegram-guest/kernel|$WORKTREE_ROOT/kernel"
   "memory|telegram-guest/memory-service|$WORKTREE_ROOT/memory"
@@ -58,10 +63,14 @@ for spec in "${SPECS[@]}"; do
     echo "Adding worktree: $name -> $path (new branch $branch from $BASE_BRANCH)"
     git worktree add -b "$branch" "$path" "$BASE_BRANCH"
   fi
+
+  if [[ "$SKIP_SUBMODULES" != "true" ]]; then
+    echo "Initializing submodules in $name worktree..."
+    (cd "$path" && git submodule update --init --recursive)
+  fi
 done
 
 echo
 echo "Done."
 echo "Next:"
 echo "  bash scripts/telegram-guest/run-agents.sh"
-
