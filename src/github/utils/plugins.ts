@@ -1,4 +1,3 @@
-import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { Type as T, type TProperties } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
@@ -90,7 +89,7 @@ export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
   return result as T;
 }
 
-export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
+export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: string) {
   if (plugin.settings?.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
     context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
     return true;
@@ -106,11 +105,7 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
   return false;
 }
 
-export async function getPluginsForEvent(
-  context: GitHubContext,
-  plugins: PluginConfiguration["plugins"],
-  event: EmitterWebhookEventName
-): Promise<ResolvedPlugin[]> {
+export async function getPluginsForEvent(context: GitHubContext, plugins: PluginConfiguration["plugins"], event: string): Promise<ResolvedPlugin[]> {
   const allowedPlugins: ResolvedPlugin[] = [];
   for (const [pluginKey, settings] of Object.entries(plugins)) {
     let target: string | GithubPlugin;

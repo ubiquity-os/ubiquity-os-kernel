@@ -1,5 +1,4 @@
-import { emitterEventNames } from "@octokit/webhooks";
-import { Kind, StaticDecode, Type as T, TLiteral, Union, type TSchema } from "@sinclair/typebox";
+import { Kind, StaticDecode, Type as T, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { ValueError } from "@sinclair/typebox/value";
 
@@ -84,19 +83,10 @@ export function parsePluginIdentifier(value: string): string | GithubPlugin {
   };
 }
 
-type IntoStringLiteralUnion<T> = { [K in keyof T]: T[K] extends string ? TLiteral<T[K]> : never };
-
-export function stringLiteralUnion<T extends string[]>(values: readonly [...T]): Union<IntoStringLiteralUnion<T>> {
-  const literals = values.map((value) => T.Literal(value));
-  return T.Union(literals as never);
-}
-
-// Synthetic kernel events that plugins may subscribe to.
-const customKernelEvents = ["kernel.plugin_error"] as const;
-const emitterEvents = [...emitterEventNames, ...customKernelEvents] as readonly string[];
-const emitterType = T.Union(emitterEvents.map((event) => T.Literal(event)) as unknown as [TLiteral<string>, ...TLiteral<string>[]]);
-
-const runsOnSchema = T.Array(emitterType, { default: [] });
+// Event names are intentionally permissive to support external platform ingresses
+// (e.g. "telegram.message", "google_drive.change") and kernel synthetic events
+// (e.g. "kernel.plugin_error").
+const runsOnSchema = T.Array(T.String({ minLength: 1 }), { default: [] });
 
 // We accept null when a key has no following body.
 export const pluginSettingsObjectSchema = T.Object(

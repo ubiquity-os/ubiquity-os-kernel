@@ -1,4 +1,3 @@
-import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 import { compressString } from "@ubiquity-os/plugin-sdk/compression";
 import { GitHubEventHandler } from "../github-event-handler.ts";
 import { createKernelAttestationToken } from "../utils/kernel-attestation.ts";
@@ -36,11 +35,11 @@ function extractRepoContext(payload: unknown): { owner: string; repo: string; in
   return { owner, repo, installationId };
 }
 
-export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEventName> {
+export class PluginInput<TEventName extends string = string, TEventPayload = unknown> {
   public eventHandler: GitHubEventHandler;
   public stateId: string;
-  public eventName: T;
-  public eventPayload: EmitterWebhookEvent<T>["payload"];
+  public eventName: TEventName;
+  public eventPayload: TEventPayload;
   public settings: unknown;
   public authToken: string;
   public ubiquityKernelToken?: string;
@@ -50,8 +49,8 @@ export class PluginInput<T extends EmitterWebhookEventName = EmitterWebhookEvent
   constructor(
     eventHandler: GitHubEventHandler,
     stateId: string,
-    eventName: T,
-    eventPayload: EmitterWebhookEvent<T>["payload"],
+    eventName: TEventName,
+    eventPayload: TEventPayload,
     settings: unknown,
     authToken: string,
     ref: string,

@@ -1,5 +1,4 @@
 import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { assertEquals, assertNotEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
 import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
@@ -250,7 +249,7 @@ Deno.test("Configuration: does not skip bot event when skipBotEvents is set to f
         target: parsePluginIdentifier(pluginKey),
         settings: pluginSettings,
       },
-      issueOpened as EmitterWebhookEventName
+      issueOpened
     ),
     false
   );

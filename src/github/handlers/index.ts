@@ -1,4 +1,4 @@
-import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
+import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger.ts";
 import { getRequestLogTrail, readRequestIdFromLogger } from "../../logger/request-log-store.ts";
 import { GitHubEventHandler } from "../github-event-handler.ts";
@@ -18,7 +18,6 @@ import handlePushEvent from "./push-event.ts";
 import { handleTelegramLinkIssueClosed } from "./telegram-link-issue-closed.ts";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
-const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
 const ERROR_MESSAGE_MAX_LENGTH = 280;
 const LOG_TRAIL_MAX_LINES = 40;
 const LOG_TRAIL_MAX_LINE_LENGTH = 240;
@@ -394,7 +393,7 @@ async function emitKernelPluginErrorEvent({
   triggeringAuthToken: string;
   deps: HandlerDeps;
 }) {
-  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
+  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT);
   if (!subscribers.length) return;
 
   let targetRepo: { owner: string; repo: string } | null = null;
@@ -446,17 +445,7 @@ async function emitKernelPluginErrorEvent({
     const stateId = crypto.randomUUID();
     try {
       const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-      const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-      const inputs = new PluginInput(
-        context.eventHandler,
-        stateId,
-        KERNEL_PLUGIN_ERROR_EVENT_NAME,
-        eventPayload,
-        settings?.with,
-        authToken,
-        dispatchTarget.ref,
-        null
-      );
+      const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       await deps.dispatchPluginTarget({
@@ -491,7 +480,7 @@ async function emitKernelErrorEvent({
     return;
   }
 
-  if (context.key === KERNEL_PLUGIN_ERROR_EVENT_NAME) {
+  if (String(context.key) === KERNEL_PLUGIN_ERROR_EVENT) {
     context.logger.debug({ event: context.key }, "Skipping kernel error dispatch for kernel.plugin_error event");
     return;
   }
@@ -507,7 +496,7 @@ async function emitKernelErrorEvent({
     return;
   }
 
-  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
+  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT);
   if (!subscribers.length) return;
 
   const triggeringInstallationId = event.payload.installation.id;
@@ -539,17 +528,7 @@ async function emitKernelErrorEvent({
     const stateId = crypto.randomUUID();
     try {
       const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-      const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-      const inputs = new PluginInput(
-        context.eventHandler,
-        stateId,
-        KERNEL_PLUGIN_ERROR_EVENT_NAME,
-        eventPayload,
-        settings?.with,
-        authToken,
-        dispatchTarget.ref,
-        null
-      );
+      const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       await deps.dispatchPluginTarget({
