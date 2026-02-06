@@ -131,6 +131,16 @@ test-dashboard.md
 local.settings.json
 
 .tmp/
-docs/
+
+# Keep most docs untracked (local notes), but allow tracked architecture specs.
+docs/*
+!docs/architecture/
+docs/architecture/*
+!docs/architecture/telegram-guest/
+!docs/architecture/telegram-guest/**
+
+# Local git-worktree sandboxes and Codex orchestration logs.
+.worktrees/
+.codex-agent-logs/
 
 .env.pi
