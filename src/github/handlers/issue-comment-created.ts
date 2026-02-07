@@ -141,6 +141,12 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 
   if (afterMention !== null) {
+    // Users often write "@ubiquityos help" (without a leading slash). Treat it as a help command
+    // instead of routing, so we don't depend on a valid plugins config to provide basic guidance.
+    if (/^help\b/i.test(afterMention)) {
+      await postHelpCommand(context);
+      return;
+    }
     if (context.payload.comment.user?.type === "User") {
       await addReactionEyes(context);
     }
@@ -254,7 +260,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins ?? {})) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
@@ -448,7 +454,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins ?? {})) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);

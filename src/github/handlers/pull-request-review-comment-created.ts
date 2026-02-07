@@ -250,7 +250,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
 
   const pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest }[] = [];
   const manifests: Manifest[] = [];
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins ?? {})) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);

@@ -133,7 +133,7 @@ async function checkPluginConfigurations(context: GitHubContext<"push">, config:
   const errors: (YAML.YAMLError | YAMLException | ConfigValidationError)[] = [];
   const doc = rawData ? YAML.parseDocument(rawData) : null;
 
-  for (const [pluginKey, settings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, settings] of Object.entries(config.plugins ?? {})) {
     const pluginIdentifier = parsePluginIdentifier(pluginKey);
     const manifest = await getManifest(context, pluginIdentifier);
     const baseSegments: (string | number)[] = ["plugins", pluginKey];
