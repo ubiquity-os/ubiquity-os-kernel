@@ -535,7 +535,7 @@ Deno.test({
       assert(planReadyMessage);
       const planReadyMarkup = planReadyMessage["reply_markup"] as
         | {
-            inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>>;
+            inline_keyboard?: Array<Array<{ text?: string; callback_data?: string; style?: string }>>;
           }
         | undefined;
       const keyboard = planReadyMarkup?.inline_keyboard ?? [];
@@ -545,6 +545,9 @@ Deno.test({
         .filter(Boolean) as string[];
       assert(callbackData.some((value) => value.includes("uos_agent_plan:approve")));
       assert(callbackData.some((value) => value.includes("uos_agent_plan:cancel")));
+      const cancelButton = keyboard.flatMap((row) => row).find((btn) => String(btn.callback_data ?? "").includes("uos_agent_plan:cancel"));
+      assert(cancelButton);
+      assertEquals(cancelButton.style, "danger");
 
       // Load sessionId from KV for callback query payload.
       const stored = await kv.get(planningKey);
