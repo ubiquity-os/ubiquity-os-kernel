@@ -175,6 +175,8 @@ type TelegramInlineKeyboardButton = {
   text: string;
   callback_data?: string;
   url?: string;
+  // Telegram Bot API 9.4+: optional button style (color).
+  style?: "danger" | "success" | "primary";
 };
 
 type TelegramReplyMarkup = {
@@ -1599,6 +1601,7 @@ function buildTelegramAgentPlanningKeyboard(params: { status: TelegramAgentPlann
   const cancel: TelegramInlineKeyboardButton = {
     text: "Cancel",
     callback_data: buildTelegramAgentPlanningCallbackData("cancel", params.sessionId),
+    style: "danger",
   };
   if (params.status !== "awaiting_approval") {
     const finalize: TelegramInlineKeyboardButton = {
