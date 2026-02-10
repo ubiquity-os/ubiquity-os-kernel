@@ -32,7 +32,7 @@ jobs:
           if [ -z "${{ secrets.APP_ID }}" ]; then echo "Missing required secret: APP_ID" >&2; exit 1; fi
           if [ -z "${{ secrets.APP_PRIVATE_KEY }}" ]; then echo "Missing required secret: APP_PRIVATE_KEY" >&2; exit 1; fi
 
-      - uses: ubiquity-os/deno-deploy@main
+      - uses: ubiquity-os/deno-deploy@feat/320-artifact-manifest-branch
         env:
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
@@ -55,6 +55,8 @@ jobs:
           NODE_ENV: "production"
           GIT_REVISION: ${{ github.sha }}
         with:
+          sourceRef: ${{ github.event.ref || github.event.workflow_run.head_branch || github.ref_name }}
+          artifactPrefix: dist/
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
