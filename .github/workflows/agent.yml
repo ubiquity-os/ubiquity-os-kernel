@@ -1143,6 +1143,7 @@ jobs:
             "- Poll checkpoints: start, before edits, before final response.",
             "- Post a claim with files/paths you plan to touch; post updates if scope changes or conflicts appear.",
             "- Auth env is already set (UOS_AGENT_AUTH_TOKEN/GH_TOKEN, UOS_KERNEL_TOKEN, UOS_GH_OWNER, UOS_GH_REPO, UOS_GH_INSTALLATION_ID, UOS_AGENT_BUS_URL).",
+            "- Note: `gh auth status` may display `actions-user` for GitHub App tokens; use `gh api repos/$UOS_GH_OWNER/$UOS_GH_REPO -q .full_name` if you need to confirm access.",
             `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 50`,
             `- Claim: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "claims" --kind "claim" --body "Working on <paths>"`,
             `- Update: node scripts/agent-bus.mjs post --agent "${busAgentId}" --channel "status" --kind "update" --body "Update <status>"`,
@@ -1928,6 +1929,7 @@ jobs:
             "- Poll for context from other agents before resolving conflicts.",
             "- Post a summary when conflicts are resolved.",
             "- Auth env is already set (UOS_AGENT_AUTH_TOKEN/GH_TOKEN, UOS_KERNEL_TOKEN, UOS_GH_OWNER, UOS_GH_REPO, UOS_GH_INSTALLATION_ID, UOS_AGENT_BUS_URL).",
+            "- Note: `gh auth status` may display `actions-user` for GitHub App tokens; use `gh api repos/$UOS_GH_OWNER/$UOS_GH_REPO -q .full_name` if you need to confirm access.",
             `- Poll: node scripts/agent-bus.mjs poll --since-file .ubq-agent-bus.since --limit 100`,
             `- Update: node scripts/agent-bus.mjs post --agent "conflict-resolver" --channel "conflicts" --kind "resolution" --body "Resolved conflicts in <files>"`,
           ].join("\n");
@@ -3066,7 +3068,7 @@ jobs:
             ? [
                 "GitHub operations (privileged):",
                 "- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).",
-                "- Authentication: `GH_TOKEN` is set (GitHub App installation token) and is available to tool commands. Do not run `gh auth login`; just run `gh ... --repo <owner>/<repo>`.",
+                "- Authentication: `GH_TOKEN` is set to a GitHub App installation token. `gh auth status` may display `actions-user` (expected for non-user tokens). Do not run `gh auth login`. If you need a sanity check, run: `gh api repos/<owner>/<repo> -q .full_name`.",
                 "- Marketplace auth (optional): if you need to create/update repos under the marketplace org, `UOS_MARKETPLACE_GH_TOKEN` may be set and `UOS_MARKETPLACE_ORG` is provided.",
                 '  - For marketplace ops, prefix commands like: `GH_TOKEN=\"$UOS_MARKETPLACE_GH_TOKEN\" gh ... --repo \"$UOS_MARKETPLACE_ORG/<repo>\"`.',
                 "- Sandbox: outbound network for tool commands is enabled in this run.",
