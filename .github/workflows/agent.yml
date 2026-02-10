@@ -174,8 +174,8 @@ jobs:
           const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
           const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
           const draftPr = settings.draftPr !== undefined ? Boolean(settings.draftPr) : true;
-          const model = typeof settings.model === "string" ? settings.model : "gpt-5.2";
-          const effort = typeof settings.effort === "string" ? settings.effort : "xhigh";
+          const model = typeof settings.model === "string" ? settings.model : "gpt-5.3-codex";
+          const effort = typeof settings.effort === "string" ? settings.effort : "high";
           const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
           const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
           const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
@@ -362,7 +362,18 @@ jobs:
               .filter(Boolean)
               .join("\n") || "- (none)";
 
-          const commentsMarkdown = comments
+          const isBot = (comment) => {
+            const user = comment && typeof comment === "object" ? comment.user : null;
+            const type = user && typeof user === "object" ? user.type : "";
+            const login = user && typeof user === "object" ? user.login : "";
+            if (typeof type === "string" && type.toLowerCase() === "bot") return true;
+            if (typeof login === "string" && login.toLowerCase().endsWith("[bot]")) return true;
+            return false;
+          };
+
+          const humanComments = Array.isArray(comments) ? comments.filter((c) => !isBot(c)) : [];
+
+          const commentsMarkdown = humanComments
             .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
             .join("\n\n");
 
@@ -577,7 +588,26 @@ jobs:
                 return;
               }
 
-              Readable.fromWeb(upstream.body).pipe(res);
+              const stream = Readable.fromWeb(upstream.body);
+              const onStreamError = (err) => {
+                const message = err && typeof err === "object" && "message" in err ? err.message : String(err);
+                console.log("[ubq-forwarder] upstream stream error:", message);
+                try {
+                  if (!res.writableEnded) res.end();
+                } catch {
+                  // ignore
+                }
+              };
+              stream.on("error", onStreamError);
+              res.on("error", onStreamError);
+              res.on("close", () => {
+                try {
+                  stream.destroy();
+                } catch {
+                  // ignore
+                }
+              });
+              stream.pipe(res);
             } catch (error) {
               res.statusCode = 502;
               res.setHeader("Content-Type", "text/plain");
@@ -1052,7 +1082,18 @@ jobs:
               .filter(Boolean)
               .join("\n") || "- (none)";
 
-          const commentsMarkdown = comments
+          const isBot = (comment) => {
+            const user = comment && typeof comment === "object" ? comment.user : null;
+            const type = user && typeof user === "object" ? user.type : "";
+            const login = user && typeof user === "object" ? user.login : "";
+            if (typeof type === "string" && type.toLowerCase() === "bot") return true;
+            if (typeof login === "string" && login.toLowerCase().endsWith("[bot]")) return true;
+            return false;
+          };
+
+          const humanComments = Array.isArray(comments) ? comments.filter((c) => !isBot(c)) : [];
+
+          const commentsMarkdown = humanComments
             .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
             .join("\n\n");
 
@@ -1273,7 +1314,26 @@ jobs:
                 return;
               }
 
-              Readable.fromWeb(upstream.body).pipe(res);
+              const stream = Readable.fromWeb(upstream.body);
+              const onStreamError = (err) => {
+                const message = err && typeof err === "object" && "message" in err ? err.message : String(err);
+                console.log("[ubq-forwarder] upstream stream error:", message);
+                try {
+                  if (!res.writableEnded) res.end();
+                } catch {
+                  // ignore
+                }
+              };
+              stream.on("error", onStreamError);
+              res.on("error", onStreamError);
+              res.on("close", () => {
+                try {
+                  stream.destroy();
+                } catch {
+                  // ignore
+                }
+              });
+              stream.pipe(res);
             } catch (error) {
               res.statusCode = 502;
               res.setHeader("Content-Type", "text/plain");
@@ -1301,6 +1361,8 @@ jobs:
           exit 1
 
       - name: Run Codex (matrix agent)
+        id: codex_primary
+        continue-on-error: true
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
@@ -1326,6 +1388,40 @@ jobs:
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
+
+      - name: Run Codex (matrix agent fallback)
+        id: codex_fallback
+        if: steps.codex_primary.outcome == 'failure' && needs.plan.outputs.model != 'gpt-5.2-codex'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ needs.plan.outputs.sandbox }}
+          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
+          model: gpt-5.2-codex
+          effort: ${{ needs.plan.outputs.effort }}
+          codex-args: >-
+            ${{ needs.plan.outputs.codex_args }}
+            --config sandbox_workspace_write.network_access=true
+            --config shell_environment_policy.ignore_default_excludes=true
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
+
+      - name: Fail if Codex failed (matrix agent)
+        if: steps.codex_primary.outcome == 'failure' && steps.codex_fallback.outcome != 'success'
+        run: exit 1
 
       - name: Disallow metadata actions
         run: |
@@ -2025,7 +2121,26 @@ jobs:
                 return;
               }
 
-              Readable.fromWeb(upstream.body).pipe(res);
+              const stream = Readable.fromWeb(upstream.body);
+              const onStreamError = (err) => {
+                const message = err && typeof err === "object" && "message" in err ? err.message : String(err);
+                console.log("[ubq-forwarder] upstream stream error:", message);
+                try {
+                  if (!res.writableEnded) res.end();
+                } catch {
+                  // ignore
+                }
+              };
+              stream.on("error", onStreamError);
+              res.on("error", onStreamError);
+              res.on("close", () => {
+                try {
+                  stream.destroy();
+                } catch {
+                  // ignore
+                }
+              });
+              stream.pipe(res);
             } catch (error) {
               res.statusCode = 502;
               res.setHeader("Content-Type", "text/plain");
@@ -2054,6 +2169,8 @@ jobs:
 
       - name: Run Codex (conflict resolver)
         if: steps.apply.outputs.conflicts == 'true'
+        id: codex_resolve_primary
+        continue-on-error: true
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
@@ -2079,6 +2196,40 @@ jobs:
             --config sandbox_workspace_write.network_access=true
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
+
+      - name: Run Codex (conflict resolver fallback)
+        if: steps.codex_resolve_primary.outcome == 'failure' && needs.plan.outputs.model != 'gpt-5.2-codex'
+        id: codex_resolve_fallback
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
+          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
+          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
+          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
+          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.resolve.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ needs.plan.outputs.sandbox }}
+          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
+          model: gpt-5.2-codex
+          effort: ${{ needs.plan.outputs.effort }}
+          codex-args: >-
+            ${{ needs.plan.outputs.codex_args }}
+            --config sandbox_workspace_write.network_access=true
+            --config shell_environment_policy.ignore_default_excludes=true
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
+
+      - name: Fail if Codex failed (conflict resolver)
+        if: steps.codex_resolve_primary.outcome == 'failure' && steps.codex_resolve_fallback.outcome != 'success'
+        run: exit 1
 
       - name: Verify conflicts resolved
         if: steps.apply.outputs.conflicts == 'true'
@@ -2292,8 +2443,8 @@ jobs:
           const branchPrefix = typeof settings.branchPrefix === "string" ? settings.branchPrefix : "ubiquityos/agent";
           const commitMessage = typeof settings.commitMessage === "string" ? settings.commitMessage : "agent: apply changes";
           const draftPr = settings.draftPr !== undefined ? Boolean(settings.draftPr) : true;
-          const model = typeof settings.model === "string" ? settings.model : "gpt-5.2";
-          const effort = typeof settings.effort === "string" ? settings.effort : "xhigh";
+          const model = typeof settings.model === "string" ? settings.model : "gpt-5.3-codex";
+          const effort = typeof settings.effort === "string" ? settings.effort : "high";
           const sandbox = typeof settings.sandbox === "string" ? settings.sandbox : "workspace-write";
           const codexArgs = typeof settings.codexArgs === "string" ? settings.codexArgs : "";
           const safetyStrategy = typeof settings.safetyStrategy === "string" ? settings.safetyStrategy : "drop-sudo";
@@ -2629,6 +2780,7 @@ jobs:
           const repo = String(process.env.REPO || "").trim();
           const commentId = String(process.env.COMMENT_ID || "").trim();
           const commentKind = String(process.env.COMMENT_KIND || "").trim();
+          const issueNumber = String(process.env.ISSUE_NUMBER || "").trim();
           const runUrl = String(process.env.RUN_URL || "").trim();
           const status = String(process.env.STATUS || "").trim();
           const stateId = String(process.env.STATE_ID || "").trim();
@@ -2637,8 +2789,8 @@ jobs:
           const detail = String(process.env.DETAIL || "").trim();
           const changed = String(process.env.CHANGED || "").trim();
 
-          if (!repo || !commentId) {
-            console.error("Missing REPO or COMMENT_ID");
+          if (!repo) {
+            console.error("Missing REPO");
             process.exit(1);
           }
 
@@ -2651,6 +2803,21 @@ jobs:
           }
 
           const summary = summaryPath && fs.existsSync(summaryPath) ? fs.readFileSync(summaryPath, "utf8").trim() : "";
+
+          const requestCommentIdFile = path.join(process.env.RUNNER_TEMP || "/tmp", "uos_request_comment_id.txt");
+          const readStoredCommentId = () => {
+            try {
+              const raw = fs.readFileSync(requestCommentIdFile, "utf8").trim();
+              return /^[0-9]+$/.test(raw) ? raw : "";
+            } catch {
+              return "";
+            }
+          };
+
+          const storedCommentId = readStoredCommentId();
+          let effectiveCommentId = storedCommentId || commentId;
+          // If we created a dedicated request-status comment, it is always an issue comment.
+          let effectiveCommentKind = storedCommentId ? "issue_comment" : commentKind;
 
           const updatedAt = new Date().toISOString();
           const blockLines = [
@@ -2670,19 +2837,76 @@ jobs:
           ].filter((line) => line !== null);
           const block = blockLines.join("\n");
 
+          const createRequestComment = () => {
+            if (!issueNumber) {
+              throw new Error("Missing ISSUE_NUMBER (needed to create a request status comment).");
+            }
+            const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
+            const bodyPath = path.join(tmp, "comment-body.md");
+            const visibleLines = [
+              "Agent run status:",
+              status ? `Status: ${status}` : null,
+              runUrl ? `Run logs: ${runUrl}` : null,
+            ].filter(Boolean);
+            const body = `${visibleLines.join("\n")}\n\n${block}\n`;
+            fs.writeFileSync(bodyPath, body, "utf8");
+            const created = ghJson(["-X", "POST", `repos/${repo}/issues/${issueNumber}/comments`, "-F", `body=@${bodyPath}`]);
+            const id = String(created?.id ?? "").trim();
+            if (!/^[0-9]+$/.test(id)) {
+              throw new Error("Failed to create request status comment: missing id.");
+            }
+            fs.writeFileSync(requestCommentIdFile, `${id}\n`, "utf8");
+            return id;
+          };
+
+          const fetchExistingCommentBody = (commentRoute) => {
+            try {
+              const comment = ghJson([commentRoute]);
+              return String(comment?.body ?? "");
+            } catch (error) {
+              const stderr = error && typeof error === "object" && "stderr" in error ? String(error.stderr ?? "") : "";
+              const stdout = error && typeof error === "object" && "stdout" in error ? String(error.stdout ?? "") : "";
+              const combined = `${stderr}\n${stdout}`;
+              // Common for Telegram-originated dispatches: COMMENT_ID is not a real GitHub comment id.
+              if (combined.includes("(HTTP 404)") || combined.includes("\"status\":\"404\"") || combined.includes("\"status\":404")) {
+                return null;
+              }
+              throw error;
+            }
+          };
+
+          if (!effectiveCommentId) {
+            // No trigger comment to patch (or it was intentionally omitted). Create a request-status comment.
+            effectiveCommentId = createRequestComment();
+            effectiveCommentKind = "issue_comment";
+          }
+
           const commentRoute =
-            commentKind === "pull_request_review_comment" ? `repos/${repo}/pulls/comments/${commentId}` : `repos/${repo}/issues/comments/${commentId}`;
-          const comment = ghJson([commentRoute]);
-          const currentBody = String(comment?.body ?? "");
+            effectiveCommentKind === "pull_request_review_comment"
+              ? `repos/${repo}/pulls/comments/${effectiveCommentId}`
+              : `repos/${repo}/issues/comments/${effectiveCommentId}`;
+
+          let currentBody = fetchExistingCommentBody(commentRoute);
+          if (currentBody === null) {
+            // Trigger comment couldn't be found; create a dedicated request-status comment and patch that instead.
+            effectiveCommentId = createRequestComment();
+            effectiveCommentKind = "issue_comment";
+            const fallbackRoute = `repos/${repo}/issues/comments/${effectiveCommentId}`;
+            currentBody = fetchExistingCommentBody(fallbackRoute) ?? "";
+          }
 
           const marker = /<!--\s*ubiquityos-agent[\s\S]*?-->\s*/g;
-          const cleaned = currentBody.replace(marker, "").replace(/\\s*$/u, "");
+          const cleaned = currentBody.replace(marker, "").replace(/\s*$/u, "");
           const nextBody = cleaned ? `${cleaned}\n\n${block}\n` : `${block}\n`;
 
           const tmp = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || "/tmp", "ubq-comment-"));
           const bodyPath = path.join(tmp, "comment-body.md");
           fs.writeFileSync(bodyPath, nextBody, "utf8");
-          gh(["api", "-X", "PATCH", commentRoute, "-F", `body=@${bodyPath}`]);
+          const patchRoute =
+            effectiveCommentKind === "pull_request_review_comment"
+              ? `repos/${repo}/pulls/comments/${effectiveCommentId}`
+              : `repos/${repo}/issues/comments/${effectiveCommentId}`;
+          gh(["api", "-X", "PATCH", patchRoute, "-F", `body=@${bodyPath}`]);
           NODE
 
       - name: Comment (rejected)
@@ -2703,6 +2927,7 @@ jobs:
         env:
           GH_TOKEN: ${{ inputs.authToken }}
           REPO: ${{ steps.parse.outputs.repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
           COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
           COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -2728,6 +2953,7 @@ jobs:
         env:
           GH_TOKEN: ${{ inputs.authToken }}
           REPO: ${{ steps.parse.outputs.repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
           COMMENT_ID: ${{ steps.parse.outputs.comment_id }}
           COMMENT_KIND: ${{ steps.parse.outputs.comment_kind }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -2803,7 +3029,18 @@ jobs:
               .filter(Boolean)
               .join("\n") || "- (none)";
 
-          const commentsMarkdown = comments
+          const isBot = (comment) => {
+            const user = comment && typeof comment === "object" ? comment.user : null;
+            const type = user && typeof user === "object" ? user.type : "";
+            const login = user && typeof user === "object" ? user.login : "";
+            if (typeof type === "string" && type.toLowerCase() === "bot") return true;
+            if (typeof login === "string" && login.toLowerCase().endsWith("[bot]")) return true;
+            return false;
+          };
+
+          const humanComments = Array.isArray(comments) ? comments.filter((c) => !isBot(c)) : [];
+
+          const commentsMarkdown = humanComments
             .map((c) => `### @${c.user?.login || "unknown"} — ${c.created_at || ""}\n${c.body || ""}`.trimEnd())
             .join("\n\n");
 
@@ -3162,7 +3399,26 @@ jobs:
                 return;
               }
 
-              Readable.fromWeb(upstream.body).pipe(res);
+              const stream = Readable.fromWeb(upstream.body);
+              const onStreamError = (err) => {
+                const message = err && typeof err === "object" && "message" in err ? err.message : String(err);
+                console.log("[ubq-forwarder] upstream stream error:", message);
+                try {
+                  if (!res.writableEnded) res.end();
+                } catch {
+                  // ignore
+                }
+              };
+              stream.on("error", onStreamError);
+              res.on("error", onStreamError);
+              res.on("close", () => {
+                try {
+                  stream.destroy();
+                } catch {
+                  // ignore
+                }
+              });
+              stream.pipe(res);
             } catch (error) {
               res.statusCode = 502;
               res.setHeader("Content-Type", "text/plain");
@@ -3191,6 +3447,8 @@ jobs:
 
       - name: Run Codex (privileged)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        id: codex_privileged_primary
+        continue-on-error: true
         uses: openai/codex-action@v1
         env:
           GH_TOKEN: ${{ inputs.authToken }}
@@ -3216,8 +3474,40 @@ jobs:
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_MARKETPLACE_GH_TOKEN","UOS_MARKETPLACE_ORG","UOS_TOKEN_FILE"]
 
+      - name: Run Codex (privileged fallback)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.codex_privileged_primary.outcome == 'failure' && steps.parse.outputs.model != 'gpt-5.2-codex'
+        id: codex_privileged_fallback
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          UOS_MARKETPLACE_GH_TOKEN: ${{ steps.parse.outputs.marketplace_auth_token }}
+          UOS_MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ steps.parse.outputs.sandbox }}
+          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+          model: gpt-5.2-codex
+          effort: ${{ steps.parse.outputs.effort }}
+          codex-args: >-
+            ${{ steps.parse.outputs.codex_args }}
+            --config sandbox_workspace_write.network_access=true
+            --config shell_environment_policy.ignore_default_excludes=true
+            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_MARKETPLACE_GH_TOKEN","UOS_MARKETPLACE_ORG","UOS_TOKEN_FILE"]
+
+      - name: Fail if Codex failed (privileged)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.codex_privileged_primary.outcome == 'failure' && steps.codex_privileged_fallback.outcome != 'success'
+        run: exit 1
+
       - name: Run Codex (restricted)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true'
+        id: codex_restricted_primary
+        continue-on-error: true
         uses: openai/codex-action@v1
         with:
           # No OpenAI API key: route Codex model calls through ai.ubq.fi (which uses Codex ChatGPT auth upstream).
@@ -3232,6 +3522,28 @@ jobs:
           model: ${{ steps.parse.outputs.model }}
           effort: ${{ steps.parse.outputs.effort }}
           codex-args: ${{ steps.parse.outputs.codex_args }}
+
+      - name: Run Codex (restricted fallback)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true' && steps.codex_restricted_primary.outcome == 'failure' && steps.parse.outputs.model != 'gpt-5.2-codex'
+        id: codex_restricted_fallback
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: "ubq-forwarder"
+          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
+          allow-bots: "true"
+          prompt-file: .codex.prompt.txt
+          output-file: .codex.last-message.md
+          working-directory: ${{ github.workspace }}
+          sandbox: ${{ steps.parse.outputs.sandbox }}
+          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
+          model: gpt-5.2-codex
+          effort: ${{ steps.parse.outputs.effort }}
+          codex-args: ${{ steps.parse.outputs.codex_args }}
+
+      - name: Fail if Codex failed (restricted)
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true' && steps.codex_restricted_primary.outcome == 'failure' && steps.codex_restricted_fallback.outcome != 'success'
+        run: exit 1
 
       - name: Run tests (optional)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.parse.outputs.test_command != ''
@@ -3473,6 +3785,7 @@ jobs:
           set -euo pipefail
 
           export REPO="${{ steps.parse.outputs.repo }}"
+          export ISSUE_NUMBER="${{ steps.parse.outputs.issue_number }}"
           export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
           export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
           export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -3531,6 +3844,7 @@ jobs:
           set -euo pipefail
 
           export REPO="${{ steps.parse.outputs.repo }}"
+          export ISSUE_NUMBER="${{ steps.parse.outputs.issue_number }}"
           export COMMENT_ID="${{ steps.parse.outputs.comment_id }}"
           export COMMENT_KIND="${{ steps.parse.outputs.comment_kind }}"
           export RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
