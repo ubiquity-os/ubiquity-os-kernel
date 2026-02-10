@@ -156,7 +156,7 @@ async function createLinkEventHandler(params: {
     webhookSecret: githubConfigResult.config.webhookSecret,
     appId: githubConfigResult.config.appId,
     privateKey: githubConfigResult.config.privateKey,
-    llm: "gpt-5.3-chat-latest",
+    llm: "gpt-5.3-codex",
     aiBaseUrl: aiConfigResult.config.baseUrl,
     aiToken: aiConfigResult.config.token,
     kernelRefreshUrl,

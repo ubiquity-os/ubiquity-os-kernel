@@ -279,7 +279,7 @@ Plugins can securely call the ai.ubq.fi LLM endpoint using inherited GitHub auth
 ### Model Policy
 
 - Agentic runs must use `gpt-5.3-codex` (do not downgrade to `gpt-5.2*`).
-- Router/chat usage should use `gpt-5.3-chat-latest`.
+- Kernel LLM usage (router + Telegram planning) should use `gpt-5.3-codex`.
 
 ### LLM SDK Overview
 
