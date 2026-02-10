@@ -1389,38 +1389,8 @@ jobs:
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
 
-      - name: Run Codex (matrix agent fallback)
-        id: codex_fallback
-        if: steps.codex_primary.outcome == 'failure' && needs.plan.outputs.model != 'gpt-5.2-codex'
-        continue-on-error: true
-        uses: openai/codex-action@v1
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
-          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
-          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
-          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
-          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
-        with:
-          openai-api-key: "ubq-forwarder"
-          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
-          allow-bots: "true"
-          prompt-file: .codex.prompt.txt
-          output-file: .codex.last-message.md
-          working-directory: ${{ github.workspace }}
-          sandbox: ${{ needs.plan.outputs.sandbox }}
-          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
-          model: gpt-5.2-codex
-          effort: ${{ needs.plan.outputs.effort }}
-          codex-args: >-
-            ${{ needs.plan.outputs.codex_args }}
-            --config sandbox_workspace_write.network_access=true
-            --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
-
       - name: Fail if Codex failed (matrix agent)
-        if: steps.codex_primary.outcome == 'failure' && steps.codex_fallback.outcome != 'success'
+        if: steps.codex_primary.outcome == 'failure'
         run: exit 1
 
       - name: Disallow metadata actions
@@ -2197,38 +2167,8 @@ jobs:
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
 
-      - name: Run Codex (conflict resolver fallback)
-        if: steps.codex_resolve_primary.outcome == 'failure' && needs.plan.outputs.model != 'gpt-5.2-codex'
-        id: codex_resolve_fallback
-        continue-on-error: true
-        uses: openai/codex-action@v1
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-          UOS_AGENT_AUTH_TOKEN: ${{ inputs.authToken }}
-          UOS_KERNEL_TOKEN: ${{ inputs.ubiquityKernelToken }}
-          UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
-          UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
-          UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
-        with:
-          openai-api-key: "ubq-forwarder"
-          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
-          allow-bots: "true"
-          prompt-file: .codex.resolve.prompt.txt
-          output-file: .codex.last-message.md
-          working-directory: ${{ github.workspace }}
-          sandbox: ${{ needs.plan.outputs.sandbox }}
-          safety-strategy: ${{ needs.plan.outputs.safety_strategy }}
-          model: gpt-5.2-codex
-          effort: ${{ needs.plan.outputs.effort }}
-          codex-args: >-
-            ${{ needs.plan.outputs.codex_args }}
-            --config sandbox_workspace_write.network_access=true
-            --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_AGENT_AUTH_TOKEN","UOS_KERNEL_TOKEN","UOS_GH_OWNER","UOS_GH_REPO","UOS_GH_INSTALLATION_ID","UOS_AGENT_BUS_URL"]
-
       - name: Fail if Codex failed (conflict resolver)
-        if: steps.codex_resolve_primary.outcome == 'failure' && steps.codex_resolve_fallback.outcome != 'success'
+        if: steps.codex_resolve_primary.outcome == 'failure'
         run: exit 1
 
       - name: Verify conflicts resolved
@@ -3474,34 +3414,8 @@ jobs:
             --config shell_environment_policy.ignore_default_excludes=true
             --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_MARKETPLACE_GH_TOKEN","UOS_MARKETPLACE_ORG","UOS_TOKEN_FILE"]
 
-      - name: Run Codex (privileged fallback)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.codex_privileged_primary.outcome == 'failure' && steps.parse.outputs.model != 'gpt-5.2-codex'
-        id: codex_privileged_fallback
-        continue-on-error: true
-        uses: openai/codex-action@v1
-        env:
-          GH_TOKEN: ${{ inputs.authToken }}
-          UOS_MARKETPLACE_GH_TOKEN: ${{ steps.parse.outputs.marketplace_auth_token }}
-          UOS_MARKETPLACE_ORG: ${{ steps.parse.outputs.marketplace_org }}
-        with:
-          openai-api-key: "ubq-forwarder"
-          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
-          allow-bots: "true"
-          prompt-file: .codex.prompt.txt
-          output-file: .codex.last-message.md
-          working-directory: ${{ github.workspace }}
-          sandbox: ${{ steps.parse.outputs.sandbox }}
-          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
-          model: gpt-5.2-codex
-          effort: ${{ steps.parse.outputs.effort }}
-          codex-args: >-
-            ${{ steps.parse.outputs.codex_args }}
-            --config sandbox_workspace_write.network_access=true
-            --config shell_environment_policy.ignore_default_excludes=true
-            --config shell_environment_policy.include_only=["PATH","HOME","USER","SHELL","TERM","LANG","LC_ALL","LC_CTYPE","TMPDIR","TMP","TEMP","RUNNER_TEMP","GITHUB_WORKSPACE","CI","GH_TOKEN","UOS_MARKETPLACE_GH_TOKEN","UOS_MARKETPLACE_ORG","UOS_TOKEN_FILE"]
-
       - name: Fail if Codex failed (privileged)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.codex_privileged_primary.outcome == 'failure' && steps.codex_privileged_fallback.outcome != 'success'
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true' && steps.codex_privileged_primary.outcome == 'failure'
         run: exit 1
 
       - name: Run Codex (restricted)
@@ -3523,26 +3437,8 @@ jobs:
           effort: ${{ steps.parse.outputs.effort }}
           codex-args: ${{ steps.parse.outputs.codex_args }}
 
-      - name: Run Codex (restricted fallback)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true' && steps.codex_restricted_primary.outcome == 'failure' && steps.parse.outputs.model != 'gpt-5.2-codex'
-        id: codex_restricted_fallback
-        continue-on-error: true
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: "ubq-forwarder"
-          responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
-          allow-bots: "true"
-          prompt-file: .codex.prompt.txt
-          output-file: .codex.last-message.md
-          working-directory: ${{ github.workspace }}
-          sandbox: ${{ steps.parse.outputs.sandbox }}
-          safety-strategy: ${{ steps.parse.outputs.safety_strategy }}
-          model: gpt-5.2-codex
-          effort: ${{ steps.parse.outputs.effort }}
-          codex-args: ${{ steps.parse.outputs.codex_args }}
-
       - name: Fail if Codex failed (restricted)
-        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true' && steps.codex_restricted_primary.outcome == 'failure' && steps.codex_restricted_fallback.outcome != 'success'
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged != 'true' && steps.codex_restricted_primary.outcome == 'failure'
         run: exit 1
 
       - name: Run tests (optional)
