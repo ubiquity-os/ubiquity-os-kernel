@@ -55,7 +55,7 @@ Options:
   --max-select N            Max selected blocks (default: 12)
   --selector                Enable graph node selector when query is present
   --no-selector             Disable graph node selector
-  --model <name>            LLM model (default: gpt-5.2)
+  --model <name>            LLM model (default: gpt-5.3-chat-latest)
   --json                    Output JSON { key, query, graph, selected, summary }
   --out <path>              Write raw context to a file
   --quiet                   Suppress stdout when writing to file
@@ -124,7 +124,7 @@ function parseArgs(args: string[]): Options {
   let shouldRunSelector = false;
   let shouldRunSummary = false;
   let maxSelect = 12;
-  let model = "gpt-5.2";
+  let model = "gpt-5.3-chat-latest";
   let useJson = false;
   let outPath = "";
   let isQuiet = false;

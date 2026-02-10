@@ -219,7 +219,7 @@ app.post("/", async (ctx: Context) => {
       webhookSecret: githubConfig.webhookSecret,
       appId: githubConfig.appId,
       privateKey: githubConfig.privateKey,
-      llm: "gpt-5.2-chat-latest",
+      llm: "gpt-5.3-chat-latest",
       aiBaseUrl: aiConfig.baseUrl,
       aiToken: aiConfig.token,
       kernelRefreshUrl,

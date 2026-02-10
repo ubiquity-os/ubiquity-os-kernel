@@ -276,6 +276,11 @@ Use dedicated test identities for Telegram end-to-end runs so real accounts are 
 
 Plugins can securely call the ai.ubq.fi LLM endpoint using inherited GitHub authentication—no manual tokens needed. The kernel dispatches with short-lived installation tokens, and the API verifies repo access.
 
+### Model Policy
+
+- Agentic runs must use `gpt-5.3-codex` (do not downgrade to `gpt-5.2*`).
+- Router/chat usage should use `gpt-5.3-chat-latest`.
+
 ### LLM SDK Overview
 
 The LLM functionality is integrated into `@ubiquity-os/plugin-sdk` as `callLlm()`:
