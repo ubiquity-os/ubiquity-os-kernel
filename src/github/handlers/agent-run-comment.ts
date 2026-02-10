@@ -67,8 +67,7 @@ async function getInstallationBotLogin(context: EditedCommentContext): Promise<s
 
   try {
     const { data } = await context.octokit.rest.users.getAuthenticated();
-    const login = typeof data?.login === "string" ? data.login.trim() : "";
-    return login;
+    return typeof data?.login === "string" ? data.login.trim() : "";
   } catch (error) {
     context.logger.debug({ err: error }, "Failed to resolve bot login (non-fatal)");
     return "";

@@ -26,12 +26,15 @@ Deno.test("dispatchWorkflow: dispatches provided workflow id", async () => {
   const context = {
     octokit: {
       rest: {
-        apps: {
-          getRepoInstallation,
-        },
+        apps: { getRepoInstallation },
       },
     },
     eventHandler: {
+      getUnauthenticatedOctokit: () => ({
+        rest: {
+          apps: { getRepoInstallation },
+        },
+      }),
       getAuthenticatedOctokit: () => ({
         rest: {
           actions: {

@@ -4,6 +4,7 @@ import { parseAgentConfig, parseAiConfig } from "../github/utils/env-config.ts";
 import { GitHubEventHandler } from "../github/github-event-handler.ts";
 import { logger as baseLogger } from "../logger/logger.ts";
 import { CONFIG_ORG_REPO } from "../github/utils/config.ts";
+import { tryGetInstallationIdForOwner } from "../github/utils/marketplace-auth.ts";
 import { formatTelegramLinkSnippet, getTelegramLinkIssue, peekTelegramLinkCode, saveTelegramLinkIssue } from "./identity-store.ts";
 
 const CREATE_LINK_ISSUE_ERROR = "Failed to create link issue.";
@@ -106,6 +107,31 @@ export async function sendTelegramLinkConfirmation(params: { env: Env; userId: n
   }
 }
 
+export async function sendTelegramLinkFailure(params: { env: Env; userId: number; owner: string; error: string; logger: typeof baseLogger }): Promise<void> {
+  const botToken = parseTelegramBotToken(params.env, params.logger);
+  if (!botToken) return;
+  const errorText = params.error.trim() || "Unknown error";
+  const text = `Linking to ${params.owner} failed.\n\n${errorText}\n\nRestart linking with /status.`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: params.userId,
+        text,
+        disable_web_page_preview: true,
+        disable_notification: true,
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      params.logger.warn({ status: response.status, detail }, "Failed to send Telegram link failure notification");
+    }
+  } catch (error) {
+    params.logger.warn({ err: error }, "Failed to send Telegram link failure notification");
+  }
+}
+
 async function createLinkEventHandler(params: {
   env: Env;
   logger: typeof baseLogger;
@@ -157,9 +183,23 @@ async function getInstallationOctokit(params: {
   if (!handlerResult.ok) {
     return { ok: false, error: handlerResult.error };
   }
-  const installationId = await resolveInstallationId(handlerResult.eventHandler, params.owner, params.repo, params.logger);
+  const { installationId, ownerInstallationId } = await resolveInstallationIds(handlerResult.eventHandler, params.owner, params.repo, params.logger);
   if (!installationId) {
-    return { ok: false, error: "No GitHub App installation found for that owner." };
+    const base = `No GitHub App installation found for ${params.owner}/${params.repo}.`;
+    if (ownerInstallationId) {
+      return {
+        ok: false,
+        error: [
+          base,
+          `The app appears to be installed on ${params.owner}, but it cannot access ${params.owner}/${params.repo} yet.`,
+          `Create ${params.owner}/${params.repo} and ensure the app is installed on it (or grant access to it), then try again.`,
+        ].join("\n"),
+      };
+    }
+    return {
+      ok: false,
+      error: [base, `Install the UbiquityOS GitHub App on ${params.owner}, then try again.`].join("\n"),
+    };
   }
   return { ok: true, octokit: handlerResult.eventHandler.getAuthenticatedOctokit(installationId), installationId };
 }
@@ -296,4 +336,21 @@ async function resolveInstallationId(eventHandler: GitHubEventHandler, owner: st
     logger.warn({ err: error, owner, repo }, "Failed to resolve GitHub App installation for linking");
   }
   return null;
+}
+
+async function resolveInstallationIds(
+  eventHandler: GitHubEventHandler,
+  owner: string,
+  repo: string,
+  logger: typeof baseLogger
+): Promise<Readonly<{ installationId: number | null; ownerInstallationId: number | null }>> {
+  const installationId = await resolveInstallationId(eventHandler, owner, repo, logger);
+  let ownerInstallationId: number | null = null;
+  try {
+    ownerInstallationId = await tryGetInstallationIdForOwner(eventHandler, owner);
+  } catch (error) {
+    logger.warn({ err: error, owner }, "Failed to resolve owner GitHub App installation while linking (non-fatal)");
+  }
+
+  return { installationId, ownerInstallationId };
 }

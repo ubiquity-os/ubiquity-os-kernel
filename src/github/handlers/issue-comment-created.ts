@@ -466,6 +466,11 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     return;
   }
 
+  if (decision.action !== "command") {
+    await postReply(context, "I couldn't understand that request. Try `@ubiquityos help`.");
+    return;
+  }
+
   const commandName = decision.command?.name;
   if (!commandName || typeof commandName !== "string") {
     await postReply(context, "I couldn't determine which command to run. Try `@ubiquityos help`.");

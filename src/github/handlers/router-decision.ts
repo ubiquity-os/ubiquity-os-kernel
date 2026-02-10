@@ -7,7 +7,11 @@ export type RouterDecision =
   | { action: "ignore" }
   | { action: "reply"; reply: string }
   | { action: "command"; command: { name: string; parameters?: unknown } }
-  | { action: "agent"; task?: string };
+  | { action: "agent"; task?: string }
+  | {
+      action: "agent_plan";
+      operation: "append" | "approve" | "cancel" | "show" | "finalize";
+    };
 
 function stripCodeFences(raw: string): string {
   const trimmed = raw.trim();

@@ -55,6 +55,19 @@ const LOG_ALLOWLIST_KEYS = new Set([
   "manifestUrl",
   "owner",
   "repo",
+  // Telegram debugging (workspace bootstrap / promotion flows).
+  "chatId",
+  "userId",
+  "threadId",
+  "messageId",
+  "updateId",
+  "source",
+  "phase",
+  "attempt",
+  "description",
+  "botStatus",
+  "botCanPromoteMembers",
+  "botUserId",
   "workflowId",
   "ref",
   "event",
@@ -147,6 +160,9 @@ const consoleStream: DestinationStream = isProduction
   ? pino.destination(1)
   : pretty({
       colorize: true,
+      // Keep logging synchronous so `deno test` doesn't report cross-test op_write leaks.
+      // (pino-pretty docs mention this for Jest; Deno test leak detection is similar.)
+      sync: true,
       singleLine: false,
       levelFirst: true,
       translateTime: "HH:MM:ss.l",

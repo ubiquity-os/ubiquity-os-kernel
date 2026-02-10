@@ -14,12 +14,15 @@ Deno.test("resolvePluginDispatchTarget: prefers manifest worker urls for github 
   const context = {
     octokit: {
       rest: {
-        apps: {
-          getRepoInstallation: async () => ({ data: { id: 123 } }),
-        },
+        apps: { getRepoInstallation: async () => ({ data: { id: 123 } }) },
       },
     },
     eventHandler: {
+      getUnauthenticatedOctokit: () => ({
+        rest: {
+          apps: { getRepoInstallation: async () => ({ data: { id: 123 } }) },
+        },
+      }),
       getAuthenticatedOctokit: () => ({
         rest: {
           repos: {
@@ -59,6 +62,16 @@ Deno.test("resolvePluginDispatchTarget: falls back to workflow dispatch using th
       },
     },
     eventHandler: {
+      getUnauthenticatedOctokit: () => ({
+        rest: {
+          apps: {
+            getRepoInstallation: async () => {
+              appsGetRepoInstallationCalls += 1;
+              return { data: { id: 123 } };
+            },
+          },
+        },
+      }),
       getAuthenticatedOctokit: () => ({
         rest: {
           repos: {

@@ -10,7 +10,7 @@ The kernel is designed to:
 Minimum secrets for the kernel live in `UOS_GITHUB` (JSON):
 
 ```json
-{"appId":"GITHUB_APP_ID","webhookSecret":"GITHUB_WEBHOOK_SECRET","privateKey":"GITHUB_APP_PRIVATE_KEY_PEM"}
+{ "appId": "GITHUB_APP_ID", "webhookSecret": "GITHUB_WEBHOOK_SECRET", "privateKey": "GITHUB_APP_PRIVATE_KEY_PEM" }
 ```
 
 `privateKey` must be PKCS#8. If your GitHub App key is PEM, convert it:
@@ -134,7 +134,7 @@ Configure the kernel to accept Telegram webhooks at `/telegram`:
 Example:
 
 ```json
-{"botToken":"...","webhookSecret":"..."}
+{ "botToken": "...", "webhookSecret": "..." }
 ```
 
 Routing + policy live in the user’s `.ubiquity-os` repo under `.github/.ubiquity-os.config.yml`:
@@ -173,6 +173,59 @@ Notes:
 - Personal users are limited to a single linked Telegram account.
 - Use `/status` in Telegram to see current link state.
 
+#### Workspace Topics (Recommended)
+
+For multi-project usage, use a private forum supergroup (Topics enabled) as a workspace, and use topics as contexts:
+
+1. Ensure `channels.telegram.mode` is `shim` (or omit `channels.telegram` so it defaults to shim).
+2. DM the bot `/workspace` (requires the optional MTProto setup below).
+3. Join the group from the single-use invite link.
+4. Once you join, you should be promoted to admin. If that doesn't happen, send `/help` in the group to retry.
+5. Create a topic per GitHub context with `/topic <github-url>`.
+
+Once active, the bot will treat messages in any topic (including General) as implicit `@ubiquityos`. If no topic or chat context is set, it defaults to your org config context (`<owner>/.ubiquity-os`).
+
+You can also run `/context <github-url>` inside an existing topic to change just that topic’s context.
+
+To reset, delete/leave the workspace group and run `/workspace` again.
+
+Note: If you want the bot to respond to regular (non-command) messages in the group, disable Telegram Bot API privacy mode for the bot.
+
+#### Workspace Bootstrap (Optional, Local MTProto)
+
+Telegram bots cannot create groups/supergroups via the Bot API. For local development, you can optionally authenticate a normal Telegram account (MTProto) and use it to bootstrap a new workspace forum supergroup (Topics enabled), add the bot, and promote it with “Manage Topics”.
+
+1. Create a Telegram API app and get `api_id` + `api_hash` from my.telegram.org.
+2. Generate an MTProto session and persist it into `.secrets/telegram.json`:
+
+   ```bash
+   deno task telegram:user:login:write
+   ```
+
+3. DM the bot and run:
+
+   ```
+   /workspace
+   ```
+
+   The bot will create a private forum supergroup and send you a single-use invite link. Once you join, the bot will claim the workspace (KV) and promote you to admin. If that doesn't happen, send `/help` in the group to retry.
+
+4. Alternatively, create a new workspace forum supergroup from the CLI and print an invite link:
+
+   ```bash
+   deno task telegram:workspace:bootstrap
+   ```
+
+The bootstrap script will also attempt to claim the workspace mapping in KV. If KV is unavailable, workspace mappings can't be persisted.
+
+If you already have a workspace group (and invite link), you can also claim it from the CLI:
+
+```bash
+deno task telegram:workspace:claim -- --invite https://t.me/+...
+```
+
+Then join the group and use `/topic <github-url>` to create per-context topics.
+
 ### Google Drive Ingress (Optional)
 
 Configure the kernel to accept Google Drive webhooks at `/google/drive`:
@@ -182,7 +235,7 @@ Configure the kernel to accept Google Drive webhooks at `/google/drive`:
 Example:
 
 ```json
-{"webhookSecret":"..."}
+{ "webhookSecret": "..." }
 ```
 
 ### X Ingress (Optional)
@@ -194,7 +247,7 @@ Configure the kernel to accept X webhooks at `/x`:
 Example:
 
 ```json
-{"webhookSecret":"..."}
+{ "webhookSecret": "..." }
 ```
 
 ### Local Ingress Config (Optional)

@@ -1,4 +1,8 @@
 {
   "botToken": "TELEGRAM_BOT_TOKEN",
-  "webhookSecret": "TELEGRAM_WEBHOOK_SECRET"
+  "webhookSecret": "TELEGRAM_WEBHOOK_SECRET",
+  "apiId": 12345,
+  "apiHash": "TELEGRAM_API_HASH",
+  "userSession": "TELEGRAM_STRING_SESSION",
+  "workspacePhotoFileId": "TELEGRAM_FILE_ID_FOR_WORKSPACE_AVATAR"
 }

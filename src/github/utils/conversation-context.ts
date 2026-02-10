@@ -131,22 +131,22 @@ function normalizeMarkdown(markdown: string | null): string {
 function splitLeadingUrlLines(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
-  let inFence = false;
+  let isInFence = false;
   let fence = "";
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
       const marker = trimmed.slice(0, 3);
-      if (!inFence) {
-        inFence = true;
+      if (!isInFence) {
+        isInFence = true;
         fence = marker;
       } else if (marker === fence) {
-        inFence = false;
+        isInFence = false;
       }
       out.push(line);
       continue;
     }
-    if (inFence) {
+    if (isInFence) {
       out.push(line);
       continue;
     }

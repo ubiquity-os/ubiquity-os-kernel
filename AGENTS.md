@@ -256,6 +256,22 @@ lsof -nP -iTCP:9090 -sTCP:LISTEN
 bun run jest:test -- --clearCache
 ```
 
+## 🧪 Telegram E2E Test Accounts (Local)
+
+Use dedicated test identities for Telegram end-to-end runs so real accounts are never touched.
+
+- GitHub test owner: `ubiquity-os-simulant` (dedicated GitHub user).
+  - Required repo: `ubiquity-os-simulant/.ubiquity-os` (Issues enabled, GitHub App installed).
+- Telegram test user (MTProto session used by scripts): `@UbiquityOS` (`userId=6519561033`).
+  - Stored in `.secrets/telegram.json` as `apiId`/`apiHash`/`userSession` (do not commit).
+
+### Test PAT
+
+- `GITHUB_TOKEN_SIMULANT`: PAT for `ubiquity-os-simulant` used only for automated E2E testing (ex: closing the link-approval issue in `scripts/telegram-link-live-e2e.ts`).
+- Permissions: must be able to close issues in `ubiquity-os-simulant/.ubiquity-os`.
+  - Classic PAT: `repo` scope recommended.
+  - Fine-grained PAT: include `ubiquity-os-simulant/.ubiquity-os` and grant Issues `write`.
+
 ## 🤖 LLM SDK & ai.ubq.fi Integration
 
 Plugins can securely call the ai.ubq.fi LLM endpoint using inherited GitHub authentication—no manual tokens needed. The kernel dispatches with short-lived installation tokens, and the API verifies repo access.

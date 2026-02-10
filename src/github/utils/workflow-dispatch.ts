@@ -26,7 +26,11 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function getInstallationOctokitForRepo(context: GitHubContext, owner: string, repository: string): Promise<InstanceType<typeof customOctokit>> {
-  const installation = await context.octokit.rest.apps.getRepoInstallation({
+  // Resolve installation via an app-authenticated octokit so dispatching workflows
+  // can target repos outside the triggering repo's installation scope (e.g., a
+  // shared agent runner repo in a different org).
+  const appOctokit = context.eventHandler.getUnauthenticatedOctokit();
+  const installation = await appOctokit.rest.apps.getRepoInstallation({
     owner,
     repo: repository,
   });

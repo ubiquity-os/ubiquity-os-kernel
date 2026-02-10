@@ -66,10 +66,6 @@ LLM selection/summary requires UOS_AI with a token.
 Tip: If no URL is provided, the tool will try to read ${ISSUE_JSON_PATH}.
 `.trim();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function readIssueUrlFromFile(path: string): string {
   try {
     const raw = Deno.readTextFileSync(path);
@@ -123,15 +119,15 @@ function parseArgs(args: string[]): Options {
   let maxChars = DEFAULT_MAX_CHARS;
   let includeSemantic = true;
   let includeComments = true;
-  let selectorOverride: boolean | null = null;
+  let useSelectorOverride: boolean | null = null;
   let includeGraph = true;
-  let runSelector = false;
-  let runSummary = false;
+  let shouldRunSelector = false;
+  let shouldRunSummary = false;
   let maxSelect = 12;
   let model = "gpt-5.2";
-  let json = false;
+  let useJson = false;
   let outPath = "";
-  let quiet = false;
+  let isQuiet = false;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -209,11 +205,11 @@ function parseArgs(args: string[]): Options {
       continue;
     }
     if (arg === "--select") {
-      runSelector = true;
+      shouldRunSelector = true;
       continue;
     }
     if (arg === "--summary") {
-      runSummary = true;
+      shouldRunSummary = true;
       continue;
     }
     if (arg === "--max-select" && args[i + 1]) {
@@ -226,11 +222,11 @@ function parseArgs(args: string[]): Options {
       continue;
     }
     if (arg === "--selector") {
-      selectorOverride = true;
+      useSelectorOverride = true;
       continue;
     }
     if (arg === "--no-selector") {
-      selectorOverride = false;
+      useSelectorOverride = false;
       continue;
     }
     if (arg === "--model" && args[i + 1]) {
@@ -243,7 +239,7 @@ function parseArgs(args: string[]): Options {
       continue;
     }
     if (arg === "--json") {
-      json = true;
+      useJson = true;
       continue;
     }
     if (arg === "--out" && args[i + 1]) {
@@ -256,7 +252,7 @@ function parseArgs(args: string[]): Options {
       continue;
     }
     if (arg === "--quiet") {
-      quiet = true;
+      isQuiet = true;
       continue;
     }
     if (arg.startsWith("-")) {
@@ -298,15 +294,15 @@ function parseArgs(args: string[]): Options {
     maxChars,
     includeSemantic,
     includeComments,
-    useSelector: selectorOverride ?? Boolean(query.trim()),
+    useSelector: useSelectorOverride ?? query.trim().length > 0,
     includeGraph,
-    runSelector,
-    runSummary,
+    runSelector: shouldRunSelector,
+    runSummary: shouldRunSummary,
     maxSelect,
     model,
-    json,
+    json: useJson,
     outPath,
-    quiet,
+    quiet: isQuiet,
   };
 }
 
@@ -320,8 +316,8 @@ async function buildContext(parsed: { owner: string; repo: string; number: numbe
   if (!token) {
     throw new Error("Missing GITHUB_TOKEN or GH_TOKEN in environment.");
   }
-  const OctokitWithRest = Octokit.plugin(restEndpointMethods);
-  const octokit = new OctokitWithRest({
+  const octokitWithRestCtor = Octokit.plugin(restEndpointMethods);
+  const octokit = new octokitWithRestCtor({
     auth: token,
     request: { fetch: fetch.bind(globalThis) },
   });
@@ -399,7 +395,7 @@ function splitContextBlocks(raw: string): ContextBlock[] {
       continue;
     }
     const isTopLevel = line.trimStart() === line;
-    const isBlockStart = /^-\s*\[/.test(trimmed) || /^  -\s*\[/.test(line);
+    const isBlockStart = /^-\s*\[/.test(trimmed) || /^ {2}-\s*\[/.test(line);
     if (isBlockStart) {
       flush();
       currentKind = isTopLevel ? "node" : "comment";
@@ -491,17 +487,10 @@ function parseJsonIds(raw: string): number[] {
   }
 }
 
-async function selectRelevantBlocks(params: {
-  blocks: ContextBlock[];
-  query: string;
-  model: string;
-  maxSelect: number;
-}): Promise<ContextBlock[]> {
+async function selectRelevantBlocks(params: { blocks: ContextBlock[]; query: string; model: string; maxSelect: number }): Promise<ContextBlock[]> {
   const config = loadAiConfig();
   const maxSelect = Math.max(1, Math.trunc(params.maxSelect));
-  const blockText = params.blocks
-    .map((block) => `ID ${block.id} (${block.kind}):\n${block.text}`)
-    .join("\n\n");
+  const blockText = params.blocks.map((block) => `ID ${block.id} (${block.kind}):\n${block.text}`).join("\n\n");
   const prompt = [
     "You are a selector. Choose the minimal set of blocks needed to answer the query.",
     "Return ONLY JSON in this shape:",
@@ -629,9 +618,7 @@ async function main() {
     return;
   }
 
-  const header = ["Conversation context", `Key: ${conversation.key}`, options.query ? `Query: ${options.query}` : null]
-    .filter(Boolean)
-    .join("\n");
+  const header = ["Conversation context", `Key: ${conversation.key}`, options.query ? `Query: ${options.query}` : null].filter(Boolean).join("\n");
   if (options.includeGraph) {
     console.log(header);
     console.log("");

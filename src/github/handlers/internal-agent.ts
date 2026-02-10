@@ -15,11 +15,16 @@ type DispatchInternalAgentOptions = Readonly<{
   settingsOverrides?: Record<string, unknown>;
 }>;
 
+export type InternalAgentDispatchResult = Readonly<{
+  runUrl: string | null;
+  workflowUrl: string;
+}>;
+
 export async function dispatchInternalAgent(
   context: InternalAgentContext,
   task: string,
   { postReply, settingsOverrides }: DispatchInternalAgentOptions
-): Promise<void> {
+): Promise<InternalAgentDispatchResult | null> {
   const agentOwner = context.eventHandler.agent.owner;
   const agentRepo = context.eventHandler.agent.repo;
   const agentWorkflowId = context.eventHandler.agent.workflowId;
@@ -27,7 +32,7 @@ export async function dispatchInternalAgent(
 
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     context.logger.warn("No installation found, cannot dispatch agent");
-    return;
+    return null;
   }
 
   try {
@@ -51,6 +56,10 @@ export async function dispatchInternalAgent(
       ...(conversationContext ? { conversationContext } : {}),
       ...(conversation?.key ? { conversationKey: conversation.key } : {}),
       environment: context.eventHandler.environment,
+      // Defaults tuned for ai.ubq.fi (ChatGPT Codex upstream).
+      // `xhigh` reasoning can be unsupported/unstable on some Codex models, so default to `high`.
+      model: "gpt-5.3-codex",
+      effort: "high",
       ...(kernelRefreshUrl ? { kernelRefreshUrl } : {}),
       ...(Number.isFinite(kernelRefreshIntervalSeconds) ? { kernelRefreshIntervalSeconds } : {}),
       configPathCandidates: getConfigPathCandidatesForEnvironment(context.eventHandler.environment),
@@ -86,6 +95,7 @@ export async function dispatchInternalAgent(
       inputs: await inputs.getInputs(),
     });
     await updateRequestCommentRunUrl(context, runUrl);
+    return { runUrl, workflowUrl: agentWorkflowUrl };
   } catch (error) {
     context.logger.error({ err: error }, "Failed to dispatch internal agent workflow");
     const message = error instanceof Error ? error.message : String(error);
@@ -101,5 +111,6 @@ export async function dispatchInternalAgent(
         .filter(Boolean)
         .join("\n")
     );
+    return null;
   }
 }
