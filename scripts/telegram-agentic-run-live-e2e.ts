@@ -59,7 +59,7 @@ try {
   console.log(`Request: ${opts.message}`);
 
   if (opts.context) {
-    const contextCommand = `/context ${opts.context}`;
+    const contextCommand = `/topic ${opts.context}`;
     const contextSent = await client.sendMessage(botEntity, {
       message: contextCommand,
     });

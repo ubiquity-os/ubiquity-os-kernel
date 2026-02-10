@@ -59,6 +59,7 @@ import {
   type TelegramAgentPlanningDraft,
   type TelegramAgentPlanningSession,
 } from "./agent-planning.ts";
+import { getOrBuildTelegramRepoNotes } from "./repo-notes.ts";
 
 type TelegramUser = {
   id: number;
@@ -197,6 +198,7 @@ const TELEGRAM_NO_ACTIVE_PLAN_FOUND_ERROR = "No active plan found.";
 const TELEGRAM_START_LINKING_LABEL = "Start linking";
 const TELEGRAM_PROMOTION_NOT_ENOUGH_RIGHTS_DESCRIPTION = "not enough rights";
 const TELEGRAM_ALLOWED_AUTHOR_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR", "NONE"];
+const TELEGRAM_CONTEXT_SAVE_ERROR = "I couldn't save that context. Please try again.";
 // TODO: Swap this shim registry for org plugin-derived commands once GitHub wiring lands.
 const TELEGRAM_SHIM_COMMANDS = [
   {
@@ -212,13 +214,8 @@ const TELEGRAM_SHIM_COMMANDS = [
   },
   {
     name: "topic",
-    description: "Create a new topic for a GitHub context (org, repo, or issue).",
+    description: "Set the active GitHub context (org, repo, or issue). In workspaces, creates/updates a topic.",
     example: "/topic https://github.com/ubiquity-os/ubiquity-os-kernel/issues/1",
-  },
-  {
-    name: "context",
-    description: "Set the active GitHub context (org, repo, or issue).",
-    example: "/context https://github.com/ubiquity-os/.github-private/issues/8",
   },
   {
     name: "_conversation_graph",
@@ -551,7 +548,17 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       });
       return ctx.text("", 200);
     }
-    if (commandName === "_status" || commandName === "status") {
+    if (commandName === "status") {
+      await safeSendTelegramMessage({
+        botToken,
+        chatId: message.chat.id,
+        replyToMessageId: message.message_id,
+        text: "Command renamed: use /_status.",
+        logger,
+      });
+      return ctx.text("", 200);
+    }
+    if (commandName === "_status") {
       const isHandled = await handleTelegramStatusCommand({
         botToken,
         chatId: message.chat.id,
@@ -876,18 +883,15 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
     }
 
     if (commandName === "context" && invocation) {
-      const isHandled = await handleTelegramContextCommand({
+      await safeSendTelegramMessage({
         botToken,
         chatId: message.chat.id,
-        threadId: contextThreadId ?? undefined,
+        messageThreadId: messageThreadId ?? undefined,
         replyToMessageId: message.message_id,
-        rawArgs: invocation.rawArgs,
-        allowOverride: channelConfig.mode === "shim",
+        text: "Command renamed: use /topic.",
         logger,
       });
-      if (isHandled) {
-        return ctx.text("", 200);
-      }
+      return ctx.text("", 200);
     }
     if (invocation) {
       const isHandled = await handleTelegramShimSlash({
@@ -916,7 +920,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       const isPrivateChat = message.chat.type === "private";
 
       if (isPrivateChat) {
-        // DMs default to the linked owner's personal config repo until /context is set.
+        // DMs default to the linked owner's personal config repo until /topic is set.
         routingOverride = {
           kind: "org",
           owner,
@@ -943,7 +947,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
             const help = formatHelpForTelegram(TELEGRAM_SHIM_COMMANDS);
             const envLabel = env.ENVIRONMENT?.trim() || "development";
             const configNotice = kernelConfigLoad.hasConfig ? null : `No config found for ${effectiveOwner} (env: ${envLabel}).`;
-            const helpText = [configNotice, "Context: not set. Use /context <github-issue-or-repo-url> to load repo commands.", help]
+            const helpText = [configNotice, "Context: not set. Use /topic <github-issue-or-repo-url> to load repo commands.", help]
               .filter(Boolean)
               .join("\n\n");
             const helpMessageId = await safeSendTelegramMessageWithFallback({
@@ -964,7 +968,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
               botToken,
               chatId: message.chat.id,
               replyToMessageId: message.message_id,
-              text: "Set context with /context <github-repo-or-issue-url> before running commands.",
+              text: "Set context with /topic <github-repo-or-issue-url> before running commands.",
               logger,
             });
           }
@@ -1119,7 +1123,18 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         return ctx.text("", 200);
       }
 
-      const isConversationGraphCommand = ["_conversation_graph", "conversation_graph", "conversation-graph"].includes(invocation.name.toLowerCase());
+      const normalizedInvocation = invocation.name.toLowerCase();
+      if (normalizedInvocation === "conversation_graph" || normalizedInvocation === "conversation-graph") {
+        await safeSendTelegramMessage({
+          botToken,
+          chatId: message.chat.id,
+          replyToMessageId: message.message_id,
+          text: "Command renamed: use /_conversation_graph.",
+          logger,
+        });
+        return ctx.text("", 200);
+      }
+      const isConversationGraphCommand = normalizedInvocation === "_conversation_graph";
       if (isConversationGraphCommand) {
         if (channelConfig.mode === "shim" && !hasIssueContext) {
           const target = routingOverride ? describeTelegramContextLabel(routingOverride) : formatRoutingLabel(routing);
@@ -1128,7 +1143,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
             botToken,
             chatId: message.chat.id,
             replyToMessageId: message.message_id,
-            text: `${prefix}Use /context <github-issue-url> to generate a conversation graph.`,
+            text: `${prefix}Use /topic <github-issue-url> to generate a conversation graph.`,
             logger,
           });
           return ctx.text("", 200);
@@ -2299,7 +2314,7 @@ async function handleTelegramAgentPlanningCallbackQuery(params: {
         botToken,
         chatId,
         replyToMessageId: message.message_id,
-        text: "Set context with /context <github-repo-or-issue-url> before starting agent runs.",
+        text: "Set context with /topic <github-repo-or-issue-url> before starting agent runs.",
         logger,
       });
       return;
@@ -3735,7 +3750,7 @@ async function ensureTelegramIssueContext(params: {
   if (!owner || !repo) {
     return {
       ok: false,
-      error: "Missing repo context; set it with /context <github-repo-url>.",
+      error: "Missing repo context; set it with /topic <github-repo-url>.",
     };
   }
 
@@ -3879,7 +3894,7 @@ async function ensureTelegramIssueContext(params: {
 function buildTelegramIssueLink(issue: TelegramIssueCreation) {
   const label = `${issue.owner}/${issue.repo}#${issue.number}`;
   const link = `<a href="${escapeTelegramHtmlAttribute(issue.url)}">${escapeTelegramHtml(label)}</a>`;
-  const suffix = issue.persisted ? "" : " Context wasn't saved; use /context to pin it.";
+  const suffix = issue.persisted ? "" : " Context wasn't saved; use /topic to pin it.";
   return { message: `Opened issue ${link} for this session.${suffix}` };
 }
 
@@ -3935,7 +3950,17 @@ async function handleTelegramShimSlash(params: {
   logger: Logger;
 }): Promise<boolean> {
   const command = params.command.toLowerCase();
-  if (command === "_ping" || command === "ping") {
+  if (command === "ping") {
+    await safeSendTelegramMessage({
+      botToken: params.botToken,
+      chatId: params.chatId,
+      replyToMessageId: params.replyToMessageId,
+      text: "Command renamed: use /_ping.",
+      logger: params.logger,
+    });
+    return true;
+  }
+  if (command === "_ping") {
     await safeSendTelegramMessage({
       botToken: params.botToken,
       chatId: params.chatId,
@@ -5098,14 +5123,14 @@ async function handleTelegramTopicCommand(params: {
   }
 
   if (params.chat.type === "private") {
-    await safeSendTelegramMessage({
+    return await handleTelegramContextCommand({
       botToken: params.botToken,
       chatId: params.chat.id,
       replyToMessageId: params.replyToMessageId,
-      text: "Use /topic in your workspace group (create one via /workspace in a DM).",
+      rawArgs: params.rawArgs,
+      allowOverride: params.allowOverride,
       logger: params.logger,
     });
-    return true;
   }
 
   if (params.chat.is_forum !== true) {
@@ -5194,6 +5219,45 @@ async function handleTelegramTopicCommand(params: {
     return true;
   }
 
+  const activeTopicThreadId = params.messageThreadId ?? undefined;
+  if (activeTopicThreadId && activeTopicThreadId !== TELEGRAM_GENERAL_TOPIC_ID) {
+    const isSaved = await saveTelegramRoutingOverride({
+      botToken: params.botToken,
+      chatId: params.chat.id,
+      threadId: activeTopicThreadId,
+      override,
+      logger: params.logger,
+      kv,
+    });
+    if (!isSaved) {
+      await safeSendTelegramMessage({
+        botToken: params.botToken,
+        chatId: params.chat.id,
+        messageThreadId: params.messageThreadId ?? undefined,
+        replyToMessageId: params.replyToMessageId,
+        text: TELEGRAM_CONTEXT_SAVE_ERROR,
+        logger: params.logger,
+      });
+      return true;
+    }
+
+    const topicMessageId = await safeSendTelegramMessage({
+      botToken: params.botToken,
+      chatId: params.chat.id,
+      messageThreadId: activeTopicThreadId,
+      replyToMessageId: params.replyToMessageId,
+      text: describeTelegramContext(override),
+      logger: params.logger,
+    });
+    void safePinTelegramMessage({
+      botToken: params.botToken,
+      chatId: params.chat.id,
+      messageId: topicMessageId,
+      logger: params.logger,
+    });
+    return true;
+  }
+
   const topicName = clampTelegramTopicName(describeTelegramContextLabel(override));
   const created = await safeCreateTelegramForumTopic({
     botToken: params.botToken,
@@ -5227,7 +5291,7 @@ async function handleTelegramTopicCommand(params: {
       chatId: params.chat.id,
       messageThreadId: params.messageThreadId ?? undefined,
       replyToMessageId: params.replyToMessageId,
-      text: "I couldn't save that context. Please try again.",
+      text: TELEGRAM_CONTEXT_SAVE_ERROR,
       logger: params.logger,
     });
     return true;
@@ -5319,8 +5383,8 @@ async function handleTelegramContextCommand(params: {
       kv,
     });
     const message = current
-      ? `Current context: ${describeTelegramContextLabel(current)}\nSet a new one with /context <github-repo-or-issue-url>.`
-      : "Usage: /context https://github.com/<owner>/<repo>/issues/<number> (or org/repo URL).";
+      ? `Current context: ${describeTelegramContextLabel(current)}\nSet a new one with /topic <github-repo-or-issue-url>.`
+      : "Usage: /topic https://github.com/<owner>/<repo>/issues/<number> (or org/repo URL).";
     await safeSendTelegramMessage({
       botToken: params.botToken,
       chatId: params.chatId,
@@ -5337,7 +5401,7 @@ async function handleTelegramContextCommand(params: {
       botToken: params.botToken,
       chatId: params.chatId,
       replyToMessageId: params.replyToMessageId,
-      text: "Invalid GitHub URL. Example: /context https://github.com/ubiquity-os/.github-private/issues/8 or /context https://github.com/0x4007-ubiquity-os",
+      text: "Invalid GitHub URL. Example: /topic https://github.com/ubiquity-os/.github-private/issues/8 or /topic https://github.com/0x4007-ubiquity-os",
       logger: params.logger,
     });
     return true;
@@ -5371,7 +5435,7 @@ async function handleTelegramContextCommand(params: {
       botToken: params.botToken,
       chatId: params.chatId,
       replyToMessageId: params.replyToMessageId,
-      text: "I couldn't save that context. Please try again.",
+      text: TELEGRAM_CONTEXT_SAVE_ERROR,
       logger: params.logger,
     });
     return true;
@@ -5552,9 +5616,9 @@ function describeTelegramContext(override: TelegramRoutingOverride): string {
     return `Context set to ${override.owner}/${override.repo}#${override.issueNumber}.`;
   }
   if (override.kind === "org") {
-    return `Context set to org ${override.owner} (config: ${override.owner}/${CONFIG_ORG_REPO}). Send a message to start a session, or use /context <issue-url> to pin to a specific issue.`;
+    return `Context set to org ${override.owner} (config: ${override.owner}/${CONFIG_ORG_REPO}). Send a message to start a session, or use /topic <issue-url> to pin to a specific issue.`;
   }
-  return `Context set to ${override.owner}/${override.repo}. Send a message to start a session, or use /context <issue-url> to pin to a specific issue.`;
+  return `Context set to ${override.owner}/${override.repo}. Send a message to start a session, or use /topic <issue-url> to pin to a specific issue.`;
 }
 
 function describeTelegramContextLabel(override: TelegramRoutingOverride): string {
@@ -5572,8 +5636,8 @@ function formatTelegramContextError(error: string, routing: TelegramRoutingConfi
   const target = formatRoutingLabel(routing);
   if (normalized.includes("No GitHub App installation found")) {
     return target
-      ? `GitHub App is not installed for ${target}. Install it or use /context with another repo.`
-      : "GitHub App is not installed for that repo. Install it or use /context with another repo.";
+      ? `GitHub App is not installed for ${target}. Install it or use /topic with another repo.`
+      : "GitHub App is not installed for that repo. Install it or use /topic with another repo.";
   }
   if (normalized.includes("No kernel configuration was found")) {
     const envLabel = environment?.trim() || "development";
@@ -6006,6 +6070,7 @@ function formatTelegramAgentPlanningMessage(params: {
 
 async function getTelegramAgentPlanningDraft(params: {
   context: GitHubContext<"issue_comment.created">;
+  kv: KvLike;
   request: string;
   answers: string[];
   previousDraft: TelegramAgentPlanningDraft | null;
@@ -6017,6 +6082,18 @@ async function getTelegramAgentPlanningDraft(params: {
   onError: (message: string) => Promise<void>;
 }): Promise<TelegramAgentPlanningDraft | null> {
   const prompt = buildTelegramAgentPlanningPrompt();
+  const repoOwner = params.context.payload.repository?.owner?.login ?? "";
+  const repoName = params.context.payload.repository?.name ?? "";
+  const repoNotes =
+    typeof repoOwner === "string" && typeof repoName === "string" && repoOwner.trim() && repoName.trim()
+      ? await getOrBuildTelegramRepoNotes({
+          kv: params.kv,
+          octokit: params.context.octokit,
+          owner: repoOwner,
+          repo: repoName,
+          logger: params.logger,
+        })
+      : null;
   const routerInput = {
     platform: "telegram",
     target: params.targetLabel ?? "",
@@ -6034,6 +6111,13 @@ async function getTelegramAgentPlanningDraft(params: {
           title: params.previousDraft.title,
           questions: params.previousDraft.questions,
           plan: params.previousDraft.plan,
+        }
+      : null,
+    repoNotes: repoNotes
+      ? {
+          summary: repoNotes.summary,
+          inferred: repoNotes.inferred,
+          languages: Object.keys(repoNotes.languages ?? {}),
         }
       : null,
     conversationContext: params.conversationContext,
@@ -6148,6 +6232,7 @@ async function startTelegramAgentPlanningSession(params: {
 
   const draft = await getTelegramAgentPlanningDraft({
     context: params.context,
+    kv,
     request: session.request,
     answers: session.answers,
     previousDraft: null,
@@ -6295,6 +6380,7 @@ async function maybeHandleTelegramAgentPlanningSession(params: {
   if (operation === "finalize") {
     const draft = await getTelegramAgentPlanningDraft({
       context: params.context,
+      kv,
       request: session.request,
       answers: session.answers,
       previousDraft: session.draft,
@@ -6505,6 +6591,7 @@ async function maybeHandleTelegramAgentPlanningSession(params: {
 
   const draft = await getTelegramAgentPlanningDraft({
     context: params.context,
+    kv,
     request: session.request,
     answers: boundedAnswers,
     previousDraft: session.draft,

@@ -230,6 +230,7 @@ export function buildTelegramAgentPlanningPrompt(): string {
   return [
     "You are UbiquityOS Kernel's Telegram Agent Planning module.",
     "You will be given a JSON object describing a user request from Telegram, plus optional prior answers.",
+    "The input may include `repoNotes` (cached notes derived from reading the target repo). Use it to avoid asking obvious questions.",
     "Your job is to prepare an agentic run by:",
     "1) Asking only the minimum clarifying questions needed to plan correctly.",
     "2) Producing a short, concrete execution plan.",
@@ -240,6 +241,7 @@ export function buildTelegramAgentPlanningPrompt(): string {
     "- If `previousDraft.questions` exists, treat it as the canonical question set.",
     "  - Remove questions that have been answered.",
     "  - Do NOT introduce brand-new questions unless absolutely required to avoid a wrong plan.",
+    "- If `repoNotes` indicates an existing runtime/stack (e.g., Deno, Node, Python), assume that stack by default and DO NOT ask what stack to use.",
     '- When enough information exists to proceed, output "ready" and make reasonable assumptions instead of asking more questions.',
     "",
     'If the input includes `forceReady: true`, you MUST stop asking questions and output status "ready" with a best-effort agentTask (make reasonable assumptions and document them in the plan/agentTask).',

@@ -151,7 +151,7 @@ channels:
 Notes:
 
 - The kernel loads config from `https://github.com/<owner>/.ubiquity-os/.github/.ubiquity-os.config.yml`.
-- `mode: shim` skips GitHub routing until `/context` is set.
+- `mode: shim` skips GitHub routing until `/topic` is set.
 - `issueNumber` is required in `github` mode.
 - `webhookSecret` validates `x-telegram-bot-api-secret-token`.
 - Telegram messages require a linked GitHub identity (stored in KV).
@@ -171,7 +171,7 @@ Notes:
 
 - Orgs can link multiple Telegram accounts (any org member can approve).
 - Personal users are limited to a single linked Telegram account.
-- Use `/status` in Telegram to see current link state.
+- Use `/_status` in Telegram to see current link state.
 
 #### Workspace Topics (Recommended)
 
@@ -185,7 +185,7 @@ For multi-project usage, use a private forum supergroup (Topics enabled) as a wo
 
 Once active, the bot will treat messages in any topic (including General) as implicit `@ubiquityos`. If no topic or chat context is set, it defaults to your org config context (`<owner>/.ubiquity-os`).
 
-You can also run `/context <github-url>` inside an existing topic to change just that topic’s context.
+You can also run `/topic <github-url>` inside an existing topic to change just that topic’s context.
 
 To reset, delete/leave the workspace group and run `/workspace` again.
 

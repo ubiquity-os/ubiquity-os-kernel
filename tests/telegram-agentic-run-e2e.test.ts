@@ -297,6 +297,19 @@ Deno.test({
             headers: { "content-type": "application/json" },
           });
         }
+        if (method === "GET" && decodedPath === "/orgs/ubiquity-os-marketplace/installation") {
+          // Non-fatal path in internal agent dispatch; return 404 to avoid Octokit retries.
+          return new Response(JSON.stringify({ message: "Not Found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (method === "GET" && decodedPath === "/users/ubiquity-os-marketplace/installation") {
+          return new Response(JSON.stringify({ message: "Not Found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
 
         // Installation token mint
         const tokenMatch = /^\/app\/installations\/(\d+)\/access_tokens$/.exec(path);
@@ -331,6 +344,23 @@ Deno.test({
             }),
             { headers: { "content-type": "application/json" } }
           );
+        }
+        if (method === "GET" && decodedPath === `/repos/${owner}/${repo}/contents`) {
+          // Used by Telegram planning repo-notes cache for "obvious" stack detection.
+          return new Response(
+            JSON.stringify([
+              { name: "deno.json", type: "file" },
+              { name: "deno.lock", type: "file" },
+              { name: ".github", type: "dir" },
+              { name: "src", type: "dir" },
+            ]),
+            { headers: { "content-type": "application/json" } }
+          );
+        }
+        if (method === "GET" && decodedPath === `/repos/${owner}/${repo}/languages`) {
+          return new Response(JSON.stringify({ TypeScript: 1000 }), {
+            headers: { "content-type": "application/json" },
+          });
         }
 
         // Issue hydration (minimal; omit node_id/created_at to prevent conversation-graph fetches).
