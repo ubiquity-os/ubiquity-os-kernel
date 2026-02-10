@@ -200,11 +200,11 @@ const TELEGRAM_ALLOWED_AUTHOR_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR",
 // TODO: Swap this shim registry for org plugin-derived commands once GitHub wiring lands.
 const TELEGRAM_SHIM_COMMANDS = [
   {
-    name: "status",
-    description: "Check account link status.",
-    example: "/status",
+    name: "_status",
+    description: "Developer: check account link status.",
+    example: "/_status",
   },
-  { name: "ping", description: "Check if the bot is alive.", example: "/ping" },
+  { name: "_ping", description: "Developer: check if the bot is alive.", example: "/_ping" },
   {
     name: "workspace",
     description: "Create a new workspace group (Topics enabled). DM-only.",
@@ -221,9 +221,9 @@ const TELEGRAM_SHIM_COMMANDS = [
     example: "/context https://github.com/ubiquity-os/.github-private/issues/8",
   },
   {
-    name: "conversation_graph",
-    description: "Show the conversation graph context for a query (filters bots/commands by default).",
-    example: "/conversation_graph --all how does this issue relate to recent PRs?",
+    name: "_conversation_graph",
+    description: "Developer: show the conversation graph context for a query (filters bots/commands by default).",
+    example: "/_conversation_graph --all how does this issue relate to recent PRs?",
   },
   { name: "help", description: "List available commands.", example: "/help" },
 ];
@@ -551,7 +551,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
       });
       return ctx.text("", 200);
     }
-    if (commandName === "status") {
+    if (commandName === "_status" || commandName === "status") {
       const isHandled = await handleTelegramStatusCommand({
         botToken,
         chatId: message.chat.id,
@@ -1119,7 +1119,7 @@ export async function handleTelegramWebhook(ctx: Context, env: Env): Promise<Res
         return ctx.text("", 200);
       }
 
-      const isConversationGraphCommand = ["conversation_graph", "conversation-graph"].includes(invocation.name.toLowerCase());
+      const isConversationGraphCommand = ["_conversation_graph", "conversation_graph", "conversation-graph"].includes(invocation.name.toLowerCase());
       if (isConversationGraphCommand) {
         if (channelConfig.mode === "shim" && !hasIssueContext) {
           const target = routingOverride ? describeTelegramContextLabel(routingOverride) : formatRoutingLabel(routing);
@@ -2188,8 +2188,8 @@ async function handleTelegramAgentPlanningCallbackQuery(params: {
       replyToMessageId: message.message_id,
       text:
         message.chat.type === "private"
-          ? "Please link your GitHub owner first. Use /status."
-          : "No linked GitHub owner for this chat. Use /status in DM to link.",
+          ? "Please link your GitHub owner first. Use /_status."
+          : "No linked GitHub owner for this chat. Use /_status in DM to link.",
       logger,
     });
     return;
@@ -3935,7 +3935,7 @@ async function handleTelegramShimSlash(params: {
   logger: Logger;
 }): Promise<boolean> {
   const command = params.command.toLowerCase();
-  if (command === "ping") {
+  if (command === "_ping" || command === "ping") {
     await safeSendTelegramMessage({
       botToken: params.botToken,
       chatId: params.chatId,
