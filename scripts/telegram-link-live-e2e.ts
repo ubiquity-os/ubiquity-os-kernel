@@ -49,7 +49,7 @@ try {
   console.log(`Bot: @${botUsername}`);
   console.log(`Owner: ${opts.owner}`);
 
-  const statusSent = await client.sendMessage(botEntity, { message: "/status" });
+  const statusSent = await client.sendMessage(botEntity, { message: "/_status" });
   const status = await waitForIncomingMessage({
     client,
     botEntity,
@@ -61,7 +61,7 @@ try {
       text.toLowerCase().startsWith("status: linking"),
   });
   if (!status) {
-    throw new Error(`Timed out waiting for /status response within ${opts.timeoutSeconds}s.`);
+    throw new Error(`Timed out waiting for /_status response within ${opts.timeoutSeconds}s.`);
   }
 
   const statusText = getMessageText(status);
@@ -79,7 +79,7 @@ try {
     const statusLower = statusText.toLowerCase();
     let isCompleted = false;
 
-    // If we're resuming an in-progress link, /status might not include the Start linking
+    // If we're resuming an in-progress link, /_status might not include the Start linking
     // button. Handle the pending states explicitly.
     if (statusLower.startsWith("status: linking")) {
       if (statusLower.includes("waiting for link issue close")) {
@@ -133,7 +133,7 @@ try {
 
       if (!isCompleted) {
         if (!statusLower.includes("waiting for github owner")) {
-          throw new Error("Unrecognized linking state from /status output.");
+          throw new Error("Unrecognized linking state from /_status output.");
         }
 
         console.log("");

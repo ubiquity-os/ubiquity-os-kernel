@@ -99,6 +99,7 @@ try {
   await printKeyboard(planning);
 
   const planningText = getMessageText(planning);
+  let readyMessage: unknown | null = null;
   if (planningText.startsWith(TELEGRAM_PLANNING_HEADER)) {
     if (opts.probeUnrelated) {
       const probeSent = await client.sendMessage(botEntity, {
@@ -117,7 +118,11 @@ try {
 
       console.log("");
       console.log("Probe response:");
-      console.log(getMessageText(probeReply));
+      const probeText = getMessageText(probeReply);
+      console.log(probeText);
+      if (probeText.startsWith(TELEGRAM_PLANNING_HEADER) || probeText.startsWith(TELEGRAM_READY_HEADER)) {
+        throw new Error("Probe message was treated as a plan update (expected a normal reply).");
+      }
     }
 
     const didClickFinalize = await clickInlineButton({
@@ -142,73 +147,75 @@ try {
     }
 
     await printKeyboard(ready);
+    readyMessage = ready;
     const readyId = getMessageId(ready);
     if (!readyId) {
       throw new Error(`Failed to resolve ${TELEGRAM_READY_HEADER} message id.`);
     }
+  } else if (planningText.startsWith(TELEGRAM_READY_HEADER)) {
+    readyMessage = planning;
+  }
 
-    if (opts.approve) {
-      const didClickApprove = await clickInlineButton({
-        client,
-        peer,
-        message: ready,
-        buttonText: "Approve",
-      });
-      if (!didClickApprove) {
-        throw new Error("No Approve button was found on the ready message.");
-      }
+  if (!readyMessage) {
+    throw new Error("Unexpected bot response: expected a planning or ready message.");
+  }
 
-      if (opts.verifyButtonsCleared) {
-        const didClearButtons = await waitForButtonsCleared({
-          client,
-          botEntity,
-          messageId: readyId,
-          timeoutMs: Math.max(5_000, Math.min(15_000, opts.timeoutSeconds * 1000)),
-        });
-        if (!didClearButtons) {
-          throw new Error("Plan ready buttons did not clear after approval click.");
-        }
-        console.log("");
-        console.log("Verified: Plan ready buttons cleared.");
-      }
+  const readyId = getMessageId(readyMessage);
+  if (!readyId) {
+    throw new Error(`Failed to resolve ${TELEGRAM_READY_HEADER} message id.`);
+  }
 
-      const started = await waitForIncomingMessage({
-        client,
-        botEntity,
-        afterId: getMessageId(ready),
-        timeoutMs: opts.timeoutSeconds * 1000,
-        match: (text) => text.startsWith("Starting agent run.") || text.includes("I couldn't start the agent run") || text.includes("I still need answers"),
-      });
-      if (!started) {
-        throw new Error(`Timed out waiting for agent dispatch acknowledgement within ${opts.timeoutSeconds}s.`);
-      }
-
-      console.log("");
-      console.log("Agent dispatch response:");
-      console.log(getMessageText(started));
-
-      const runInfo = await waitForIncomingMessage({
-        client,
-        botEntity,
-        afterId: getMessageId(started),
-        timeoutMs: opts.timeoutSeconds * 1000,
-        match: (text) => text.startsWith("Run logs:") || text.startsWith("Workflow:"),
-      });
-      if (runInfo) {
-        console.log("");
-        console.log("Run info:");
-        console.log(getMessageText(runInfo));
-      }
-    }
-  } else if (planningText.startsWith(TELEGRAM_READY_HEADER) && opts.approve) {
+  if (opts.approve) {
     const didClickApprove = await clickInlineButton({
       client,
       peer,
-      message: planning,
+      message: readyMessage,
       buttonText: "Approve",
     });
     if (!didClickApprove) {
       throw new Error("No Approve button was found on the ready message.");
+    }
+
+    if (opts.verifyButtonsCleared) {
+      const didClearButtons = await waitForButtonsCleared({
+        client,
+        botEntity,
+        messageId: readyId,
+        timeoutMs: Math.max(5_000, Math.min(15_000, opts.timeoutSeconds * 1000)),
+      });
+      if (!didClearButtons) {
+        throw new Error("Plan ready buttons did not clear after approval click.");
+      }
+      console.log("");
+      console.log("Verified: Plan ready buttons cleared.");
+    }
+
+    const started = await waitForIncomingMessage({
+      client,
+      botEntity,
+      afterId: readyId,
+      timeoutMs: opts.timeoutSeconds * 1000,
+      match: (text) => text.startsWith("Starting agent run.") || text.includes("I couldn't start the agent run") || text.includes("I still need answers"),
+    });
+    if (!started) {
+      throw new Error(`Timed out waiting for agent dispatch acknowledgement within ${opts.timeoutSeconds}s.`);
+    }
+
+    console.log("");
+    console.log("Agent dispatch response:");
+    console.log(getMessageText(started));
+
+    const runInfo = await waitForIncomingMessage({
+      client,
+      botEntity,
+      afterId: getMessageId(started),
+      timeoutMs: opts.timeoutSeconds * 1000,
+      match: (text) => text.startsWith("Run logs:") || text.startsWith("Workflow:"),
+    });
+    if (runInfo) {
+      console.log("");
+      console.log("Run info:");
+      console.log(getMessageText(runInfo));
     }
   }
 } finally {
@@ -397,13 +404,25 @@ async function clickInlineButton(params: { client: TelegramClient; peer: Api.Typ
   const match = buttons.find((button) => button.text.trim().toLowerCase() === desired);
   if (!match?.data) return false;
 
-  await params.client.invoke(
-    new Api.messages.GetBotCallbackAnswer({
-      peer: params.peer,
-      msgId,
-      data: match.data,
-    })
-  );
+  try {
+    await params.client.invoke(
+      new Api.messages.GetBotCallbackAnswer({
+        peer: params.peer,
+        msgId,
+        data: match.data,
+      })
+    );
+  } catch (error) {
+    // The callback might still be delivered to the bot via webhook even if the user-side
+    // callback answer times out. We'll let subsequent assertions (buttons cleared, follow-up
+    // messages) determine whether it actually worked.
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toUpperCase().includes("TIMEOUT")) {
+      console.warn(`Warning: callback answer timed out for '${params.buttonText}'. Continuing...`);
+    } else {
+      throw error;
+    }
+  }
   return true;
 }
 
