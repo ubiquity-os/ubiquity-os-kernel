@@ -6021,6 +6021,88 @@ function clampAgentTask(value: string, maxChars = TELEGRAM_AGENT_TASK_MAX_CHARS)
   return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
 }
 
+function buildTelegramAgentRunRequestCommentBody(params: {
+  session: TelegramAgentPlanningSession;
+  draft: TelegramAgentPlanningDraft;
+  targetLabel: string | null;
+}): string {
+  const lines: string[] = [];
+  lines.push("Telegram agent run request (approved).");
+  if (params.targetLabel) lines.push(`Target: ${params.targetLabel}`);
+  if (params.draft.title.trim()) lines.push(`Title: ${params.draft.title.trim()}`);
+  lines.push("");
+  if (params.session.answers.length) {
+    lines.push("User answers:");
+    for (const answer of params.session.answers) {
+      const trimmed = answer.trim();
+      if (!trimmed) continue;
+      lines.push(`- ${trimmed}`);
+    }
+    lines.push("");
+  }
+  lines.push("Agent task:");
+  lines.push(params.draft.agentTask.trim());
+  return lines.join("\n").trim();
+}
+
+async function tryCreateTelegramAgentRunRequestCommentContext(params: {
+  context: GitHubContext<"issue_comment.created">;
+  updateId: number;
+  body: string;
+  logger: Logger;
+}): Promise<GitHubContext<"issue_comment.created"> | null> {
+  const owner = params.context.payload.repository?.owner?.login ?? "";
+  const repo = params.context.payload.repository?.name ?? "";
+  const issueNumber = params.context.payload.issue?.number ?? 0;
+  const body = params.body.trim();
+
+  if (!owner || !repo || !issueNumber || !body) return null;
+
+  let commentId = 0;
+  try {
+    const response = await params.context.octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      body,
+    });
+    commentId = response.data.id ?? 0;
+  } catch (error) {
+    params.logger.warn({ err: error, owner, repo, issueNumber }, "Failed to create Telegram agent request comment (non-fatal)");
+    return null;
+  }
+
+  if (!commentId) return null;
+
+  const existingUser =
+    typeof params.context.payload.comment?.user?.login === "string" && params.context.payload.comment.user.login.trim()
+      ? params.context.payload.comment.user.login.trim()
+      : owner;
+  const existingAssociation =
+    typeof params.context.payload.comment?.author_association === "string" && params.context.payload.comment.author_association.trim()
+      ? params.context.payload.comment.author_association.trim()
+      : "NONE";
+
+  const payload = {
+    ...(params.context.payload as unknown as Record<string, unknown>),
+    comment: {
+      id: commentId,
+      body,
+      user: { login: existingUser, type: "User" },
+      author_association: existingAssociation,
+    },
+    sender: { login: existingUser, type: "User" },
+  };
+
+  const event = {
+    id: `telegram-${params.updateId}-${commentId}`,
+    name: "issue_comment",
+    payload,
+  } as unknown as EmitterWebhookEvent;
+
+  return new GitHubContext(params.context.eventHandler, event, params.context.octokit, params.logger);
+}
+
 function formatTelegramAgentPlanningMessage(params: {
   status: TelegramAgentPlanningSession["status"];
   title: string;
@@ -6077,13 +6159,14 @@ async function getTelegramAgentPlanningDraft(params: {
   conversationContext: string;
   hasIssueContext: boolean;
   targetLabel: string | null;
+  routingOverride: TelegramRoutingOverride | null;
   forceReady?: boolean;
   logger: Logger;
   onError: (message: string) => Promise<void>;
 }): Promise<TelegramAgentPlanningDraft | null> {
   const prompt = buildTelegramAgentPlanningPrompt();
-  const repoOwner = params.context.payload.repository?.owner?.login ?? "";
-  const repoName = params.context.payload.repository?.name ?? "";
+  const repoOwner = params.routingOverride?.owner?.trim() || params.context.payload.repository?.owner?.login || "";
+  const repoName = params.routingOverride?.repo?.trim() || params.context.payload.repository?.name || "";
   const repoNotes =
     typeof repoOwner === "string" && typeof repoName === "string" && repoOwner.trim() && repoName.trim()
       ? await getOrBuildTelegramRepoNotes({
@@ -6239,6 +6322,7 @@ async function startTelegramAgentPlanningSession(params: {
     conversationContext: params.conversationContext,
     hasIssueContext: params.hasIssueContext,
     targetLabel,
+    routingOverride: params.routingOverride,
     logger: params.logger,
     onError: async (message) => {
       await safeSendTelegramMessage({
@@ -6387,6 +6471,7 @@ async function maybeHandleTelegramAgentPlanningSession(params: {
       conversationContext: params.conversationContext,
       hasIssueContext: params.hasIssueContext,
       targetLabel,
+      routingOverride: params.routingOverride,
       forceReady: true,
       logger: params.logger,
       onError: async (message) => {
@@ -6514,6 +6599,26 @@ async function maybeHandleTelegramAgentPlanningSession(params: {
       context = ensured.context;
     }
 
+    // Ensure we have a real GitHub comment to attach agent run status updates to.
+    // Telegram "shim" ingress uses synthetic comment ids (Telegram update ids), which don't exist in GitHub REST.
+    // The agent workflow expects a real `comment.id` for request comment updates.
+    if (params.channelMode === "shim") {
+      const requestCommentBody = buildTelegramAgentRunRequestCommentBody({
+        session,
+        draft,
+        targetLabel,
+      });
+      const requestContext = await tryCreateTelegramAgentRunRequestCommentContext({
+        context,
+        updateId: params.updateId,
+        body: requestCommentBody,
+        logger: params.logger,
+      });
+      if (requestContext) {
+        context = requestContext;
+      }
+    }
+
     await deleteTelegramAgentPlanningSession({ kv, key, logger: params.logger });
     await safeSendTelegramMessage({
       botToken: params.botToken,
@@ -6598,6 +6703,7 @@ async function maybeHandleTelegramAgentPlanningSession(params: {
     conversationContext: params.conversationContext,
     hasIssueContext: params.hasIssueContext,
     targetLabel,
+    routingOverride: params.routingOverride,
     logger: params.logger,
     onError: async (message) => {
       await safeSendTelegramMessage({
