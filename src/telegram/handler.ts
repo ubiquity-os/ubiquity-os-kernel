@@ -1720,8 +1720,17 @@ async function safeAnswerTelegramCallbackQuery(params: { botToken: string; callb
         ...(text ? { text } : {}),
       }),
     });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
+    const detail = await response.text().catch(() => "");
+    let isOk = response.ok;
+    if (isOk) {
+      try {
+        const parsed = detail ? (JSON.parse(detail) as { ok?: unknown } | null) : null;
+        isOk = parsed?.ok === true;
+      } catch {
+        // ignore
+      }
+    }
+    if (!isOk) {
       logger.warn({ status: response.status, detail }, "Failed to answer Telegram callback query");
     }
   } catch (error) {
@@ -1735,31 +1744,52 @@ async function safeEditTelegramMessageReplyMarkup(params: {
   messageId: number;
   replyMarkup?: TelegramReplyMarkup | null;
   logger: Logger;
-}): Promise<void> {
+}): Promise<boolean> {
   const { botToken, chatId, messageId, replyMarkup, logger } = params;
   const normalizedChatId = Math.trunc(chatId);
   const normalizedMessageId = Math.trunc(messageId);
   if (!Number.isFinite(normalizedChatId) || !Number.isFinite(normalizedMessageId) || normalizedMessageId <= 0) {
-    return;
+    return false;
   }
 
-  const markup = replyMarkup ?? { inline_keyboard: [] };
   try {
+    const payload: Record<string, unknown> = {
+      chat_id: normalizedChatId,
+      message_id: normalizedMessageId,
+    };
+    // Bot API expects "reply_markup" to be present to update/remove it.
+    // Note: the Bot API is strict about "object" types here; `null` is rejected.
+    if (replyMarkup === undefined) {
+      // Use `[[]]` (one empty row) rather than `[]` to satisfy "array of arrays" validators.
+      payload.reply_markup = { inline_keyboard: [[]] };
+    } else {
+      payload.reply_markup = replyMarkup;
+    }
     const response = await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        chat_id: normalizedChatId,
-        message_id: normalizedMessageId,
-        reply_markup: markup,
+        ...payload,
       }),
     });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      logger.warn({ status: response.status, detail }, "Failed to edit Telegram message reply markup");
+    const detail = await response.text().catch(() => "");
+    let isOk = response.ok;
+    if (isOk) {
+      try {
+        const parsed = detail ? (JSON.parse(detail) as { ok?: unknown } | null) : null;
+        isOk = parsed?.ok === true;
+      } catch {
+        // ignore
+      }
     }
+    if (!isOk) {
+      logger.warn({ status: response.status, detail }, "Failed to edit Telegram message reply markup");
+      return false;
+    }
+    return true;
   } catch (error) {
     logger.warn({ err: error }, "Failed to edit Telegram message reply markup");
+    return false;
   }
 }
 
@@ -2095,7 +2125,7 @@ async function handleTelegramAgentPlanningCallbackQuery(params: {
     botToken,
     chatId,
     messageId: message.message_id,
-    replyMarkup: { inline_keyboard: [] },
+    replyMarkup: { inline_keyboard: [[]] },
     logger,
   });
 
@@ -2643,6 +2673,7 @@ async function safeSendTelegramMessage(params: {
   logger: Logger;
 }): Promise<number | null> {
   const { botToken, chatId, messageThreadId, replyToMessageId, parseMode, disablePreview, disableNotification, shouldTruncate, replyMarkup, logger } = params;
+  const errorMessage = "Failed to send Telegram reply";
   const normalized = params.text.trim();
   if (!normalized) return null;
   const shouldTruncateMessage = shouldTruncate !== false;
@@ -2664,18 +2695,24 @@ async function safeSendTelegramMessage(params: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+    const detail = await response.text().catch(() => "");
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      logger.warn({ status: response.status, detail }, "Failed to send Telegram reply");
+      logger.warn({ status: response.status, detail }, errorMessage);
       return null;
     }
-    const data = (await response.json().catch(() => null)) as {
-      ok?: boolean;
-      result?: { message_id?: number };
-    } | null;
-    return typeof data?.result?.message_id === "number" ? data.result.message_id : null;
+    let data: { ok?: boolean; result?: { message_id?: number } } | null = null;
+    try {
+      data = detail ? (JSON.parse(detail) as { ok?: boolean; result?: { message_id?: number } }) : null;
+    } catch {
+      data = null;
+    }
+    if (data?.ok !== true) {
+      logger.warn({ status: response.status, detail }, errorMessage);
+      return null;
+    }
+    return typeof data.result?.message_id === "number" ? data.result.message_id : null;
   } catch (error) {
-    logger.warn({ err: error }, "Failed to send Telegram reply");
+    logger.warn({ err: error }, errorMessage);
     return null;
   }
 }
@@ -2717,8 +2754,17 @@ async function safeSendTelegramChatAction(params: {
         ...(threadParams ?? {}),
       }),
     });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
+    const detail = await response.text().catch(() => "");
+    let isOk = response.ok;
+    if (isOk) {
+      try {
+        const parsed = detail ? (JSON.parse(detail) as { ok?: unknown } | null) : null;
+        isOk = parsed?.ok === true;
+      } catch {
+        // ignore
+      }
+    }
+    if (!isOk) {
       logger.warn({ status: response.status, detail }, "Failed to send Telegram chat action");
     }
   } catch (error) {
