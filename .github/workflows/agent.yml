@@ -2990,6 +2990,80 @@ jobs:
           fs.writeFileSync(".ubiquityos.issue.md", markdown);
           NODE
 
+      - name: Map GitHub App installation token
+        if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
+        id: app_token_map
+        env:
+          GH_TOKEN: ${{ inputs.authToken }}
+          REPO: ${{ steps.parse.outputs.repo }}
+          EXPECTED_INSTALLATION_ID: ${{ steps.parse.outputs.installation_id }}
+        run: |
+          set -euo pipefail
+
+          repo="${REPO:?Missing REPO}"
+          gh api "repos/$repo" > "$RUNNER_TEMP/ubq_repo_from_token.json"
+
+          # Preferred mapping source for installation tokens.
+          if gh api "installation" > "$RUNNER_TEMP/ubq_installation_from_token.json"; then
+            echo "Resolved installation metadata via /installation."
+          else
+            echo "Could not read /installation with current token; falling back to webhook installation id."
+            printf '{}' > "$RUNNER_TEMP/ubq_installation_from_token.json"
+          fi
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const expectedRaw = String(process.env.EXPECTED_INSTALLATION_ID || "").trim();
+          const expectedInstallationId = Number.parseInt(expectedRaw, 10);
+          const expectedId = Number.isFinite(expectedInstallationId) && expectedInstallationId > 0 ? expectedInstallationId : null;
+
+          const readJson = (path, fallback) => {
+            try {
+              return JSON.parse(fs.readFileSync(path, "utf8"));
+            } catch {
+              return fallback;
+            }
+          };
+
+          const repoInfo = readJson(`${process.env.RUNNER_TEMP}/ubq_repo_from_token.json`, {});
+          const installationInfo = readJson(`${process.env.RUNNER_TEMP}/ubq_installation_from_token.json`, {});
+
+          const mappedInstallationId = typeof installationInfo.id === "number" && Number.isFinite(installationInfo.id) ? installationInfo.id : expectedId;
+          if (expectedId && mappedInstallationId && expectedId !== mappedInstallationId) {
+            console.error(`GitHub App installation mismatch: expected ${expectedId}, mapped ${mappedInstallationId}.`);
+            process.exit(1);
+          }
+
+          const tokenMap = {
+            tokenType: "github_app_installation",
+            installationId: mappedInstallationId,
+            expectedInstallationId: expectedId,
+            appSlug: typeof installationInfo.app_slug === "string" ? installationInfo.app_slug : "",
+            accountLogin: typeof installationInfo?.account?.login === "string" ? installationInfo.account.login : "",
+            repository: typeof repoInfo.full_name === "string" ? repoInfo.full_name : "",
+          };
+
+          const outputLines = [];
+          const setOutput = (k, v) => outputLines.push(`${k}<<EOF\n${String(v)}\nEOF\n`);
+
+          setOutput("map_json", JSON.stringify(tokenMap));
+          setOutput("installation_id", tokenMap.installationId ? String(tokenMap.installationId) : "");
+          setOutput("app_slug", tokenMap.appSlug);
+          setOutput("account_login", tokenMap.accountLogin);
+          setOutput("repo", tokenMap.repository);
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join(""));
+
+          const printable = {
+            installationId: tokenMap.installationId,
+            appSlug: tokenMap.appSlug || null,
+            accountLogin: tokenMap.accountLogin || null,
+            repository: tokenMap.repository || null,
+          };
+          process.stdout.write(`GitHub App token mapping: ${JSON.stringify(printable)}\n`);
+          NODE
+
       - name: Fetch marketplace plugin registry (best-effort)
         if: steps.parse.outputs.allowed == 'true' && steps.parse.outputs.privileged == 'true'
         continue-on-error: true
@@ -3034,6 +3108,7 @@ jobs:
           CONVERSATION_KEY: ${{ steps.parse.outputs.conversation_key }}
           ENVIRONMENT: ${{ steps.parse.outputs.environment }}
           CONFIG_PATH_CANDIDATES_JSON: ${{ steps.parse.outputs.config_path_candidates }}
+          APP_TOKEN_MAP_JSON: ${{ steps.app_token_map.outputs.map_json }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
@@ -3045,12 +3120,27 @@ jobs:
           const conversationKey = String(process.env.CONVERSATION_KEY || "").trim();
           const environment = String(process.env.ENVIRONMENT || "").trim();
           const configPathCandidatesJson = String(process.env.CONFIG_PATH_CANDIDATES_JSON || "").trim();
+          const appTokenMapJson = String(process.env.APP_TOKEN_MAP_JSON || "").trim();
           let configPathCandidates = [];
+          let appTokenMap = null;
           try {
             configPathCandidates = configPathCandidatesJson ? JSON.parse(configPathCandidatesJson) : [];
           } catch {
             configPathCandidates = [];
           }
+          try {
+            appTokenMap = appTokenMapJson ? JSON.parse(appTokenMapJson) : null;
+          } catch {
+            appTokenMap = null;
+          }
+
+          const authMappingLine =
+            privileged && appTokenMap && typeof appTokenMap === "object"
+              ? [
+                  "- GH token mapping (resolved from this run token):",
+                  `  installation_id=${appTokenMap.installationId || "unknown"}, app_slug=${appTokenMap.appSlug || "unknown"}, account=${appTokenMap.accountLogin || "unknown"}, repo_access=${appTokenMap.repository || "unknown"}.`,
+                ].join("\n")
+              : null;
 
           const contextLines = [
             "- The full issue/PR thread (including collaborators' comments) is available in `.ubiquityos.issue.md`.",
@@ -3062,13 +3152,14 @@ jobs:
               ? `- Config path candidates (edit the active one): ${configPathCandidates.join(", ")}`
               : null,
             "- If present, the marketplace plugin registry is in `.ubiquityos.marketplace.json` (best-effort; may be empty if access is unavailable).",
+            authMappingLine,
           ].filter(Boolean);
 
           const operationsLines = privileged
             ? [
                 "GitHub operations (privileged):",
                 "- The invoker is an OWNER/MEMBER/COLLABORATOR; you may use the GitHub CLI `gh` for GitHub operations (issues/PRs/labels/comments).",
-                "- Authentication: `GH_TOKEN` is set to a GitHub App installation token. `gh auth status` may display `actions-user` (expected for non-user tokens). Do not run `gh auth login`. If you need a sanity check, run: `gh api repos/<owner>/<repo> -q .full_name`.",
+                "- Authentication: `GH_TOKEN` is a GitHub App installation token. Treat the GH token mapping in this prompt as source of truth. `gh auth status` may display `actions-user` (expected for non-user tokens). Do not run `gh auth login`.",
                 "- Marketplace auth (optional): if you need to create/update repos under the marketplace org, `UOS_MARKETPLACE_GH_TOKEN` may be set and `UOS_MARKETPLACE_ORG` is provided.",
                 '  - For marketplace ops, prefix commands like: `GH_TOKEN=\"$UOS_MARKETPLACE_GH_TOKEN\" gh ... --repo \"$UOS_MARKETPLACE_ORG/<repo>\"`.',
                 "- Sandbox: outbound network for tool commands is enabled in this run.",
