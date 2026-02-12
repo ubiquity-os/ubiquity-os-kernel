@@ -66,6 +66,7 @@ export default tsEslint.config(
       "use-isnan": "error",
       "no-unneeded-ternary": "error",
       "no-nested-ternary": "error",
+      "max-lines": ["error", { max: 1000 }],
       "@typescript-eslint/no-unused-vars": [
         "error",
         {

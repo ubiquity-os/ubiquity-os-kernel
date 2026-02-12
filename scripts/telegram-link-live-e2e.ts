@@ -1,5 +1,6 @@
 import { Api, TelegramClient, utils } from "npm:telegram@2.26.22";
 import { StringSession } from "npm:telegram@2.26.22/sessions/index.js";
+import { Buffer } from "node:buffer";
 
 type TelegramSecretsFile = {
   botToken?: string;
@@ -49,7 +50,9 @@ try {
   console.log(`Bot: @${botUsername}`);
   console.log(`Owner: ${opts.owner}`);
 
-  const statusSent = await client.sendMessage(botEntity, { message: "/_status" });
+  const statusSent = await client.sendMessage(botEntity, {
+    message: "/status",
+  });
   const status = await waitForIncomingMessage({
     client,
     botEntity,
@@ -61,7 +64,7 @@ try {
       text.toLowerCase().startsWith("status: linking"),
   });
   if (!status) {
-    throw new Error(`Timed out waiting for /_status response within ${opts.timeoutSeconds}s.`);
+    throw new Error(`Timed out waiting for /status response within ${opts.timeoutSeconds}s.`);
   }
 
   const statusText = getMessageText(status);
@@ -69,17 +72,16 @@ try {
   console.log("Status:");
   console.log(statusText);
 
-  const isAlreadyLinked = statusText.toLowerCase().startsWith("status: linked");
+  const statusLower = statusText.toLowerCase();
+  const isAlreadyLinked = statusLower.startsWith("status: linked") && !statusLower.includes("github login: missing");
   if (isAlreadyLinked) {
     console.log("");
     console.log("Already linked; nothing to do.");
   } else {
     await printKeyboard(status);
-
-    const statusLower = statusText.toLowerCase();
     let isCompleted = false;
 
-    // If we're resuming an in-progress link, /_status might not include the Start linking
+    // If we're resuming an in-progress link, /status might not include the Start linking
     // button. Handle the pending states explicitly.
     if (statusLower.startsWith("status: linking")) {
       if (statusLower.includes("waiting for link issue close")) {
@@ -133,7 +135,7 @@ try {
 
       if (!isCompleted) {
         if (!statusLower.includes("waiting for github owner")) {
-          throw new Error("Unrecognized linking state from /_status output.");
+          throw new Error("Unrecognized linking state from /status output.");
         }
 
         console.log("");
@@ -175,13 +177,18 @@ try {
         botEntity,
         afterId: getMessageId(ownerSent),
         timeoutMs: opts.timeoutSeconds * 1000,
-        match: (text) => text.toLowerCase().includes("link issue created") && text.toLowerCase().includes("close the issue"),
+        match: (text) => text.trim().length > 0,
       });
       if (!issueMessage) {
-        throw new Error(`Timed out waiting for link issue message within ${opts.timeoutSeconds}s.`);
+        throw new Error(`Timed out waiting for response after owner input within ${opts.timeoutSeconds}s.`);
       }
 
       const issueText = getMessageText(issueMessage);
+      const issueTextLower = issueText.toLowerCase();
+      if (!issueTextLower.includes("link issue created") || !issueTextLower.includes("close the issue")) {
+        throw new Error(`Unexpected response after owner input:\n${issueText}`);
+      }
+
       console.log("");
       console.log("Link issue message:");
       console.log(issueText);
@@ -407,12 +414,13 @@ async function clickInlineButton(params: { client: TelegramClient; peer: Api.Typ
   const buttons = extractInlineButtons(params.message);
   const match = buttons.find((button) => button.text.trim().toLowerCase() === desired);
   if (!match?.data) return false;
+  const callbackData = Buffer.from(match.data);
 
   await params.client.invoke(
     new Api.messages.GetBotCallbackAnswer({
       peer: params.peer,
       msgId,
-      data: match.data,
+      data: callbackData,
     })
   );
   return true;
@@ -459,7 +467,7 @@ function parseGitHubIssueUrl(url: string): {
 async function closeGitHubIssue(params: { owner: string; repo: string; issueNumber: number }): Promise<void> {
   const token = readGitHubToken();
   if (!token) {
-    throw new Error("Missing GitHub token in env (GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN_SIMULANT) required to auto-close the link issue.");
+    throw new Error("Missing GitHub token in env (GITHUB_TOKEN_SIMULANT, GITHUB_TOKEN, or GH_TOKEN) required to auto-close the link issue.");
   }
 
   // REST `PATCH /issues/{number}` has been intermittently returning 500 for this repo.
@@ -546,7 +554,7 @@ async function checkOrgConfigExists(params: { owner: string }): Promise<boolean>
 }
 
 function readGitHubToken(): string {
-  return (Deno.env.get("GITHUB_TOKEN") ?? Deno.env.get("GH_TOKEN") ?? Deno.env.get("GITHUB_TOKEN_SIMULANT") ?? "").trim();
+  return (Deno.env.get("GITHUB_TOKEN_SIMULANT") ?? Deno.env.get("GITHUB_TOKEN") ?? Deno.env.get("GH_TOKEN") ?? "").trim();
 }
 
 async function sleep(ms: number): Promise<void> {

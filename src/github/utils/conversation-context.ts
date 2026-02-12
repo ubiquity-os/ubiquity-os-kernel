@@ -1,5 +1,4 @@
 import { GitHubContext } from "../github-context.ts";
-import { callUbqAiRouter } from "./ai-router.ts";
 import { ConversationKeyResult, ConversationNode, listConversationNodesForKey } from "./conversation-graph.ts";
 import type { LoggerLike } from "./kv-client.ts";
 import {
@@ -11,10 +10,47 @@ import {
   getVectorDbConfig,
   VectorDocument,
 } from "./vector-db.ts";
+import {
+  buildDescriptorFromDocument,
+  buildSelectorCandidateFromNode,
+  buildSelectorCandidateFromSemantic,
+  type DocumentDescriptor,
+  formatDescriptorLine,
+  formatMatchedBy,
+  formatSeedLabel,
+  getDocumentTimestamp,
+  selectConversationCandidates,
+} from "./conversation-context-semantic.ts";
+import {
+  clampText,
+  COMMENT_DOC_TYPES,
+  type CommentEntry,
+  type CommentKind,
+  dedupeComments,
+  dedupeNodes,
+  DEFAULT_AUTHOR_BOOST,
+  DEFAULT_GITHUB_CONCURRENCY,
+  DEFAULT_MAX_CHARS,
+  DEFAULT_MAX_COMMENT_CHARS,
+  DEFAULT_MAX_COMMENTS,
+  DEFAULT_MAX_ITEMS,
+  DEFAULT_OWNER_BOOST,
+  DEFAULT_RECENCY_BOOST,
+  DEFAULT_SIMILARITY_THRESHOLD,
+  DEFAULT_SIMILARITY_TOP_K,
+  DEFAULT_VECTOR_CONCURRENCY,
+  formatCommentLine,
+  formatNodeLine,
+  indentBlock,
+  isRecord,
+  mapWithConcurrency,
+  normalizeMarkdown,
+  type SelectionCandidate,
+  sortCommentsByDate,
+} from "./conversation-context-helpers.ts";
 
 type ConversationContextDeps = Readonly<{
   listConversationNodesForKey: typeof listConversationNodesForKey;
-  callUbqAiRouter: typeof callUbqAiRouter;
   getVectorDbConfig: typeof getVectorDbConfig;
   fetchVectorDocument: typeof fetchVectorDocument;
   fetchVectorDocuments: typeof fetchVectorDocuments;
@@ -26,7 +62,6 @@ type ConversationContextDeps = Readonly<{
 function resolveConversationContextDeps(deps?: Partial<ConversationContextDeps>): ConversationContextDeps {
   return {
     listConversationNodesForKey,
-    callUbqAiRouter,
     getVectorDbConfig,
     fetchVectorDocument,
     fetchVectorDocuments,
@@ -35,218 +70,6 @@ function resolveConversationContextDeps(deps?: Partial<ConversationContextDeps>)
     findSimilarComments,
     ...deps,
   };
-}
-
-const DEFAULT_MAX_ITEMS = 10;
-const DEFAULT_MAX_CHARS = 4000;
-const DEFAULT_MAX_COMMENTS = 8;
-const DEFAULT_MAX_COMMENT_CHARS = 256;
-const DEFAULT_SIMILARITY_THRESHOLD = 0.8;
-const DEFAULT_SIMILARITY_TOP_K = 5;
-const DEFAULT_AUTHOR_BOOST = 0.07;
-const DEFAULT_OWNER_BOOST = 0.04;
-const DEFAULT_RECENCY_BOOST = 0.06;
-const DEFAULT_SELECTOR_BATCH_SIZE = 20;
-const DEFAULT_SELECTOR_MAX_CANDIDATES = 120;
-const DEFAULT_SELECTOR_MAX_BODY_CHARS = 900;
-const DEFAULT_SELECTOR_MAX_COMMENT_CHARS = 280;
-const DEFAULT_SELECTOR_MAX_COMMENTS = 6;
-const DEFAULT_SELECTOR_TIMEOUT_MS = 20_000;
-const DEFAULT_GITHUB_CONCURRENCY = 4;
-const DEFAULT_VECTOR_CONCURRENCY = 6;
-const COMMENT_DOC_TYPES = ["issue_comment", "review_comment", "pull_request_review"];
-
-function clampText(value: string, maxChars: number): string {
-  const text = value.trim();
-  if (!text) return "";
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}...`;
-}
-
-async function mapWithConcurrency<TItem, TResult>(items: TItem[], limit: number, handler: (item: TItem) => Promise<TResult>): Promise<TResult[]> {
-  if (items.length === 0) return [];
-  const concurrency = Math.max(1, Math.trunc(limit));
-  const results: TResult[] = new Array(items.length);
-  let index = 0;
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (index < items.length) {
-      const current = index;
-      index += 1;
-      results[current] = await handler(items[current]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-function formatNodeLine(node: ConversationNode): string {
-  const typeLabel = node.type === "Issue" ? "Issue" : "PR";
-  const repoLabel = node.owner && node.repo ? `${node.owner}/${node.repo}` : "unknown";
-  const numberLabel = typeof node.number === "number" ? `#${node.number}` : "";
-  const title = node.title ? ` - ${node.title}` : "";
-  return `- [${typeLabel}] ${repoLabel}${numberLabel}${title}`;
-}
-
-type CommentKind = "IssueComment" | "ReviewComment" | "Review";
-
-type CommentEntry = Readonly<{
-  id: string;
-  kind: CommentKind;
-  author: string;
-  createdAt: string;
-  url: string;
-  body: string;
-}>;
-
-type DocumentKind = "Issue" | "PullRequest" | "IssueComment" | "ReviewComment" | "PullRequestReview";
-
-type SelectionCandidate = Readonly<{
-  id: string;
-  kind: DocumentKind;
-  source: "graph" | "semantic";
-  owner: string;
-  repo: string;
-  number?: number;
-  title?: string;
-  url: string;
-  createdAt?: string;
-  body?: string;
-  comments?: Array<{ author: string; date: string; body: string }>;
-}>;
-
-function indentBlock(text: string, indent: string): string {
-  return text
-    .split("\n")
-    .map((line) => `${indent}${line}`)
-    .join("\n");
-}
-
-function normalizeMarkdown(markdown: string | null): string {
-  if (!markdown) return "";
-  const trimmed = markdown.trim();
-  if (!trimmed) return "";
-  return splitLeadingUrlLines(trimmed);
-}
-
-function splitLeadingUrlLines(text: string): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  let isInFence = false;
-  let fence = "";
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      const marker = trimmed.slice(0, 3);
-      if (!isInFence) {
-        isInFence = true;
-        fence = marker;
-      } else if (marker === fence) {
-        isInFence = false;
-      }
-      out.push(line);
-      continue;
-    }
-    if (isInFence) {
-      out.push(line);
-      continue;
-    }
-    const match = /^(https?:\/\/[^\s<>"']+)\s+(.+)$/.exec(trimmed);
-    if (match) {
-      out.push(match[1]);
-      out.push(match[2]);
-      continue;
-    }
-    out.push(line);
-  }
-  return out.join("\n");
-}
-
-function formatDateLabel(value: string): string {
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return "";
-  return new Date(parsed).toISOString().slice(0, 10);
-}
-
-function getCommentKindLabel(kind: CommentKind): string {
-  if (kind === "IssueComment") return "Issue Comment";
-  if (kind === "ReviewComment") return "Review Comment";
-  return "Review";
-}
-
-function formatCommentLine(comment: CommentEntry): string {
-  const kindLabel = getCommentKindLabel(comment.kind);
-  const author = comment.author ? `@${comment.author}` : "unknown";
-  const date = formatDateLabel(comment.createdAt);
-  const meta = [author, date].filter(Boolean).join(" ");
-  return `- [${kindLabel}] ${meta}`.trim();
-}
-
-function extractJsonObject(raw: string): string | null {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  return raw.slice(start, end + 1);
-}
-
-function parseSelectorResponse(raw: string): { includeIds: string[] } | null {
-  const trimmed = raw.trim();
-  const direct = (() => {
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  })();
-  if (direct && typeof direct === "object" && direct !== null) {
-    const includeIdsRaw = (direct as { includeIds?: unknown }).includeIds;
-    const includeIds = Array.isArray(includeIdsRaw) ? includeIdsRaw : [];
-    const filtered = includeIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
-    return { includeIds: filtered };
-  }
-
-  const snippet = extractJsonObject(trimmed);
-  if (!snippet) return null;
-  try {
-    const parsed = JSON.parse(snippet) as { includeIds?: unknown };
-    const includeIds = Array.isArray(parsed?.includeIds) ? parsed.includeIds : [];
-    const filtered = includeIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
-    return { includeIds: filtered };
-  } catch {
-    return null;
-  }
-}
-
-function dedupeNodes(nodes: ConversationNode[]): ConversationNode[] {
-  const seen = new Set<string>();
-  const out: ConversationNode[] = [];
-  for (const node of nodes) {
-    if (seen.has(node.id)) continue;
-    seen.add(node.id);
-    out.push(node);
-  }
-  return out;
-}
-
-function dedupeComments(nodes: CommentEntry[]): CommentEntry[] {
-  const seen = new Set<string>();
-  const out: CommentEntry[] = [];
-  for (const node of nodes) {
-    const key = `${node.kind}:${node.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(node);
-  }
-  return out;
-}
-
-function sortCommentsByDate(nodes: CommentEntry[]): CommentEntry[] {
-  return [...nodes].sort((a, b) => {
-    const aTime = Date.parse(a.createdAt);
-    const bTime = Date.parse(b.createdAt);
-    const aScore = Number.isFinite(aTime) ? aTime : 0;
-    const bScore = Number.isFinite(bTime) ? bTime : 0;
-    return bScore - aScore;
-  });
 }
 
 function collectParticipantIds(context: GitHubContext): Set<number> {
@@ -265,10 +88,6 @@ function collectParticipantIds(context: GitHubContext): Set<number> {
     if (typeof id === "number" && Number.isFinite(id)) ids.add(Math.trunc(id));
   }
   return ids;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function buildCommentEntry(kind: CommentKind, payload: Record<string, unknown>): CommentEntry | null {
@@ -483,176 +302,6 @@ async function fetchNodeBodyMarkdown(context: GitHubContext, node: ConversationN
   }
 }
 
-function buildNodeFromDocument(doc: VectorDocument): ConversationNode | null {
-  const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
-  if (!payload) return null;
-  const repository = isRecord(payload.repository) ? payload.repository : null;
-  const ownerObj = isRecord(repository?.owner) ? repository.owner : null;
-  const owner = typeof ownerObj?.login === "string" ? ownerObj.login.trim() : "";
-  const repo = typeof repository?.name === "string" ? repository.name : "";
-  const issue = isRecord(payload.issue) ? payload.issue : null;
-  const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
-  const isIssue = doc.docType === "issue";
-  const source = isIssue ? issue : pullRequest;
-  if (!source) return null;
-  const createdAt = typeof source.created_at === "string" ? source.created_at : "";
-  let url = "";
-  if (typeof source.html_url === "string") {
-    url = source.html_url;
-  } else if (typeof source.url === "string") {
-    url = source.url;
-  }
-  const number = typeof source.number === "number" ? source.number : undefined;
-  const title = typeof source.title === "string" ? source.title : undefined;
-  const type = isIssue ? "Issue" : "PullRequest";
-  if (!createdAt || !url || !owner || !repo) return null;
-  return {
-    id: doc.id,
-    type,
-    createdAt,
-    url,
-    owner,
-    repo,
-    number,
-    title,
-  };
-}
-
-type DocumentDescriptor = Readonly<{
-  id: string;
-  kind: DocumentKind;
-  owner: string;
-  repo: string;
-  number?: number;
-  title?: string;
-  url: string;
-  author?: string;
-  createdAt?: string;
-}>;
-
-function buildDescriptorFromDocument(doc: VectorDocument): DocumentDescriptor | null {
-  const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
-  if (!payload) return null;
-  const repository = isRecord(payload.repository) ? payload.repository : null;
-  const ownerObj = isRecord(repository?.owner) ? repository.owner : null;
-  const owner = typeof ownerObj?.login === "string" ? ownerObj.login.trim() : "";
-  const repo = typeof repository?.name === "string" ? repository.name : "";
-  if (!owner || !repo) return null;
-
-  if (doc.docType === "issue" || doc.docType === "pull_request") {
-    const node = buildNodeFromDocument(doc);
-    if (!node) return null;
-    return {
-      id: doc.id,
-      kind: node.type === "Issue" ? "Issue" : "PullRequest",
-      owner: node.owner,
-      repo: node.repo,
-      number: node.number,
-      title: node.title,
-      url: node.url,
-      createdAt: node.createdAt,
-    };
-  }
-
-  if (!COMMENT_DOC_TYPES.includes(doc.docType)) return null;
-  const comment = isRecord(payload.comment) ? payload.comment : null;
-  const review = isRecord(payload.review) ? payload.review : null;
-  const source = comment ?? review;
-  if (!isRecord(source)) return null;
-  const createdAt = typeof source.created_at === "string" ? source.created_at : "";
-  const submittedAt = typeof source.submitted_at === "string" ? source.submitted_at : "";
-  const timestamp = createdAt || submittedAt;
-  let url = "";
-  if (typeof source.html_url === "string") {
-    url = source.html_url;
-  } else if (typeof source.url === "string") {
-    url = source.url;
-  }
-  const user = isRecord(source.user) ? source.user : null;
-  const author = typeof user?.login === "string" ? user.login.trim() : "";
-  const issue = isRecord(payload.issue) ? payload.issue : null;
-  const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
-  let number: number | undefined;
-  if (typeof issue?.number === "number") {
-    number = issue.number;
-  } else if (typeof pullRequest?.number === "number") {
-    number = pullRequest.number;
-  }
-  if (!url || !timestamp) return null;
-  let kind: DocumentDescriptor["kind"] = "PullRequestReview";
-  if (doc.docType === "issue_comment") {
-    kind = "IssueComment";
-  } else if (doc.docType === "review_comment") {
-    kind = "ReviewComment";
-  }
-  return {
-    id: doc.id,
-    kind,
-    owner,
-    repo,
-    number,
-    url,
-    author: author || undefined,
-    createdAt: timestamp,
-  };
-}
-
-function formatDescriptorLine(descriptor: DocumentDescriptor, options: Readonly<{ similarity?: number }> = {}): string {
-  let typeLabel = "Review";
-  if (descriptor.kind === "Issue") {
-    typeLabel = "Issue";
-  } else if (descriptor.kind === "PullRequest") {
-    typeLabel = "PR";
-  } else if (descriptor.kind === "IssueComment") {
-    typeLabel = "Issue Comment";
-  } else if (descriptor.kind === "ReviewComment") {
-    typeLabel = "Review Comment";
-  }
-  const repoLabel = descriptor.owner && descriptor.repo ? `${descriptor.owner}/${descriptor.repo}` : "unknown";
-  const numberLabel = typeof descriptor.number === "number" ? `#${descriptor.number}` : "";
-  const title = descriptor.title ? ` - ${descriptor.title}` : "";
-  const author = descriptor.author ? ` @${descriptor.author}` : "";
-  const score = typeof options.similarity === "number" ? ` (sim ${options.similarity.toFixed(2)})` : "";
-  return `- [${typeLabel}] ${repoLabel}${numberLabel}${title}${author}${score}`;
-}
-
-function formatSeedLabel(doc: VectorDocument): string {
-  const descriptor = buildDescriptorFromDocument(doc);
-  if (!descriptor) return doc.id;
-  return formatDescriptorLine(descriptor).replace(/^- /, "");
-}
-
-function formatMatchedBy(labels: string[]): string {
-  if (labels.length === 0) return "";
-  const trimmed = labels.slice(0, 3);
-  const extra = labels.length - trimmed.length;
-  const suffix = extra > 0 ? ` +${extra} more` : "";
-  return `${trimmed.join("; ")}${suffix}`;
-}
-
-function getDocumentTimestamp(doc: VectorDocument): number | null {
-  const payload = isRecord(doc.payload) ? (doc.payload as Record<string, unknown>) : null;
-  if (!payload) return null;
-  const issue = isRecord(payload.issue) ? payload.issue : null;
-  const pullRequest = isRecord(payload.pull_request) ? payload.pull_request : null;
-  const comment = isRecord(payload.comment) ? payload.comment : null;
-  const review = isRecord(payload.review) ? payload.review : null;
-  let source: Record<string, unknown> | null = null;
-  if (doc.docType === "issue") {
-    source = issue;
-  } else if (doc.docType === "pull_request") {
-    source = pullRequest;
-  } else if (COMMENT_DOC_TYPES.includes(doc.docType)) {
-    source = comment ?? review;
-  }
-  if (!source) return null;
-  const updatedAt = typeof source.updated_at === "string" ? source.updated_at : "";
-  const createdAt = typeof source.created_at === "string" ? source.created_at : "";
-  const submittedAt = typeof source.submitted_at === "string" ? source.submitted_at : "";
-  const parsed = Date.parse(updatedAt || submittedAt || createdAt);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 async function findSimilarForDocument(
   config: ReturnType<typeof getVectorDbConfig>,
   doc: VectorDocument,
@@ -697,159 +346,6 @@ async function findSimilarForDocument(
   return deduped;
 }
 
-function buildSelectorPrompt(maxSelections: number): string {
-  return `
-You are a context selector for a conversation graph.
-
-Return ONLY JSON with this shape:
-{ "includeIds": ["..."] }
-
-Rules:
-- Use ONLY IDs from the provided candidates list.
-- Choose the minimal set required to answer the query.
-- Return at most ${maxSelections} IDs.
-- If nothing beyond the root is needed, return an empty array.
-- Do not include anything irrelevant.
-`.trim();
-}
-
-function buildCandidateComments(comments: CommentEntry[], maxComments: number, maxChars: number): Array<{ author: string; date: string; body: string }> {
-  const entries: Array<{ author: string; date: string; body: string }> = [];
-  for (const comment of comments.slice(0, maxComments)) {
-    const body = clampText(normalizeMarkdown(comment.body), maxChars);
-    if (!body) continue;
-    entries.push({
-      author: comment.author || "unknown",
-      date: formatDateLabel(comment.createdAt),
-      body,
-    });
-  }
-  return entries;
-}
-
-function buildSelectorCandidateFromNode(
-  node: ConversationNode,
-  body: string,
-  comments: CommentEntry[],
-  source: SelectionCandidate["source"]
-): SelectionCandidate {
-  return {
-    id: node.id,
-    kind: node.type,
-    source,
-    owner: node.owner,
-    repo: node.repo,
-    number: node.number,
-    title: node.title,
-    url: node.url,
-    createdAt: node.createdAt,
-    body: clampText(body, DEFAULT_SELECTOR_MAX_BODY_CHARS),
-    comments: buildCandidateComments(comments, DEFAULT_SELECTOR_MAX_COMMENTS, DEFAULT_SELECTOR_MAX_COMMENT_CHARS),
-  };
-}
-
-function buildSelectorCandidateFromSemantic(entry: { doc: VectorDocument; descriptor: DocumentDescriptor }): SelectionCandidate | null {
-  const { descriptor, doc } = entry;
-  if (!descriptor.url) return null;
-  return {
-    id: doc.id,
-    kind: descriptor.kind,
-    source: "semantic",
-    owner: descriptor.owner,
-    repo: descriptor.repo,
-    number: descriptor.number,
-    title: descriptor.title,
-    url: descriptor.url,
-    createdAt: descriptor.createdAt,
-    body: clampText(normalizeMarkdown(doc.markdown ?? ""), DEFAULT_SELECTOR_MAX_BODY_CHARS),
-    comments: [],
-  };
-}
-
-function chunkArray<T>(values: T[], size: number): T[][] {
-  if (size <= 0) return [values];
-  const chunks: T[][] = [];
-  for (let i = 0; i < values.length; i += size) {
-    chunks.push(values.slice(i, i + size));
-  }
-  return chunks;
-}
-
-async function selectConversationCandidates(
-  params: Readonly<{
-    context: GitHubContext;
-    query: string;
-    root: SelectionCandidate;
-    candidates: SelectionCandidate[];
-    maxSelections: number;
-    deps: ConversationContextDeps;
-  }>
-): Promise<Set<string> | null> {
-  const query = params.query.trim();
-  if (!query) return null;
-  if (!params.context?.eventHandler) return null;
-  const payload = params.context.payload as Record<string, unknown>;
-  const installation = (payload.installation as { id?: number } | undefined) ?? null;
-  if (!installation?.id) return null;
-
-  const limitedCandidates = params.candidates.slice(0, DEFAULT_SELECTOR_MAX_CANDIDATES);
-  if (limitedCandidates.length === 0) {
-    return new Set([params.root.id]);
-  }
-
-  const maxSelections = Math.max(1, Math.trunc(params.maxSelections));
-  const prompt = buildSelectorPrompt(maxSelections);
-  const selections: string[] = [];
-  const seen = new Set<string>();
-  const batches = chunkArray(limitedCandidates, DEFAULT_SELECTOR_BATCH_SIZE);
-  for (const batch of batches) {
-    const input = {
-      query,
-      root: {
-        id: params.root.id,
-        kind: params.root.kind,
-        repo: `${params.root.owner}/${params.root.repo}`,
-        number: params.root.number,
-        title: params.root.title,
-        url: params.root.url,
-        body: params.root.body ?? "",
-        comments: params.root.comments ?? [],
-      },
-      candidates: batch.map((candidate) => ({
-        id: candidate.id,
-        kind: candidate.kind,
-        repo: `${candidate.owner}/${candidate.repo}`,
-        number: candidate.number,
-        title: candidate.title,
-        url: candidate.url,
-        source: candidate.source,
-        body: candidate.body ?? "",
-        comments: candidate.comments ?? [],
-      })),
-    };
-
-    try {
-      const raw = await params.deps.callUbqAiRouter(params.context, prompt, input, { timeoutMs: DEFAULT_SELECTOR_TIMEOUT_MS });
-      const parsed = parseSelectorResponse(raw);
-      if (!parsed) {
-        params.context.logger.debug("Selector response did not parse");
-        continue;
-      }
-      for (const id of parsed.includeIds) {
-        const trimmed = id.trim();
-        if (!trimmed || seen.has(trimmed)) continue;
-        seen.add(trimmed);
-        selections.push(trimmed);
-      }
-    } catch (error) {
-      params.context.logger.warn({ err: error }, "Selector call failed (non-fatal)");
-    }
-  }
-
-  const limited = selections.slice(0, maxSelections);
-  return new Set<string>([params.root.id, ...limited]);
-}
-
 export async function buildConversationContext(
   params: Readonly<{
     context: GitHubContext;
@@ -887,7 +383,15 @@ export async function buildConversationContext(
   const docMap = new Map<string, VectorDocument>();
   const graphDocIds = new Set<string>([params.conversation.root.id]);
   const seedParentMap = new Map<string, string>();
-  const semanticByParent = new Map<string, Array<{ doc: VectorDocument; descriptor: DocumentDescriptor; similarity: number; matchedBy: string }>>();
+  const semanticByParent = new Map<
+    string,
+    Array<{
+      doc: VectorDocument;
+      descriptor: DocumentDescriptor;
+      similarity: number;
+      matchedBy: string;
+    }>
+  >();
   if (config) {
     const explicitDocs = await deps.fetchVectorDocuments(
       config,
@@ -962,9 +466,14 @@ export async function buildConversationContext(
         const existing = similarityById.get(match.id);
         if (existing) {
           existing.sources.add(result.docId);
-          if (match.similarity > existing.similarity) existing.similarity = match.similarity;
+          if (match.similarity > existing.similarity) {
+            existing.similarity = match.similarity;
+          }
         } else {
-          similarityById.set(match.id, { similarity: match.similarity, sources: new Set([result.docId]) });
+          similarityById.set(match.id, {
+            similarity: match.similarity,
+            sources: new Set([result.docId]),
+          });
         }
       }
     }
@@ -982,10 +491,24 @@ export async function buildConversationContext(
           const meta = similarityById.get(doc.id);
           if (!descriptor || !meta) return null;
           const timestampMs = getDocumentTimestamp(doc);
-          return { descriptor, doc, similarity: meta.similarity, sources: meta.sources, timestampMs };
+          return {
+            descriptor,
+            doc,
+            similarity: meta.similarity,
+            sources: meta.sources,
+            timestampMs,
+          };
         })
-        .filter((row): row is { descriptor: DocumentDescriptor; doc: VectorDocument; similarity: number; sources: Set<string>; timestampMs: number | null } =>
-          Boolean(row)
+        .filter(
+          (
+            row
+          ): row is {
+            descriptor: DocumentDescriptor;
+            doc: VectorDocument;
+            similarity: number;
+            sources: Set<string>;
+            timestampMs: number | null;
+          } => Boolean(row)
         );
 
       const participants = collectParticipantIds(params.context);
@@ -1018,7 +541,12 @@ export async function buildConversationContext(
           .filter((seed): seed is VectorDocument => Boolean(seed))
           .map((seed) => formatSeedLabel(seed));
         const matchedBy = formatMatchedBy(sourceLabels);
-        const entry = { doc: row.doc, descriptor: row.descriptor, similarity: row.similarity, matchedBy };
+        const entry = {
+          doc: row.doc,
+          descriptor: row.descriptor,
+          similarity: row.similarity,
+          matchedBy,
+        };
         const parentIds = new Set<string>();
         for (const sourceId of meta.sources) {
           const parentId = seedParentMap.get(sourceId);
@@ -1065,8 +593,12 @@ export async function buildConversationContext(
     for (const entries of semanticByParent.values()) {
       for (const entry of entries) {
         const candidate = buildSelectorCandidateFromSemantic(entry);
-        if (!candidate || candidate.id === params.conversation.root.id) continue;
-        if (!candidateById.has(candidate.id)) candidateById.set(candidate.id, candidate);
+        if (!candidate || candidate.id === params.conversation.root.id) {
+          continue;
+        }
+        if (!candidateById.has(candidate.id)) {
+          candidateById.set(candidate.id, candidate);
+        }
       }
     }
     selectionIds = await selectConversationCandidates({
@@ -1075,14 +607,21 @@ export async function buildConversationContext(
       root: rootCandidate,
       candidates: [...candidateById.values()],
       maxSelections: maxItems,
-      deps,
     });
   }
 
   let filteredExplicitNodes = explicitNodes;
   let filteredSemanticByParent = semanticByParent;
   if (selectionIds && selectionIds.size > 0) {
-    filteredSemanticByParent = new Map<string, Array<{ doc: VectorDocument; descriptor: DocumentDescriptor; similarity: number; matchedBy: string }>>();
+    filteredSemanticByParent = new Map<
+      string,
+      Array<{
+        doc: VectorDocument;
+        descriptor: DocumentDescriptor;
+        similarity: number;
+        matchedBy: string;
+      }>
+    >();
     for (const [parentId, entries] of semanticByParent.entries()) {
       const filtered = entries.filter((entry) => selectionIds?.has(entry.doc.id));
       if (filtered.length > 0) filteredSemanticByParent.set(parentId, filtered);
@@ -1098,7 +637,9 @@ export async function buildConversationContext(
   if (hasRootContent) {
     lines.push("Current thread:");
     lines.push(formatNodeLine(params.conversation.root));
-    if (params.conversation.root.url) lines.push(`  ${params.conversation.root.url}`);
+    if (params.conversation.root.url) {
+      lines.push(`  ${params.conversation.root.url}`);
+    }
     if (rootMarkdown) lines.push(indentBlock(rootMarkdown, "  "));
     if (rootComments.length > 0) {
       lines.push("  Comments:");
@@ -1113,7 +654,11 @@ export async function buildConversationContext(
       lines.push("  Similar (semantic):");
       const entries = [...rootSemantic].sort((a, b) => b.similarity - a.similarity).slice(0, DEFAULT_SIMILARITY_TOP_K);
       for (const entry of entries) {
-        lines.push(`  ${formatDescriptorLine(entry.descriptor, { similarity: entry.similarity })}`);
+        lines.push(
+          `  ${formatDescriptorLine(entry.descriptor, {
+            similarity: entry.similarity,
+          })}`
+        );
         if (entry.descriptor.url) lines.push(`    ${entry.descriptor.url}`);
         if (entry.matchedBy) lines.push(`    matched by: ${entry.matchedBy}`);
         const markdown = normalizeMarkdown(entry.doc.markdown);
@@ -1145,7 +690,11 @@ export async function buildConversationContext(
         lines.push("  Similar (semantic):");
         const entries = [...semantic].sort((a, b) => b.similarity - a.similarity).slice(0, DEFAULT_SIMILARITY_TOP_K);
         for (const entry of entries) {
-          lines.push(`  ${formatDescriptorLine(entry.descriptor, { similarity: entry.similarity })}`);
+          lines.push(
+            `  ${formatDescriptorLine(entry.descriptor, {
+              similarity: entry.similarity,
+            })}`
+          );
           if (entry.descriptor.url) lines.push(`    ${entry.descriptor.url}`);
           if (entry.matchedBy) lines.push(`    matched by: ${entry.matchedBy}`);
           const entryMarkdown = normalizeMarkdown(entry.doc.markdown);

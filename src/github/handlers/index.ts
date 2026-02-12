@@ -6,14 +6,15 @@ import { GitHubContext } from "../github-context.ts";
 import { Env } from "../types/env.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
-import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
+import { type ConfigSource, getConfig, getConfigFullPathForEnvironment } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { getManifest, getPluginsForEvent, ResolvedPlugin } from "../utils/plugins.ts";
 import { classifyTextIngress } from "../utils/reaction.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
+import { extractSlashCommandNameFromCommentBody, filterPluginsForSlashCommandEvent } from "./slash-command-filter.ts";
 import handlePushEvent from "./push-event.ts";
 import { handleTelegramLinkIssueClosed } from "./telegram-link-issue-closed.ts";
 
@@ -142,7 +143,9 @@ function extractRepositoryFullName(payload: unknown): string {
 
   const owner = (payload.repository as { owner?: { login?: unknown } }).owner?.login;
   const name = (payload.repository as { name?: unknown }).name;
-  if (typeof owner === "string" && typeof name === "string" && owner && name) return `${owner}/${name}`;
+  if (typeof owner === "string" && typeof name === "string" && owner && name) {
+    return `${owner}/${name}`;
+  }
   return "";
 }
 
@@ -408,8 +411,12 @@ async function emitKernelPluginErrorEvent({
   const safePluginWith: Record<string, unknown> = {};
   const failingWith = failingPluginEntry.settings?.with;
   if (failingWith && typeof failingWith === "object") {
-    if ("sourceRepo" in failingWith) safePluginWith.sourceRepo = (failingWith as { sourceRepo?: unknown }).sourceRepo;
-    if ("sourceRef" in failingWith) safePluginWith.sourceRef = (failingWith as { sourceRef?: unknown }).sourceRef;
+    if ("sourceRepo" in failingWith) {
+      safePluginWith.sourceRepo = (failingWith as { sourceRepo?: unknown }).sourceRepo;
+    }
+    if ("sourceRef" in failingWith) {
+      safePluginWith.sourceRef = (failingWith as { sourceRef?: unknown }).sourceRef;
+    }
   }
 
   const targetInstallationId = targetRepo ? await tryGetRepoInstallationId(context.eventHandler, targetRepo.owner, targetRepo.repo) : null;
@@ -444,7 +451,10 @@ async function emitKernelPluginErrorEvent({
     const settings = pluginEntry.settings;
     const stateId = crypto.randomUUID();
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
@@ -527,7 +537,10 @@ async function emitKernelErrorEvent({
     const settings = pluginEntry.settings;
     const stateId = crypto.randomUUID();
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
@@ -602,58 +615,6 @@ export function bindHandlers(eventHandler: GitHubEventHandler, depsOrEnv?: Parti
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler, resolvedDeps), eventHandler.logger, eventHandler, resolvedDeps)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
-function extractLeadingSlashCommandName(body: string): string | null {
-  const trimmed = body.trimStart();
-  const match = /^\/([\w-]+)/u.exec(trimmed);
-  return match?.[1] ? match[1].toLowerCase() : null;
-}
-
-function extractSlashCommandNameFromCommentBody(body: string): string | null {
-  const direct = extractLeadingSlashCommandName(body);
-  if (direct) return direct;
-
-  const mention = /@ubiquityos\b/i.exec(body);
-  if (!mention || mention.index === undefined) return null;
-  const afterMention = body.slice(mention.index + mention[0].length);
-  return extractLeadingSlashCommandName(afterMention);
-}
-
-async function filterPluginsForSlashCommandEvent(
-  context: GitHubContext,
-  plugins: ResolvedPlugin[],
-  slashCommandName: string,
-  deps: HandlerDeps
-): Promise<ResolvedPlugin[]> {
-  const filtered: ResolvedPlugin[] = [];
-  for (const plugin of plugins) {
-    try {
-      const manifest = await deps.getManifest(context, plugin.target);
-      if (!manifest?.commands) {
-        filtered.push(plugin);
-        continue;
-      }
-      const commandNames = Object.keys(manifest.commands).map((name) => name.toLowerCase());
-      const listeners = Array.isArray(manifest["ubiquity:listeners"]) ? manifest["ubiquity:listeners"].map((name) => name.toLowerCase()) : [];
-      const doesListenToEvent = listeners.includes(context.key.toLowerCase());
-      if (commandNames.includes(slashCommandName)) {
-        context.logger.debug({ plugin: plugin.key, command: slashCommandName }, "Skipping global dispatch for command plugin; slash handler will dispatch");
-      } else if (doesListenToEvent) {
-        filtered.push(plugin);
-      } else {
-        context.logger.debug(
-          { plugin: plugin.key, command: slashCommandName },
-          "Skipping global dispatch for non-matching command plugin on slash-command comment"
-        );
-      }
-      continue;
-    } catch (error) {
-      context.logger.debug({ plugin: plugin.key, err: error }, "Failed to inspect plugin manifest for slash-command filtering; allowing dispatch");
-    }
-    filtered.push(plugin);
-  }
-  return filtered;
-}
-
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>, deps: HandlerDeps) {
   const context = eventHandler.transformEvent(event);
 
@@ -701,7 +662,12 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const issueContext = context as GitHubContext<"issue_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
     if (commandName) {
-      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName, deps);
+      const filtered = await filterPluginsForSlashCommandEvent({
+        context,
+        plugins: resolvedPlugins,
+        slashCommandName: commandName,
+        getManifest: deps.getManifest,
+      });
       resolvedPlugins.length = 0;
       resolvedPlugins.push(...filtered);
     }
@@ -711,7 +677,12 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
     if (commandName) {
-      const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName, deps);
+      const filtered = await filterPluginsForSlashCommandEvent({
+        context,
+        plugins: resolvedPlugins,
+        slashCommandName: commandName,
+        getManifest: deps.getManifest,
+      });
       resolvedPlugins.length = 0;
       resolvedPlugins.push(...filtered);
     }
@@ -734,11 +705,20 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       ref = dispatchTarget.ref;
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
-      context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);
+      context.logger.debug(
+        {
+          plugin: pluginEntry.key,
+          worker: dispatchTarget.kind === "worker",
+        },
+        DISPATCH_EVENT_LOG
+      );
       await deps.dispatchPluginTarget({
         context,
         plugin,

@@ -171,7 +171,8 @@ Notes:
 
 - Orgs can link multiple Telegram accounts (any org member can approve).
 - Personal users are limited to a single linked Telegram account.
-- Use `/_status` in Telegram to see current link state.
+- Use `/status` in Telegram to see current link state.
+- If the issue is closed but you never get a Telegram confirmation, verify the GitHub App webhook URL is pointing at your kernel (not an expired dev tunnel).
 
 #### Workspace Topics (Recommended)
 

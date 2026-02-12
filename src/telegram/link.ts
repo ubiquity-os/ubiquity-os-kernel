@@ -111,7 +111,7 @@ export async function sendTelegramLinkFailure(params: { env: Env; userId: number
   const botToken = parseTelegramBotToken(params.env, params.logger);
   if (!botToken) return;
   const errorText = params.error.trim() || "Unknown error";
-  const text = `Linking to ${params.owner} failed.\n\n${errorText}\n\nRestart linking with /status.`;
+  const text = `Linking to ${params.owner} failed.\n\n${errorText}\n\nRestart linking with /_status.`;
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
@@ -172,13 +172,14 @@ async function createLinkEventHandler(params: {
   return { ok: true, eventHandler };
 }
 
-async function getInstallationOctokit(params: {
-  env: Env;
-  owner: string;
-  repo: string;
-  logger: typeof baseLogger;
-  requestUrl: string;
-}): Promise<{ ok: true; octokit: ReturnType<GitHubEventHandler["getAuthenticatedOctokit"]>; installationId: number } | { ok: false; error: string }> {
+async function getInstallationOctokit(params: { env: Env; owner: string; repo: string; logger: typeof baseLogger; requestUrl: string }): Promise<
+  | {
+      ok: true;
+      octokit: ReturnType<GitHubEventHandler["getAuthenticatedOctokit"]>;
+      installationId: number;
+    }
+  | { ok: false; error: string }
+> {
   const handlerResult = await createLinkEventHandler(params);
   if (!handlerResult.ok) {
     return { ok: false, error: handlerResult.error };
@@ -201,7 +202,11 @@ async function getInstallationOctokit(params: {
       error: [base, `Install the UbiquityOS GitHub App on ${params.owner}, then try again.`].join("\n"),
     };
   }
-  return { ok: true, octokit: handlerResult.eventHandler.getAuthenticatedOctokit(installationId), installationId };
+  return {
+    ok: true,
+    octokit: handlerResult.eventHandler.getAuthenticatedOctokit(installationId),
+    installationId,
+  };
 }
 
 export function parseTelegramLinkCommentUrl(raw: string): ParsedCommentUrl | null {
@@ -238,30 +243,43 @@ export function parseTelegramLinkCommentUrl(raw: string): ParsedCommentUrl | nul
   return null;
 }
 
-export async function initiateTelegramLinkIssue(params: {
-  env: Env;
-  code: string;
-  owner: string;
-  logger: typeof baseLogger;
-  requestUrl: string;
-}): Promise<{ ok: true; issueUrl: string; issueNumber: number } | { ok: false; error: string }> {
+export async function initiateTelegramLinkIssue(params: { env: Env; code: string; owner: string; logger: typeof baseLogger; requestUrl: string }): Promise<
+  | { ok: true; issueUrl: string; issueNumber: number }
+  | {
+      ok: false;
+      error: string;
+    }
+> {
   const code = normalizeOptionalString(params.code);
   const owner = normalizeOptionalString(params.owner);
   if (!code || !owner) {
     return { ok: false, error: "code and owner are required." };
   }
 
-  const peekResult = await peekTelegramLinkCode({ code, logger: params.logger });
+  const peekResult = await peekTelegramLinkCode({
+    code,
+    logger: params.logger,
+  });
   if (!peekResult.ok) {
     return { ok: false, error: peekResult.error };
   }
 
-  const existingIssue = await getTelegramLinkIssue({ code, logger: params.logger });
+  const existingIssue = await getTelegramLinkIssue({
+    code,
+    logger: params.logger,
+  });
   if (existingIssue.ok && existingIssue.issue) {
     if (existingIssue.issue.owner.toLowerCase() !== owner.toLowerCase()) {
-      return { ok: false, error: "Link code already claimed for a different owner." };
+      return {
+        ok: false,
+        error: "Link code already claimed for a different owner.",
+      };
     }
-    return { ok: true, issueUrl: existingIssue.issue.issueUrl, issueNumber: existingIssue.issue.issueNumber };
+    return {
+      ok: true,
+      issueUrl: existingIssue.issue.issueUrl,
+      issueNumber: existingIssue.issue.issueNumber,
+    };
   }
 
   const octokitResult = await getInstallationOctokit({
@@ -330,7 +348,10 @@ export async function initiateTelegramLinkIssue(params: {
 async function resolveInstallationId(eventHandler: GitHubEventHandler, owner: string, repo: string, logger: typeof baseLogger): Promise<number | null> {
   try {
     const appOctokit = eventHandler.getUnauthenticatedOctokit();
-    const { data } = await appOctokit.rest.apps.getRepoInstallation({ owner, repo });
+    const { data } = await appOctokit.rest.apps.getRepoInstallation({
+      owner,
+      repo,
+    });
     if (typeof data?.id === "number") return data.id;
   } catch (error) {
     logger.warn({ err: error, owner, repo }, "Failed to resolve GitHub App installation for linking");

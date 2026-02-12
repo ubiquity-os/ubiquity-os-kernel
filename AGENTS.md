@@ -1,3 +1,15 @@
+# Hard Rule: No Legacy Compatibility Paths
+
+- Do not add legacy fallbacks, compatibility branches, deprecated aliases, or migration shims.
+- Remove obsolete paths instead of supporting both old and new behavior.
+- Keep one canonical code path; avoid dual-mode logic that increases maintenance cost.
+- If a compatibility layer seems required, stop and get explicit approval first.
+- Keep files under 1000 LOC (kernel code included, not just tests). Refactor before crossing the limit.
+- Before handoff, run an end-to-end test for the primary user journey touched by your change and include the exact command(s) and pass/fail result.
+- For Telegram live E2E, use only the dedicated test identities documented in this file (`ubiquity-os-simulant` + `@UbiquityOS`), never personal accounts.
+- For Telegram linking flows, verify GitHub App webhook health first: webhook URL must be the live kernel URL (not a temporary tunnel) and recent `issues.opened/issues.closed` deliveries must return HTTP 200.
+- If live E2E cannot run, do not hand off as complete; report the exact missing prerequisite(s) and rerun once fixed.
+
 # Kernel & Plugin Testing Guide (For LLM Agents)
 
 Use this guide to validate kernel/plugin changes quickly. Prefer the mocked Jest tests first; use the CLI harness only when you need to exercise HTTP plugins.

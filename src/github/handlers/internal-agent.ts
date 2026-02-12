@@ -1,6 +1,7 @@
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
+import { upsertAgentRunMemory } from "../utils/agent-memory.ts";
+import { getAgentMemorySnippetForQuery } from "../utils/agent-memory-selector.ts";
 import { getConfigPathCandidatesForEnvironment } from "../utils/config.ts";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 import { buildConversationContext } from "../utils/conversation-context.ts";
@@ -20,6 +21,34 @@ export type InternalAgentDispatchResult = Readonly<{
   workflowUrl: string;
 }>;
 
+const AGENT_MEMORY_SUMMARY_MAX_CHARS = 1_200;
+
+function clampText(value: string, maxChars: number): string {
+  const text = value.trim();
+  if (!text) return "";
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}...`;
+}
+
+function getSubjectNumber(context: InternalAgentContext): number | null {
+  const payload = context.payload as Record<string, unknown>;
+  const issue = payload.issue as { number?: unknown } | undefined;
+  const pullRequest = payload.pull_request as { number?: unknown } | undefined;
+  const issueNumber = typeof issue?.number === "number" && Number.isFinite(issue.number) && issue.number > 0 ? Math.trunc(issue.number) : null;
+  if (issueNumber) return issueNumber;
+  if (typeof pullRequest?.number === "number" && Number.isFinite(pullRequest.number) && pullRequest.number > 0) {
+    return Math.trunc(pullRequest.number);
+  }
+  return null;
+}
+
+function buildDispatchSummary(task: string, statusDetail: string): string {
+  const taskLine = clampText(task, 420);
+  const detailLine = clampText(statusDetail, 420);
+  const summary = [taskLine ? `Task: ${taskLine}` : "", detailLine].filter(Boolean).join(" | ");
+  return clampText(summary, AGENT_MEMORY_SUMMARY_MAX_CHARS);
+}
+
 export async function dispatchInternalAgent(
   context: InternalAgentContext,
   task: string,
@@ -35,17 +64,65 @@ export async function dispatchInternalAgent(
     return null;
   }
 
+  const owner = context.payload.repository.owner.login;
+  const repo = context.payload.repository.name;
+  const issueNumber = getSubjectNumber(context);
+  const stateId = crypto.randomUUID();
+  const persistAgentMemory = async (
+    status: string,
+    options: {
+      summary: string;
+      runUrl?: string;
+      prUrl?: string;
+      scopeKey?: string;
+    }
+  ): Promise<void> => {
+    if (!issueNumber) return;
+    const summary = options.summary.trim();
+    if (!summary) return;
+    try {
+      await upsertAgentRunMemory({
+        owner,
+        repo,
+        scopeKey: options.scopeKey,
+        entry: {
+          kind: "agent_run",
+          stateId,
+          status,
+          issueNumber,
+          updatedAt: new Date().toISOString(),
+          ...(options.runUrl ? { runUrl: options.runUrl } : {}),
+          ...(options.prUrl ? { prUrl: options.prUrl } : {}),
+          summary,
+        },
+        logger: context.logger,
+      });
+    } catch (error) {
+      context.logger.debug({ err: error, stateId, status }, "Failed to persist agent dispatch memory (non-fatal)");
+    }
+  };
+
   try {
-    const stateId = crypto.randomUUID();
     const ref = context.eventHandler.agent.ref?.trim() || (await getDefaultBranch(context, agentOwner, agentRepo));
     const token = await context.eventHandler.getToken(context.payload.installation.id);
     const conversation = await resolveConversationKeyForContext(context, context.logger);
     const conversationContext = conversation
-      ? await buildConversationContext({ context, conversation, maxItems: 8, maxChars: 3200, query: task, useSelector: true })
+      ? await buildConversationContext({
+          context,
+          conversation,
+          maxItems: 8,
+          maxChars: 3200,
+          query: task,
+          useSelector: true,
+        })
       : "";
-    const agentMemory = await getAgentMemorySnippet({
+    const agentMemory = await getAgentMemorySnippetForQuery({
+      context,
       owner: context.payload.repository.owner.login,
       repo: context.payload.repository.name,
+      query: task,
+      limit: 6,
+      maxChars: 1200,
       scopeKey: conversation?.key,
       logger: context.logger,
     });
@@ -95,10 +172,18 @@ export async function dispatchInternalAgent(
       inputs: await inputs.getInputs(),
     });
     await updateRequestCommentRunUrl(context, runUrl);
+    await persistAgentMemory("run-dispatched", {
+      scopeKey: conversation?.key,
+      runUrl: runUrl ?? undefined,
+      summary: buildDispatchSummary(task, "Agent run dispatched"),
+    });
     return { runUrl, workflowUrl: agentWorkflowUrl };
   } catch (error) {
     context.logger.error({ err: error }, "Failed to dispatch internal agent workflow");
     const message = error instanceof Error ? error.message : String(error);
+    await persistAgentMemory("dispatch-failed", {
+      summary: buildDispatchSummary(task, `Dispatch failed: ${message}`),
+    });
     await postReply(
       [
         "I couldn't start the agent run.",

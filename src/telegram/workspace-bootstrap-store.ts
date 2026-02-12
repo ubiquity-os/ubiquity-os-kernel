@@ -150,7 +150,13 @@ export async function loadTelegramWorkspaceBootstrapByUser(params: {
     const parsed = parseTelegramWorkspaceBootstrapByUserRecord(value);
     if (!parsed) return null;
     if (isExpired(parsed.expiresAtMs, params.nowMs)) {
-      await clearTelegramWorkspaceBootstrap({ kv: params.kv, botId: params.botId, userId: params.userId, chatId: parsed.chatId, logger: params.logger });
+      await clearTelegramWorkspaceBootstrap({
+        kv: params.kv,
+        botId: params.botId,
+        userId: params.userId,
+        chatId: parsed.chatId,
+        logger: params.logger,
+      });
       return null;
     }
     return parsed;
@@ -173,7 +179,13 @@ export async function loadTelegramWorkspaceBootstrapByChat(params: {
     const parsed = parseTelegramWorkspaceBootstrapByChatRecord(value);
     if (!parsed) return null;
     if (isExpired(parsed.expiresAtMs, params.nowMs)) {
-      await clearTelegramWorkspaceBootstrap({ kv: params.kv, botId: params.botId, userId: parsed.userId, chatId: params.chatId, logger: params.logger });
+      await clearTelegramWorkspaceBootstrap({
+        kv: params.kv,
+        botId: params.botId,
+        userId: parsed.userId,
+        chatId: params.chatId,
+        logger: params.logger,
+      });
       return null;
     }
     return parsed;
@@ -189,17 +201,23 @@ export async function saveTelegramWorkspaceBootstrap(params: {
   userId: number;
   chatId: number;
   inviteLink: string;
-  ttlMs: number;
+  ttlMs?: number;
   logger?: LoggerLike;
   now?: () => { nowIso: string; nowMs: number };
-}): Promise<{ ok: true; record: TelegramWorkspaceBootstrapByUserRecord } | { ok: false; error: string }> {
-  const ttlMs = Math.trunc(params.ttlMs);
-  if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+}): Promise<
+  | { ok: true; record: TelegramWorkspaceBootstrapByUserRecord }
+  | {
+      ok: false;
+      error: string;
+    }
+> {
+  const ttlMs = typeof params.ttlMs === "number" ? Math.trunc(params.ttlMs) : null;
+  if (ttlMs !== null && (!Number.isFinite(ttlMs) || ttlMs <= 0)) {
     return { ok: false, error: "Invalid bootstrap TTL." };
   }
 
   const { nowIso, nowMs } = (params.now ?? (() => ({ nowIso: new Date().toISOString(), nowMs: Date.now() })))();
-  const expiresAtMs = nowMs + ttlMs;
+  const expiresAtMs = ttlMs === null ? undefined : nowMs + ttlMs;
 
   const byUserKey = buildTelegramWorkspaceBootstrapByUserKey(params.botId, params.userId);
   const byChatKey = buildTelegramWorkspaceBootstrapByChatKey(params.botId, params.chatId);
@@ -208,39 +226,60 @@ export async function saveTelegramWorkspaceBootstrap(params: {
     chatId: params.chatId,
     inviteLink: params.inviteLink,
     createdAt: nowIso,
-    expiresAtMs,
+    ...(expiresAtMs ? { expiresAtMs } : {}),
   };
   const byChatRecord = {
     userId: params.userId,
     inviteLink: params.inviteLink,
     createdAt: nowIso,
-    expiresAtMs,
+    ...(expiresAtMs ? { expiresAtMs } : {}),
   };
 
   const atomic = params.kv.atomic?.();
   if (atomic) {
     try {
-      const commit = await atomic.set(byUserKey, byUserRecord, { expireIn: ttlMs }).set(byChatKey, byChatRecord, { expireIn: ttlMs }).commit();
+      const writeByUser = ttlMs === null ? atomic.set(byUserKey, byUserRecord) : atomic.set(byUserKey, byUserRecord, { expireIn: ttlMs });
+      const writeByChat = ttlMs === null ? writeByUser.set(byChatKey, byChatRecord) : writeByUser.set(byChatKey, byChatRecord, { expireIn: ttlMs });
+      const commit = await writeByChat.commit();
       if (!commit.ok) {
-        return { ok: false, error: "Failed to persist workspace bootstrap mapping (conflict)." };
+        return {
+          ok: false,
+          error: "Failed to persist workspace bootstrap mapping (conflict).",
+        };
       }
     } catch (error) {
       params.logger?.warn?.({ err: error }, "Failed to atomically persist Telegram workspace bootstrap mapping.");
-      return { ok: false, error: "Failed to persist workspace bootstrap mapping." };
+      return {
+        ok: false,
+        error: "Failed to persist workspace bootstrap mapping.",
+      };
     }
   } else {
     try {
-      await params.kv.set(byUserKey, byUserRecord, { expireIn: ttlMs });
-      await params.kv.set(byChatKey, byChatRecord, { expireIn: ttlMs });
+      if (ttlMs === null) {
+        await params.kv.set(byUserKey, byUserRecord);
+        await params.kv.set(byChatKey, byChatRecord);
+      } else {
+        await params.kv.set(byUserKey, byUserRecord, { expireIn: ttlMs });
+        await params.kv.set(byChatKey, byChatRecord, { expireIn: ttlMs });
+      }
     } catch (error) {
       params.logger?.warn?.({ err: error }, "Failed to persist Telegram workspace bootstrap mapping.");
-      return { ok: false, error: "Failed to persist workspace bootstrap mapping." };
+      return {
+        ok: false,
+        error: "Failed to persist workspace bootstrap mapping.",
+      };
     }
   }
 
   return {
     ok: true,
-    record: { chatId: params.chatId, inviteLink: params.inviteLink, createdAt: nowIso, expiresAtMs },
+    record: {
+      chatId: params.chatId,
+      inviteLink: params.inviteLink,
+      createdAt: nowIso,
+      ...(expiresAtMs ? { expiresAtMs } : {}),
+    },
   };
 }
 

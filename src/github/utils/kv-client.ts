@@ -36,6 +36,8 @@ type LoggerLike = Readonly<{
   error?: (obj: unknown, msg?: string) => void;
 }>;
 
+type KvClientProvider = (logger?: LoggerLike) => Promise<KvLike | null>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -45,7 +47,13 @@ function looksLikeKvLike(value: unknown): value is KvLike {
   return typeof value.get === "function" && typeof value.set === "function" && typeof value.list === "function";
 }
 
-export async function getKvClient(logger?: LoggerLike): Promise<KvLike | null> {
+let kvClientProvider: KvClientProvider | null = null;
+
+export function setKvClientProvider(provider: KvClientProvider | null): void {
+  kvClientProvider = provider;
+}
+
+export async function openDenoKvClient(logger?: LoggerLike): Promise<KvLike | null> {
   const deno = (globalThis as unknown as { Deno?: { openKv?: () => Promise<unknown> } }).Deno;
   if (!deno || typeof deno.openKv !== "function") return null;
   try {
@@ -60,9 +68,25 @@ export async function getKvClient(logger?: LoggerLike): Promise<KvLike | null> {
       supportsReverse: true,
     };
   } catch (error) {
-    if (logger?.debug) logger.debug({ err: error }, "Failed to open Deno KV (non-fatal)");
+    if (logger?.debug) {
+      logger.debug({ err: error }, "Failed to open Deno KV (non-fatal)");
+    }
     return null;
   }
 }
 
-export type { KvKey, KvGetResult, KvLike, KvListEntry, KvListIterator, KvListOptions, KvListSelector, KvSetOptions, LoggerLike };
+export async function getKvClient(logger?: LoggerLike): Promise<KvLike | null> {
+  if (kvClientProvider) {
+    try {
+      const providerKv = await kvClientProvider(logger);
+      if (providerKv) return providerKv;
+    } catch (error) {
+      if (logger?.debug) {
+        logger.debug({ err: error }, "Custom KV provider failed; falling back to Deno KV");
+      }
+    }
+  }
+  return openDenoKvClient(logger);
+}
+
+export type { KvClientProvider, KvGetResult, KvKey, KvLike, KvListEntry, KvListIterator, KvListOptions, KvListSelector, KvSetOptions, LoggerLike };

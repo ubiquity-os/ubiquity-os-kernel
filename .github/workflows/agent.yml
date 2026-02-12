@@ -1372,7 +1372,7 @@ jobs:
           UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
           UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
           UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-bus"
         with:
           openai-api-key: "ubq-forwarder"
           responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"
@@ -1864,9 +1864,13 @@ jobs:
               continue;
             }
             try {
-              execFileSync("git", ["apply", "--3way", "--reject", patchPath], { stdio: "inherit" });
+              execFileSync("git", ["apply", "--reject", "--whitespace=nowarn", patchPath], { stdio: "inherit" });
               applied.push(agentId);
             } catch (error) {
+              // `git apply --reject` returns exit code 1 when rejects were written. Treat that as
+              // "applied with conflicts", but fail hard on other exit codes (e.g. invalid args).
+              const status = error && typeof error.status === "number" ? error.status : null;
+              if (status !== 1) throw error;
               conflicts = true;
               applied.push(agentId);
             }
@@ -2151,7 +2155,7 @@ jobs:
           UOS_GH_OWNER: ${{ needs.plan.outputs.repo_owner }}
           UOS_GH_REPO: ${{ needs.plan.outputs.repo_name }}
           UOS_GH_INSTALLATION_ID: ${{ needs.plan.outputs.installation_id }}
-          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-messages"
+          UOS_AGENT_BUS_URL: "https://ai-ubq-fi.deno.dev/v1/agent-bus"
         with:
           openai-api-key: "ubq-forwarder"
           responses-api-endpoint: "http://127.0.0.1:4010/v1/responses"

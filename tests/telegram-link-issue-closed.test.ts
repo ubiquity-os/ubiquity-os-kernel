@@ -205,7 +205,7 @@ Deno.test("telegram link issue closed: initializes .ubiquity-os config when miss
     assertEquals(createArgs.repo, CONFIG_ORG_REPO);
     assertEquals(createArgs.path, CONFIG_FULL_PATH);
     assertEquals(createArgs.message, "Initialize UbiquityOS config for Telegram");
-    assertEquals(decodeBase64(createArgs.content ?? ""), ["plugins: {}", "channels:", "  telegram:", "    mode: shim", ""].join("\n"));
+    assertEquals(decodeBase64(createArgs.content ?? ""), ["plugins: {}", "channels:", "  telegram:", "    mode: shim", `    owner: ${owner}`, ""].join("\n"));
 
     assertEquals(telegramSendBodies[0].chat_id, telegramUserId);
     assertStringIncludes(String(telegramSendBodies[0].text ?? ""), `Linked to ${owner}`);
@@ -217,6 +217,7 @@ Deno.test("telegram link issue closed: initializes .ubiquity-os config when miss
     assert(identity.ok);
     if (identity.ok) {
       assertEquals(identity.identity?.owner, owner);
+      assertEquals(identity.identity?.githubLogin, owner);
     }
   } finally {
     fetchStub.restore();
@@ -316,6 +317,7 @@ Deno.test("telegram link issue closed: does not overwrite existing config", asyn
     assert(identity.ok);
     if (identity.ok) {
       assertEquals(identity.identity?.owner, owner);
+      assertEquals(identity.identity?.githubLogin, owner);
     }
   } finally {
     fetchStub.restore();
@@ -416,6 +418,7 @@ Deno.test("telegram link issue closed: recovers link code from issue body when i
     assert(identity.ok);
     if (identity.ok) {
       assertEquals(identity.identity?.owner, owner);
+      assertEquals(identity.identity?.githubLogin, owner);
     }
   } finally {
     fetchStub.restore();

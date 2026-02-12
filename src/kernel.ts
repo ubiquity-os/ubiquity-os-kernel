@@ -20,11 +20,17 @@ import { handleGoogleDriveWebhook } from "./google/drive/handler.ts";
 import { handleTwitterWebhook } from "./x/handler.ts";
 import { parseGitHubAppConfig } from "./github/utils/github-app-config.ts";
 import { parseAgentConfig, parseAiConfig, parseDiagnosticsConfig, parseKernelConfig } from "./github/utils/env-config.ts";
+import { type KvLike, type LoggerLike, openDenoKvClient, setKvClientProvider } from "./github/utils/kv-client.ts";
 
 const KERNEL_REFRESH_ROUTE = "/internal/agent/refresh-token";
 
 export const app = new Hono();
 export default app;
+
+// Canonical KV entrypoint for the kernel process.
+setKvClientProvider((logger?: LoggerLike): Promise<KvLike | null> => {
+  return openDenoKvClient(logger);
+});
 
 app.use(requestId());
 app.use(async (c: Context, next) => {
@@ -71,7 +77,12 @@ app.get("/internal/agent-memory", async (ctx: Context) => {
     const issueNumber = parseOptionalPositiveInt(ctx.req.query("issue"));
     const scopeKey = (ctx.req.query("scope") ?? "").trim() || undefined;
 
-    const entries = await listAgentMemoryEntries({ owner, repo, limit, scopeKey });
+    const entries = await listAgentMemoryEntries({
+      owner,
+      repo,
+      limit,
+      scopeKey,
+    });
     const filtered = issueNumber ? entries.filter((entry) => entry.issueNumber === issueNumber) : entries;
 
     return ctx.json({ entries: filtered, count: filtered.length }, 200);
@@ -107,7 +118,12 @@ app.post(KERNEL_REFRESH_ROUTE, async (ctx: Context) => {
     const repo = (ctx.req.header("x-github-repo") ?? "").trim();
     const installationIdRaw = (ctx.req.header("x-github-installation-id") ?? "").trim();
     if (!owner || !repo || !installationIdRaw) {
-      return ctx.json({ error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id." }, 400);
+      return ctx.json(
+        {
+          error: "Missing X-GitHub-Owner/X-GitHub-Repo/X-GitHub-Installation-Id.",
+        },
+        400
+      );
     }
     if (!isValidGitHubRepoSegment(owner) || !isValidGitHubRepoSegment(repo)) {
       return ctx.json({ error: "Invalid X-GitHub-Owner/X-GitHub-Repo." }, 400);
@@ -134,8 +150,14 @@ app.post(KERNEL_REFRESH_ROUTE, async (ctx: Context) => {
       return ctx.json({ error: verification.error }, 401);
     }
 
-    const auth = createAppAuth({ appId: Number(githubConfig.appId), privateKey });
-    const refreshed = await auth({ type: "installation", installationId: Math.trunc(installationId) });
+    const auth = createAppAuth({
+      appId: Number(githubConfig.appId),
+      privateKey,
+    });
+    const refreshed = await auth({
+      type: "installation",
+      installationId: Math.trunc(installationId),
+    });
     const refreshedKernelToken = await createKernelAttestationToken({
       sign: (payload) => signPayload(payload, privateKey),
       owner,
@@ -244,7 +266,12 @@ app.post("/", async (ctx: Context) => {
       },
       "Webhook received"
     );
-    await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload, signature: signatureSha256 });
+    await eventHandler.webhooks.verifyAndReceive({
+      id,
+      name: eventName,
+      payload,
+      signature: signatureSha256,
+    });
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);

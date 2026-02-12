@@ -40,7 +40,9 @@ function tryCreateFileStream(): DestinationStream | null {
   try {
     const logFilePath = buildLogFilePath();
     fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
-    return pino.destination({ dest: logFilePath, sync: false });
+    // Keep file logging synchronous in dev/test to avoid `deno test` cross-test
+    // op_write leaks (async log flushes can complete in subsequent tests).
+    return pino.destination({ dest: logFilePath, sync: !isProduction });
   } catch (error) {
     if (!isProduction) {
       const message = error instanceof Error ? error.message : String(error);

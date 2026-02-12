@@ -156,8 +156,11 @@ Deno.test({
         const method = url.pathname.slice(`/bot${botToken}/`.length);
         const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
         if (method === "sendMessage") {
-          telegramSendBodies.push(payload ?? {});
           nextTelegramMessageId += 1;
+          telegramSendBodies.push({
+            ...(payload ?? {}),
+            __sent_message_id: nextTelegramMessageId,
+          });
           return new Response(
             JSON.stringify({
               ok: true,
@@ -380,6 +383,15 @@ Deno.test({
             { headers: { "content-type": "application/json" } }
           );
         }
+        if (method === "GET" && decodedPath === `/repos/${owner}/${repo}/collaborators/${owner}/permission`) {
+          return new Response(
+            JSON.stringify({
+              permission: "write",
+              user: { login: owner },
+            }),
+            { headers: { "content-type": "application/json" } }
+          );
+        }
 
         // Agent dispatch
         if (method === "GET" && decodedPath === `/repos/${agentOwner}/${agentRepo}`) {
@@ -464,6 +476,7 @@ Deno.test({
         userId,
         owner,
         ownerType: "org",
+        githubLogin: owner,
         logger,
       });
       assertEquals(identitySave.ok, true);
@@ -618,6 +631,16 @@ Deno.test({
       assert(command);
       const compressedEventPayload = workflowPayload?.inputs?.eventPayload;
       assert(compressedEventPayload);
+      const rawSettings = workflowPayload?.inputs?.settings;
+      assert(rawSettings);
+      const parsedSettings = JSON.parse(rawSettings) as {
+        allowedAuthorAssociations?: unknown;
+        privilegedAuthorAssociations?: unknown;
+      };
+      assert(Array.isArray(parsedSettings.allowedAuthorAssociations));
+      assert(Array.isArray(parsedSettings.privilegedAuthorAssociations));
+      assertEquals((parsedSettings.allowedAuthorAssociations as unknown[]).includes("NONE"), true);
+      assertEquals((parsedSettings.privilegedAuthorAssociations as unknown[]).includes("NONE"), true);
       const parsedEventPayload = JSON.parse(decompressString(compressedEventPayload)) as {
         comment?: { user?: { login?: string }; author_association?: string };
       };
@@ -646,7 +669,10 @@ Deno.test({
         | undefined;
       assert(replyMarkup);
       assertEquals(Array.isArray(replyMarkup.inline_keyboard), true);
-      assertEquals((replyMarkup.inline_keyboard as unknown[]).length, 0);
+      const inlineKeyboard = replyMarkup.inline_keyboard as unknown[];
+      const isEmptyKeyboard =
+        inlineKeyboard.length === 0 || (inlineKeyboard.length === 1 && Array.isArray(inlineKeyboard[0]) && (inlineKeyboard[0] as unknown[]).length === 0);
+      assertEquals(isEmptyKeyboard, true);
 
       // Follow-up message should include Actions run URL.
       const runUrlMessage = telegramSendBodies.find(

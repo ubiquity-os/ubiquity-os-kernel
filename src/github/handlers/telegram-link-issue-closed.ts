@@ -3,10 +3,10 @@ import { Env } from "../types/env.ts";
 import { Buffer } from "node:buffer";
 import {
   clearTelegramLinkPending,
+  consumeTelegramLinkCode,
   deleteTelegramLinkIssue,
   getTelegramLinkCodeForIssue,
   peekTelegramLinkCode,
-  consumeTelegramLinkCode,
   saveTelegramLinkedIdentity,
 } from "../../telegram/identity-store.ts";
 import { sendTelegramLinkConfirmation, sendTelegramLinkFailure } from "../../telegram/link.ts";
@@ -92,7 +92,7 @@ async function ensureTelegramOrgConfigInitialized(params: { context: GitHubConte
     }
   }
 
-  const config = ["plugins: {}", "channels:", "  telegram:", "    mode: shim", ""].join("\n");
+  const config = ["plugins: {}", "channels:", "  telegram:", "    mode: shim", `    owner: ${owner}`, ""].join("\n");
   const content = Buffer.from(config, "utf8").toString("base64");
 
   let branch = "main";
@@ -158,7 +158,12 @@ export async function handleTelegramLinkIssueClosed(context: GitHubContext<"issu
       code = extractTelegramLinkCodeFromIssueBody(body);
     } catch (error) {
       context.logger.debug(
-        { err: error, owner: details.owner, repo: details.repo, issueNumber: details.issueNumber },
+        {
+          err: error,
+          owner: details.owner,
+          repo: details.repo,
+          issueNumber: details.issueNumber,
+        },
         "Failed to fetch issue body while recovering Telegram link code (non-fatal)"
       );
     }
@@ -172,17 +177,24 @@ export async function handleTelegramLinkIssueClosed(context: GitHubContext<"issu
     : details.closerLogin.toLowerCase() === details.owner.toLowerCase();
   if (!isAllowed) return;
 
-  const peekResult = await peekTelegramLinkCode({ code, logger: context.logger });
+  const peekResult = await peekTelegramLinkCode({
+    code,
+    logger: context.logger,
+  });
   if (!peekResult.ok) return;
 
   const saveResult = await saveTelegramLinkedIdentity({
     userId: peekResult.userId,
     owner: details.owner,
     ownerType: isOwnerOrg ? "org" : "user",
+    githubLogin: details.closerLogin,
     logger: context.logger,
   });
   if (!saveResult.ok) {
-    await clearTelegramLinkPending({ userId: peekResult.userId, logger: context.logger });
+    await clearTelegramLinkPending({
+      userId: peekResult.userId,
+      logger: context.logger,
+    });
     await deleteTelegramLinkIssue({ code, logger: context.logger });
     await sendTelegramLinkFailure({
       env,
@@ -198,7 +210,10 @@ export async function handleTelegramLinkIssueClosed(context: GitHubContext<"issu
     await ensureTelegramOrgConfigInitialized({ context, owner: details.owner });
   }
 
-  await clearTelegramLinkPending({ userId: peekResult.userId, logger: context.logger });
+  await clearTelegramLinkPending({
+    userId: peekResult.userId,
+    logger: context.logger,
+  });
   await deleteTelegramLinkIssue({ code, logger: context.logger });
   await consumeTelegramLinkCode({ code, logger: context.logger });
   await sendTelegramLinkConfirmation({

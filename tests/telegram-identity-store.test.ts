@@ -4,9 +4,9 @@ import { stub } from "jsr:@std/testing/mock";
 import {
   consumeTelegramLinkCode,
   deleteTelegramLinkIssue,
-  getTelegramLinkIssue,
   getOrCreateTelegramLinkCode,
   getTelegramLinkedIdentity,
+  getTelegramLinkIssue,
   peekTelegramLinkCode,
   saveTelegramLinkedIdentity,
   saveTelegramLinkIssue,
@@ -78,7 +78,11 @@ Deno.test("telegram identity store: creates and consumes link codes", async () =
   const kvStore = new InMemoryKv();
   const openKvStub = stub(Deno as unknown as { openKv?: () => Promise<unknown> }, "openKv", async () => kvStore);
   try {
-    const result = await getOrCreateTelegramLinkCode({ userId: 123, logger, now: () => 1_700_000_000_000 });
+    const result = await getOrCreateTelegramLinkCode({
+      userId: 123,
+      logger,
+      now: () => 1_700_000_000_000,
+    });
     assert(result.ok);
     if (!result.ok) return;
 
@@ -88,7 +92,10 @@ Deno.test("telegram identity store: creates and consumes link codes", async () =
       assertEquals(peeked.userId, 123);
     }
 
-    const consumed = await consumeTelegramLinkCode({ code: result.code, logger });
+    const consumed = await consumeTelegramLinkCode({
+      code: result.code,
+      logger,
+    });
     assert(consumed.ok);
     if (consumed.ok) {
       assertEquals(consumed.userId, 123);
@@ -136,13 +143,20 @@ Deno.test("telegram identity store: saves and loads linked identities", async ()
   const kvStore = new InMemoryKv();
   const openKvStub = stub(Deno as unknown as { openKv?: () => Promise<unknown> }, "openKv", async () => kvStore);
   try {
-    const save = await saveTelegramLinkedIdentity({ userId: 456, owner: "acme", ownerType: "user", logger });
+    const save = await saveTelegramLinkedIdentity({
+      userId: 456,
+      owner: "acme",
+      ownerType: "user",
+      githubLogin: "Alice-Dev",
+      logger,
+    });
     assert(save.ok);
 
     const loaded = await getTelegramLinkedIdentity({ userId: 456, logger });
     assert(loaded.ok);
     if (loaded.ok) {
       assertEquals(loaded.identity?.owner, "acme");
+      assertEquals(loaded.identity?.githubLogin, "alice-dev");
     }
   } finally {
     openKvStub.restore();
@@ -153,10 +167,20 @@ Deno.test("telegram identity store: prevents multiple telegram users for a perso
   const kvStore = new InMemoryKv();
   const openKvStub = stub(Deno as unknown as { openKv?: () => Promise<unknown> }, "openKv", async () => kvStore);
   try {
-    const first = await saveTelegramLinkedIdentity({ userId: 1, owner: "solo-user", ownerType: "user", logger });
+    const first = await saveTelegramLinkedIdentity({
+      userId: 1,
+      owner: "solo-user",
+      ownerType: "user",
+      logger,
+    });
     assert(first.ok);
 
-    const second = await saveTelegramLinkedIdentity({ userId: 2, owner: "solo-user", ownerType: "user", logger });
+    const second = await saveTelegramLinkedIdentity({
+      userId: 2,
+      owner: "solo-user",
+      ownerType: "user",
+      logger,
+    });
     assertEquals(second.ok, false);
   } finally {
     openKvStub.restore();
@@ -167,10 +191,20 @@ Deno.test("telegram identity store: allows multiple telegram users for an org ow
   const kvStore = new InMemoryKv();
   const openKvStub = stub(Deno as unknown as { openKv?: () => Promise<unknown> }, "openKv", async () => kvStore);
   try {
-    const first = await saveTelegramLinkedIdentity({ userId: 10, owner: "acme-org", ownerType: "org", logger });
+    const first = await saveTelegramLinkedIdentity({
+      userId: 10,
+      owner: "acme-org",
+      ownerType: "org",
+      logger,
+    });
     assert(first.ok);
 
-    const second = await saveTelegramLinkedIdentity({ userId: 11, owner: "acme-org", ownerType: "org", logger });
+    const second = await saveTelegramLinkedIdentity({
+      userId: 11,
+      owner: "acme-org",
+      ownerType: "org",
+      logger,
+    });
     assert(second.ok);
   } finally {
     openKvStub.restore();
