@@ -77,7 +77,7 @@ Deno.test("handleEvent: continues dispatching plugins if one throws", async () =
     getPluginsForEvent: async (context, plugins, event) => {
       void context;
       void plugins;
-      if (event === ("kernel.plugin_error" as never)) return [] as never;
+      if (event === "kernel.plugin_error") return [] as never;
       return [
         { key: pluginA, target: pluginA, settings: { skipBotEvents: false, with: {} } },
         { key: pluginB, target: pluginB, settings: { skipBotEvents: false, with: {} } },

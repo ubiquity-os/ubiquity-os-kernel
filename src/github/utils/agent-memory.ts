@@ -18,17 +18,13 @@ type AgentMemoryEnvelope = Readonly<{
 }>;
 
 const SUMMARY_MAX_CHARS = 1_200;
-const IN_MEMORY_MAX_ENTRIES = 250;
 const LIST_PAGE_SIZE = 200;
 
 import type { KvKey, KvLike, LoggerLike } from "./kv-client.ts";
 import { getKvClient } from "./kv-client.ts";
 import { getEnvValue } from "./env.ts";
+import { parseAgentMemoryConfig } from "./env-config.ts";
 
-const inMemory = new Map<string, AgentRunMemoryEntry[]>();
-let kvPromise: Promise<KvLike | null> | null = null;
-let memoryKeyPromise: Promise<CryptoKey | null> | null = null;
-const warned = new Set<string>();
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -38,9 +34,8 @@ function toBufferSource(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-function warnOnce(logger: LoggerLike | undefined, key: string, message: string, err?: unknown) {
-  if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
-  warned.add(key);
+function logWarn(logger: LoggerLike | undefined, message: string, err?: unknown) {
+  if (!logger || typeof logger.warn !== "function") return;
   if (err !== undefined) {
     logger.warn({ err }, message);
   } else {
@@ -104,29 +99,31 @@ function encodeBase64Bytes(bytes: Uint8Array): string {
 }
 
 async function getMemoryCryptoKey(logger?: LoggerLike): Promise<CryptoKey | null> {
-  if (memoryKeyPromise) return memoryKeyPromise;
-  memoryKeyPromise = (async () => {
-    const raw = getEnvValue("UOS_AGENT_MEMORY_KEY");
-    if (!raw) {
-      return null;
-    }
-    const bytes = decodeBase64Bytes(raw);
-    if (!bytes) {
-      warnOnce(logger, "agent-memory-key-invalid", "UOS_AGENT_MEMORY_KEY must be base64-encoded 32 bytes.");
-      return null;
-    }
-    if (bytes.length !== 32) {
-      warnOnce(logger, "agent-memory-key-length", "UOS_AGENT_MEMORY_KEY must decode to 32 bytes for AES-256-GCM.");
-      return null;
-    }
-    try {
-      return await crypto.subtle.importKey("raw", toBufferSource(bytes), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-    } catch (error) {
-      warnOnce(logger, "agent-memory-key-import", "Failed to import UOS_AGENT_MEMORY_KEY.", error);
-      return null;
-    }
-  })();
-  return memoryKeyPromise;
+  const configResult = parseAgentMemoryConfig(getEnvValue("UOS_AGENT_MEMORY"));
+  if (!configResult.ok) {
+    logWarn(logger, configResult.error);
+    return null;
+  }
+  if (configResult.warning) {
+    logWarn(logger, configResult.warning);
+  }
+  const raw = configResult.config?.key;
+  if (!raw) return null;
+  const bytes = decodeBase64Bytes(raw);
+  if (!bytes) {
+    logWarn(logger, "UOS_AGENT_MEMORY.key must be base64-encoded 32 bytes.");
+    return null;
+  }
+  if (bytes.length !== 32) {
+    logWarn(logger, "UOS_AGENT_MEMORY.key must decode to 32 bytes for AES-256-GCM.");
+    return null;
+  }
+  try {
+    return await crypto.subtle.importKey("raw", toBufferSource(bytes), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  } catch (error) {
+    logWarn(logger, "Failed to import UOS_AGENT_MEMORY.key.", error);
+    return null;
+  }
 }
 
 async function compressBytes(payload: Uint8Array): Promise<Uint8Array> {
@@ -184,7 +181,7 @@ async function decodeEntry(value: unknown, logger?: LoggerLike): Promise<AgentRu
     const iv = decodeBase64Bytes(value.iv);
     const data = decodeBase64Bytes(value.data);
     if (!iv || !data) {
-      warnOnce(logger, "agent-memory-envelope-base64", "Failed to decode agent memory payload.");
+      logWarn(logger, "Failed to decode agent memory payload.");
       return null;
     }
     try {
@@ -194,7 +191,7 @@ async function decodeEntry(value: unknown, logger?: LoggerLike): Promise<AgentRu
       const parsed = JSON.parse(textDecoder.decode(decompressed));
       return parseEntryRecord(parsed);
     } catch (error) {
-      warnOnce(logger, "agent-memory-envelope-decrypt", "Failed to decrypt agent memory entry.", error);
+      logWarn(logger, "Failed to decrypt agent memory entry.", error);
       return null;
     }
   }
@@ -211,20 +208,12 @@ function buildKvKey(owner: string, repo: string, scopeKey?: string): KvKey {
   return ["ubiquityos", "agent", "memory", owner, repo, "events"];
 }
 
-function buildMapKey(owner: string, repo: string, scopeKey?: string): string {
-  const scope = normalizeScopeKey(scopeKey);
-  if (scope) return `scope:${scope}`;
-  return `${owner}/${repo}`;
-}
-
 function buildEventKey(owner: string, repo: string, updatedAt: string, stateId: string, scopeKey?: string): KvKey {
   return [...buildKvKey(owner, repo, scopeKey), updatedAt, stateId];
 }
 
 async function getKv(logger?: LoggerLike): Promise<KvLike | null> {
-  if (kvPromise) return kvPromise;
-  kvPromise = getKvClient(logger);
-  return kvPromise;
+  return getKvClient(logger);
 }
 
 function parseEntryRecord(value: unknown): AgentRunMemoryEntry | null {
@@ -270,7 +259,7 @@ async function readEntriesFromKv(
       }
       return entries;
     } catch (error) {
-      warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
+      logWarn(logger, "Failed to list agent memory entries.", error);
       return [];
     }
   }
@@ -289,7 +278,7 @@ async function readEntriesFromKv(
       cursor = iterator.cursor ? String(iterator.cursor) : "";
     } while (cursor);
   } catch (error) {
-    warnOnce(logger, "agent-memory-list", "Failed to list agent memory entries.", error);
+    logWarn(logger, "Failed to list agent memory entries.", error);
     return [];
   }
 
@@ -313,23 +302,18 @@ async function upsertAgentRunMemoryScope(
   if (!entry) return;
 
   const kv = await getKv(params.logger);
-  if (kv) {
-    try {
-      const encoded = await encodeEntry(entry, params.logger);
-      if (encoded) {
-        await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId, params.scopeKey), encoded);
-        return;
-      }
-    } catch (error) {
-      warnOnce(params.logger, "agent-memory-write", "Failed to persist agent memory entry.", error);
-    }
+  if (!kv) {
+    logWarn(params.logger, "Agent memory disabled; Deno KV unavailable.");
+    return;
   }
-
-  const key = buildMapKey(owner, repo, params.scopeKey);
-  const entries = inMemory.get(key) ?? [];
-  entries.push(entry);
-  while (entries.length > IN_MEMORY_MAX_ENTRIES) entries.shift();
-  inMemory.set(key, entries);
+  try {
+    const encoded = await encodeEntry(entry, params.logger);
+    if (encoded) {
+      await kv.set(buildEventKey(owner, repo, entry.updatedAt, entry.stateId, params.scopeKey), encoded);
+    }
+  } catch (error) {
+    logWarn(params.logger, "Failed to persist agent memory entry.", error);
+  }
 }
 
 export async function upsertAgentRunMemory(
@@ -401,28 +385,18 @@ async function collectAgentMemoryEntries(params: AgentMemoryEntriesParams): Prom
   if (!owner || !repo || limit === 0) return [];
 
   const kv = await getKv(params.logger);
+  if (!kv) {
+    logWarn(params.logger, "Agent memory disabled; Deno KV unavailable.");
+    return [];
+  }
+
   const entries: AgentRunMemoryEntry[] = [];
   const scope = normalizeScopeKey(params.scopeKey);
 
-  if (kv) {
-    entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
-  }
-
-  const key = buildMapKey(owner, repo, scope || undefined);
-  const localEntries = inMemory.get(key) ?? [];
-  if (localEntries.length > 0) {
-    entries.push(...localEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
-  }
+  entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger, scope || undefined)));
 
   if (entries.length === 0 && scope) {
-    if (kv) {
-      entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
-    }
-    const repoKey = buildMapKey(owner, repo);
-    const repoEntries = inMemory.get(repoKey) ?? [];
-    if (repoEntries.length > 0) {
-      entries.push(...repoEntries.slice(-IN_MEMORY_MAX_ENTRIES).reverse());
-    }
+    entries.push(...(await readEntriesFromKv(kv, owner, repo, limit, params.logger)));
   }
 
   if (entries.length === 0) return [];

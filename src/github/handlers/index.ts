@@ -1,26 +1,30 @@
-import { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
+import { EmitterWebhookEvent } from "@octokit/webhooks";
 import { logger as pinoLogger } from "../../logger/logger.ts";
 import { getRequestLogTrail, readRequestIdFromLogger } from "../../logger/request-log-store.ts";
-import { GitHubContext } from "../github-context.ts";
 import { GitHubEventHandler } from "../github-event-handler.ts";
-import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
+import { GitHubContext } from "../github-context.ts";
+import { Env } from "../types/env.ts";
 import { PluginInput } from "../types/plugin.ts";
+import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { classifyTextIngress } from "../utils/reaction.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
 import handlePushEvent from "./push-event.ts";
+import { handleTelegramLinkIssueClosed } from "./telegram-link-issue-closed.ts";
 
 const KERNEL_PLUGIN_ERROR_EVENT = "kernel.plugin_error" as const;
-const KERNEL_PLUGIN_ERROR_EVENT_NAME = KERNEL_PLUGIN_ERROR_EVENT as unknown as EmitterWebhookEventName;
 const ERROR_MESSAGE_MAX_LENGTH = 280;
 const LOG_TRAIL_MAX_LINES = 40;
 const LOG_TRAIL_MAX_LINE_LENGTH = 240;
 const KERNEL_REPO = "ubiquity-os/ubiquity-os-kernel";
 const DISPATCH_EVENT_LOG = "Dispatching event";
+const ISSUE_COMMENT_CREATED_EVENT = "issue_comment.created";
+const PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT = "pull_request_review_comment.created";
 
 export type HandlerDeps = {
   getConfig: typeof getConfig;
@@ -389,7 +393,7 @@ async function emitKernelPluginErrorEvent({
   triggeringAuthToken: string;
   deps: HandlerDeps;
 }) {
-  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
+  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT);
   if (!subscribers.length) return;
 
   let targetRepo: { owner: string; repo: string } | null = null;
@@ -417,7 +421,7 @@ async function emitKernelPluginErrorEvent({
     commit: await deps.getKernelCommit(),
   };
   const requestId = readRequestIdFromLogger(context.logger);
-  const logTrail = requestId ? getRequestLogTrail(requestId) : null;
+  const logTrail = getRequestLogTrail(context.logger);
   const configSources = (config as ConfigWithSources).__sources ?? [];
 
   const payload = buildKernelPluginErrorPayload({
@@ -441,17 +445,7 @@ async function emitKernelPluginErrorEvent({
     const stateId = crypto.randomUUID();
     try {
       const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-      const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-      const inputs = new PluginInput(
-        context.eventHandler,
-        stateId,
-        KERNEL_PLUGIN_ERROR_EVENT_NAME,
-        eventPayload,
-        settings?.with,
-        authToken,
-        dispatchTarget.ref,
-        null
-      );
+      const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       await deps.dispatchPluginTarget({
@@ -486,7 +480,7 @@ async function emitKernelErrorEvent({
     return;
   }
 
-  if (context.key === KERNEL_PLUGIN_ERROR_EVENT_NAME) {
+  if (String(context.key) === KERNEL_PLUGIN_ERROR_EVENT) {
     context.logger.debug({ event: context.key }, "Skipping kernel error dispatch for kernel.plugin_error event");
     return;
   }
@@ -502,7 +496,7 @@ async function emitKernelErrorEvent({
     return;
   }
 
-  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT_NAME);
+  const subscribers = await deps.getPluginsForEvent(context, config.plugins, KERNEL_PLUGIN_ERROR_EVENT);
   if (!subscribers.length) return;
 
   const triggeringInstallationId = event.payload.installation.id;
@@ -511,7 +505,7 @@ async function emitKernelErrorEvent({
     commit: await deps.getKernelCommit(),
   };
   const requestId = readRequestIdFromLogger(context.logger);
-  const logTrail = requestId ? getRequestLogTrail(requestId) : null;
+  const logTrail = getRequestLogTrail(context.logger);
   const configSources = (config as ConfigWithSources).__sources ?? [];
   const authContextRepo = parseOwnerRepo(extractRepositoryFullName(context.payload));
   const kernelErrorStateId = crypto.randomUUID();
@@ -534,17 +528,7 @@ async function emitKernelErrorEvent({
     const stateId = crypto.randomUUID();
     try {
       const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-      const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
-      const inputs = new PluginInput(
-        context.eventHandler,
-        stateId,
-        KERNEL_PLUGIN_ERROR_EVENT_NAME,
-        eventPayload,
-        settings?.with,
-        authToken,
-        dispatchTarget.ref,
-        null
-      );
+      const inputs = new PluginInput(context.eventHandler, stateId, KERNEL_PLUGIN_ERROR_EVENT, payload, settings?.with, authToken, dispatchTarget.ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key }, `Dispatching ${KERNEL_PLUGIN_ERROR_EVENT}`);
       await deps.dispatchPluginTarget({
@@ -575,9 +559,27 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
   };
 }
 
-export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<HandlerDeps>) {
-  const resolvedDeps = resolveHandlerDeps(deps);
-  eventHandler.on("issue_comment.created", issueCommentCreated);
+function isHandlerDeps(value: unknown): value is Partial<HandlerDeps> {
+  if (!value || typeof value !== "object") return false;
+  return (
+    "getConfig" in value ||
+    "getPluginsForEvent" in value ||
+    "getManifest" in value ||
+    "resolvePluginDispatchTarget" in value ||
+    "dispatchPluginTarget" in value ||
+    "getKernelCommit" in value
+  );
+}
+
+export function bindHandlers(eventHandler: GitHubEventHandler, depsOrEnv?: Partial<HandlerDeps> | Env) {
+  const resolvedDeps = resolveHandlerDeps(isHandlerDeps(depsOrEnv) ? depsOrEnv : undefined);
+  const env = isHandlerDeps(depsOrEnv) ? undefined : depsOrEnv;
+  eventHandler.on(ISSUE_COMMENT_CREATED_EVENT, issueCommentCreated);
+  if (env) {
+    eventHandler.on("issues.closed", async (context) => {
+      await handleTelegramLinkIssueClosed(context as GitHubContext<"issues.closed">, env);
+    });
+  }
   eventHandler.on("issue_comment.edited", async (context) => {
     const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
     if (!issueNumber) {
@@ -586,7 +588,7 @@ export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<Ha
     }
     await handleAgentRunCommentEdited(context as GitHubContext<"issue_comment.edited">, issueNumber);
   });
-  eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
+  eventHandler.on(PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT, pullRequestReviewCommentCreated);
   eventHandler.on("pull_request_review_comment.edited", async (context) => {
     const prNumber = typeof context.payload?.pull_request?.number === "number" ? context.payload.pull_request.number : null;
     if (!prNumber) {
@@ -660,6 +662,18 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     return;
   }
 
+  if (context.key === ISSUE_COMMENT_CREATED_EVENT || context.key === PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT) {
+    const commentBody =
+      context.key === ISSUE_COMMENT_CREATED_EVENT
+        ? String((context.payload as GitHubContext<"issue_comment.created">["payload"]).comment?.body ?? "")
+        : String((context.payload as GitHubContext<"pull_request_review_comment.created">["payload"]).comment?.body ?? "");
+    const stimulus = classifyTextIngress(commentBody);
+    if (stimulus.reaction === "reflex" && stimulus.reflex === "personal_agent") {
+      context.logger.debug({ leadingMention: stimulus.leadingMention ?? null }, "Skipping plugin dispatch for personal-agent mention");
+      return;
+    }
+  }
+
   const config = await deps.getConfig(context);
 
   if (!config) {
@@ -683,7 +697,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     resolvedPlugins.push(...allowed);
   }
 
-  if (context.key === "issue_comment.created") {
+  if (context.key === ISSUE_COMMENT_CREATED_EVENT) {
     const issueContext = context as GitHubContext<"issue_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
     if (commandName) {
@@ -693,7 +707,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     }
   }
 
-  if (context.key === "pull_request_review_comment.created") {
+  if (context.key === PULL_REQUEST_REVIEW_COMMENT_CREATED_EVENT) {
     const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
     const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
     if (commandName) {
@@ -702,7 +716,6 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       resolvedPlugins.push(...filtered);
     }
   }
-
   if (resolvedPlugins.length === 0) {
     context.logger.debug("No handler found for event");
     return;

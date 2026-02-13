@@ -2,6 +2,7 @@
 
 import { parse } from "https://deno.land/std@0.203.0/flags/mod.ts";
 import { listAgentMemoryEntries } from "../src/github/utils/agent-memory.ts";
+import { parseDiagnosticsConfig } from "../src/github/utils/env-config.ts";
 
 const DEFAULT_LIMIT = 25;
 const OWNER_KEY = "owner";
@@ -34,7 +35,13 @@ const owner = typeof parsed[OWNER_KEY] === "string" ? parsed[OWNER_KEY].trim() :
 const repo = typeof parsed[REPO_KEY] === "string" ? parsed[REPO_KEY].trim() : "";
 const scopeKey = typeof parsed[SCOPE_KEY] === "string" ? parsed[SCOPE_KEY].trim() : undefined;
 const kernelUrl = typeof parsed[KERNEL_URL_KEY] === "string" ? parsed[KERNEL_URL_KEY].trim() : "";
-const token = typeof parsed[TOKEN_KEY] === "string" ? parsed[TOKEN_KEY].trim() : (Deno.env.get("UOS_DIAGNOSTICS_TOKEN") ?? "").trim();
+const diagnosticsConfig = parseDiagnosticsConfig(Deno.env.get("UOS_DIAGNOSTICS"));
+if (!diagnosticsConfig.ok) {
+  console.error(diagnosticsConfig.error);
+  Deno.exit(1);
+}
+const envToken = diagnosticsConfig.config?.token ?? "";
+const token = typeof parsed[TOKEN_KEY] === "string" ? parsed[TOKEN_KEY].trim() : envToken;
 const issueRaw = typeof parsed[ISSUE_KEY] === "string" ? parsed[ISSUE_KEY].trim() : "";
 
 if (!owner || !repo) {
@@ -44,7 +51,7 @@ if (!owner || !repo) {
   Deno.exit(1);
 }
 if (kernelUrl && !token) {
-  console.error("Missing diagnostics token. Provide --token or set UOS_DIAGNOSTICS_TOKEN.");
+  console.error("Missing diagnostics token. Provide --token or set UOS_DIAGNOSTICS.");
   Deno.exit(1);
 }
 

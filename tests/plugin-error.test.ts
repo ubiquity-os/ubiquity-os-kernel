@@ -90,7 +90,7 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
       if (event === ISSUES_OPENED_EVENT) {
         return [{ key: failingPluginUrl, target: failingPluginUrl, settings: { skipBotEvents: false, with: {} } }] as never;
       }
-      if (event === (KERNEL_PLUGIN_ERROR_EVENT as never)) {
+      if (event === KERNEL_PLUGIN_ERROR_EVENT) {
         return [{ key: hotfixPluginUrl, target: hotfixPluginUrl, settings: { skipBotEvents: false, with: {} } }] as never;
       }
       return [] as never;
@@ -171,7 +171,7 @@ Deno.test({
         if (event === ISSUES_OPENED_EVENT) {
           throw new Error("Kernel handler blew up");
         }
-        if (event === (KERNEL_PLUGIN_ERROR_EVENT as never)) {
+        if (event === KERNEL_PLUGIN_ERROR_EVENT) {
           return [{ key: hotfixPluginUrl, target: hotfixPluginUrl, settings: { skipBotEvents: false, with: {} } }] as never;
         }
         return [] as never;

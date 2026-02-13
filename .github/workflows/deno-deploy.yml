@@ -28,30 +28,23 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${{ secrets.DENO_DEPLOY_TOKEN }}" ]; then echo "Missing required secret: DENO_DEPLOY_TOKEN" >&2; exit 1; fi
-          if [ -z "${{ secrets.APP_WEBHOOK_SECRET }}" ]; then echo "Missing required secret: APP_WEBHOOK_SECRET" >&2; exit 1; fi
-          if [ -z "${{ secrets.APP_ID }}" ]; then echo "Missing required secret: APP_ID" >&2; exit 1; fi
-          if [ -z "${{ secrets.APP_PRIVATE_KEY }}" ]; then echo "Missing required secret: APP_PRIVATE_KEY" >&2; exit 1; fi
+          if [ -z "${{ secrets.UOS_GITHUB }}" ]; then echo "Missing required secret: UOS_GITHUB" >&2; exit 1; fi
 
       - uses: ubiquity-os/deno-deploy@main
         env:
-          APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
-          APP_ID: ${{ secrets.APP_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          UOS_GITHUB: ${{ secrets.UOS_GITHUB }}
           ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'development' }}
-          UOS_AGENT_OWNER: ${{ secrets.UOS_AGENT_OWNER || github.repository_owner }}
-          UOS_AGENT_REPO: ${{ secrets.UOS_AGENT_REPO || github.event.repository.name }}
-          UOS_AGENT_WORKFLOW: ${{ secrets.UOS_AGENT_WORKFLOW || 'agent.yml' }}
-          UOS_AGENT_REF: ${{ secrets.UOS_AGENT_REF || '' }}
-          UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL || '' }}
-          UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY || '' }}
-          UOS_DIAGNOSTICS_TOKEN: ${{ secrets.UOS_DIAGNOSTICS_TOKEN || '' }}
           UOS_KERNEL_BASE_URL: ${{ secrets.UOS_KERNEL_BASE_URL || '' }}
           UOS_KERNEL_TRUSTED_HOSTS: ${{ secrets.UOS_KERNEL_TRUSTED_HOSTS || '' }}
-          UOS_AI_BASE_URL: ${{ secrets.UOS_AI_BASE_URL || 'https://ai.ubq.fi' }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL || '' }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || '' }}
-          # SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          # SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || '' }}
+          UOS_AGENT: ${{ secrets.UOS_AGENT || '' }}
+          UOS_AI: ${{ secrets.UOS_AI || '' }}
+          UOS_AGENT_MEMORY: ${{ secrets.UOS_AGENT_MEMORY || '' }}
+          UOS_DIAGNOSTICS: ${{ secrets.UOS_DIAGNOSTICS || '' }}
+          UOS_SUPABASE: ${{ secrets.UOS_SUPABASE || '' }}
+          UOS_KERNEL: ${{ secrets.UOS_KERNEL || '' }}
+          UOS_TELEGRAM: ${{ secrets.UOS_TELEGRAM || '' }}
+          UOS_GOOGLE_DRIVE: ${{ secrets.UOS_GOOGLE_DRIVE || '' }}
+          UOS_X: ${{ secrets.UOS_X || '' }}
           NODE_ENV: "production"
           GIT_REVISION: ${{ github.sha }}
         with:

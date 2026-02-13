@@ -7,22 +7,42 @@ The kernel is designed to:
 
 ## Environment Variables
 
-Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (plus the non-secret `APP_ID`).
+Minimum secrets for the kernel live in `UOS_GITHUB` (JSON):
 
-- **`APP_PRIVATE_KEY`**
-  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from [https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}](https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}). Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.env` file:
+```json
+{"appId":"GITHUB_APP_ID","webhookSecret":"GITHUB_WEBHOOK_SECRET","privateKey":"GITHUB_APP_PRIVATE_KEY_PEM"}
+```
 
-  ```sh
-  echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .env
-  ```
+`privateKey` must be PKCS#8. If your GitHub App key is PEM, convert it:
 
-  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command. On Windows, run the command via WSL or Git Bash.
+```sh
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM
+```
 
-- **`APP_WEBHOOK_SECRET`**
-  Set this value in both your GitHub App settings and here.
+When storing in JSON, keep the PEM as a single string (the loader accepts `\n` escapes).
 
-- **`APP_ID`**
-  Retrieve this from your GitHub App settings.
+Helper (writes or updates `.secrets/github.json`):
+
+```bash
+deno task secrets:github -- --pem=path/to/key.pem --app-id=123 --webhook-secret=secret
+```
+
+If `.secrets/github.json` already exists, you can update only the private key:
+
+```bash
+deno task secrets:github -- --pem=path/to/key.pem
+```
+
+Optional JSON configs:
+
+- `UOS_AI`: `{"baseUrl":"https://ai-ubq-fi.deno.dev","token":"YOUR_AI_TOKEN"}`
+- `UOS_AGENT`: `{"owner":"ubiquity-os","repo":"ubiquity-os-kernel","workflow":"agent.yml","ref":"main"}`
+- `UOS_AGENT_MEMORY`: `{"key":"BASE64_32_BYTE_KEY"}`
+- `UOS_DIAGNOSTICS`: `{"token":"YOUR_DIAGNOSTICS_TOKEN"}`
+- `UOS_SUPABASE`: `{"url":"https://your-project.supabase.co","anonKey":"YOUR_SUPABASE_ANON_KEY"}`
+- `UOS_KERNEL`: `{"refreshIntervalSeconds":3600}`
+
+Agent memory uses Deno KV by default and does not require any extra configuration; set `UOS_AGENT_MEMORY.key` only if you want to encrypt stored entries.
 
 For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host unless `UOS_KERNEL_BASE_URL` (or `UOS_KERNEL_TRUSTED_HOSTS`) is set.
 
@@ -35,8 +55,7 @@ deno task dev
 ```
 
 `deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
-
-For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
+`deno task dev` loads `.env` and any `.secrets/*.json` files automatically.
 
 Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, [`command-config`](https://github.com/ubiquity-os-marketplace/command-config)).
 
@@ -64,7 +83,7 @@ Agent context selection:
 
 Vector DB configuration (Supabase):
 
-- Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+- Set `UOS_SUPABASE` with `{ "url": "...", "anonKey": "..." }`.
 
 Conversation graph CLI (debug/preview):
 
@@ -98,15 +117,95 @@ Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml
 2. **Set repository secrets (required):**
 
    - `DENO_DEPLOY_TOKEN`
-   - `APP_WEBHOOK_SECRET`
-   - `APP_ID`
-   - `APP_PRIVATE_KEY`
+   - `UOS_GITHUB`
 
-   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_KERNEL_BASE_URL`, `UOS_KERNEL_TRUSTED_HOSTS`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
+   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT`, `UOS_AI`, `UOS_AGENT_MEMORY`, `UOS_DIAGNOSTICS`, `UOS_SUPABASE`, `UOS_KERNEL`, `UOS_KERNEL_BASE_URL`, `UOS_KERNEL_TRUSTED_HOSTS`, `UOS_GOOGLE_DRIVE`, `UOS_TELEGRAM`, `UOS_X`.
 
 3. **Deploy:**
 
    - Push to `main` (or run the workflow manually) to deploy.
+
+### Telegram Ingress (Optional)
+
+Configure the kernel to accept Telegram webhooks at `/telegram`:
+
+- `UOS_TELEGRAM` (JSON; required to enable ingress, secrets only)
+
+Example:
+
+```json
+{"botToken":"...","webhookSecret":"..."}
+```
+
+Routing + policy live in the user’s `.ubiquity-os` repo under `.github/.ubiquity-os.config.yml`:
+
+```yaml
+channels:
+  telegram:
+    mode: github # or shim
+    owner: your-github-org-or-username
+    repo: your-target-repo
+    issueNumber: 1
+```
+
+Notes:
+
+- The kernel loads config from `https://github.com/<owner>/.ubiquity-os/.github/.ubiquity-os.config.yml`.
+- `mode: shim` skips GitHub routing until `/context` is set.
+- `issueNumber` is required in `github` mode.
+- `webhookSecret` validates `x-telegram-bot-api-secret-token`.
+- Telegram messages require a linked GitHub identity (stored in KV).
+
+#### Linking Telegram Identity
+
+Linking now happens entirely inside Telegram (no kernel-hosted UI).
+
+1. DM the bot and tap “Start linking”.
+2. Send the GitHub owner (username or org).
+3. The bot creates a link issue in `<owner>/.ubiquity-os` and sends the URL.
+4. Close the issue to approve linking (org member or owner). The bot confirms once linked.
+
+The kernel stores the Telegram user ID ↔ GitHub owner mapping in KV.
+
+Notes:
+
+- Orgs can link multiple Telegram accounts (any org member can approve).
+- Personal users are limited to a single linked Telegram account.
+- Use `/status` in Telegram to see current link state.
+
+### Google Drive Ingress (Optional)
+
+Configure the kernel to accept Google Drive webhooks at `/google/drive`:
+
+- `UOS_GOOGLE_DRIVE` (JSON; required to enable ingress)
+
+Example:
+
+```json
+{"webhookSecret":"..."}
+```
+
+### X Ingress (Optional)
+
+Configure the kernel to accept X webhooks at `/x`:
+
+- `UOS_X` (JSON; required to enable ingress)
+
+Example:
+
+```json
+{"webhookSecret":"..."}
+```
+
+### Local Ingress Config (Optional)
+
+For local dev, keep ingress JSON files in `.secrets/*.json` and `deno task dev` will load whichever exist. Example templates live under `.secrets/*.example.json` (copy them to `.secrets/*.json`).
+
+If you need custom paths, run the loader directly:
+
+```bash
+deno run --allow-read --allow-env --allow-run scripts/with-ingress-env.ts -- --telegram=secrets/telegram.json -- deno task dev
+```
 
 ### Plugin-Kernel Input/Output Interface
 

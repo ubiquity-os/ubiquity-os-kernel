@@ -1,0 +1,4 @@
+{
+  "botToken": "TELEGRAM_BOT_TOKEN",
+  "webhookSecret": "TELEGRAM_WEBHOOK_SECRET"
+}

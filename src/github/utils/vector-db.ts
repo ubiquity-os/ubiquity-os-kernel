@@ -1,5 +1,6 @@
 import type { LoggerLike } from "./kv-client.ts";
 import { getEnvValue } from "./env.ts";
+import { parseSupabaseConfig } from "./env-config.ts";
 
 type VectorDbConfig = Readonly<{
   url: string;
@@ -30,13 +31,11 @@ type FetchVectorDocumentByParentOptions = Readonly<{
   docTypes?: string[];
 }>;
 
-const warned = new Set<string>();
 const VECTOR_DB_SIMILARITY_FETCH_FAILED = "Vector DB similarity fetch failed";
 const DOCUMENTS_ENDPOINT = "/rest/v1/documents";
 
-function warnOnce(logger: LoggerLike | undefined, key: string, message: string) {
-  if (!logger || typeof logger.warn !== "function" || warned.has(key)) return;
-  warned.add(key);
+function logWarn(logger: LoggerLike | undefined, message: string) {
+  if (!logger || typeof logger.warn !== "function") return;
   logger.warn(message);
 }
 
@@ -56,20 +55,18 @@ function withTimeoutSignal() {
 }
 
 export function getVectorDbConfig(logger?: LoggerLike): VectorDbConfig | null {
-  const rawUrl = getEnvValue("SUPABASE_URL");
-  const anonKey = getEnvValue("SUPABASE_ANON_KEY");
-  const rawKey = anonKey;
-  const urlCandidate = rawUrl?.trim() ?? "";
-  let url = "";
-  if (urlCandidate) {
-    url = urlCandidate.replace(/\/+$/, "");
-  }
-  const key = rawKey?.trim() ?? "";
-  if (!url || !key) {
-    warnOnce(logger, "vector-db-missing-config", "Vector DB disabled: missing Supabase URL/key. Set SUPABASE_URL and SUPABASE_ANON_KEY.");
+  const configResult = parseSupabaseConfig(getEnvValue("UOS_SUPABASE"));
+  if (!configResult.ok) {
+    logWarn(logger, configResult.error);
     return null;
   }
-  return { url, key };
+  if (!configResult.config) {
+    if (configResult.warning) {
+      logWarn(logger, `Vector DB disabled: ${configResult.warning}`);
+    }
+    return null;
+  }
+  return { url: configResult.config.url, key: configResult.config.anonKey };
 }
 
 function buildRestUrl(config: VectorDbConfig, path: string): string {

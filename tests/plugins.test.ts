@@ -1,4 +1,3 @@
-import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { assertEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
 import { ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
@@ -17,7 +16,7 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
       with: {},
     },
   };
-  function pluginWithRunsOn(runsOn: EmitterWebhookEventName[]): ResolvedPlugin {
+  function pluginWithRunsOn(runsOn: string[]): ResolvedPlugin {
     return {
       key: basePlugin.key,
       target: basePlugin.target,

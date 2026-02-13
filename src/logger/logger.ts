@@ -1,14 +1,54 @@
-import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
+import fs from "node:fs";
+import path from "node:path";
+import pino, { type DestinationStream, type Logger, type LoggerOptions, type StreamEntry } from "pino";
 import pretty from "pino-pretty";
 import { recordRequestLog } from "./request-log-store.ts";
 
-const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "info" : "debug");
+const isProduction = process.env.NODE_ENV === "production";
+const level = process.env.LOG_LEVEL || (isProduction ? "info" : "debug");
 type CustomLogLevels = "github" | "local";
 
 const redact = {
   paths: ["token", "authorization", "*.privateKey", "*.private_key", "*.app_private_key", "*.APP_PRIVATE_KEY", "*._privateKey"],
   censor: "[REDACTED]",
 };
+
+const LOG_DIR_NAME = "logs";
+const LOG_FILE_PREFIX = "kernel";
+const LOG_FILE_EXTENSION = "log";
+
+function formatLogTimestamp(date: Date): string {
+  function pad(value: number): string {
+    return String(value).padStart(2, "0");
+  }
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}${month}${day}-${hours}${minutes}${seconds}`;
+}
+
+function buildLogFilePath(): string {
+  const stamp = formatLogTimestamp(new Date());
+  const fileName = `${LOG_FILE_PREFIX}-${stamp}.${LOG_FILE_EXTENSION}`;
+  return path.join(process.cwd(), LOG_DIR_NAME, fileName);
+}
+
+function tryCreateFileStream(): DestinationStream | null {
+  try {
+    const logFilePath = buildLogFilePath();
+    fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
+    return pino.destination({ dest: logFilePath, sync: false });
+  } catch (error) {
+    if (!isProduction) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[logger] File logging disabled: ${message}`);
+    }
+    return null;
+  }
+}
 
 const LOG_ALLOWLIST_KEYS = new Set([
   "plugin",
@@ -103,21 +143,29 @@ function formatLogLine(level: string, args: unknown[], bindings: Record<string, 
   return `${base} | ${extras.join(" ")}`;
 }
 
-const stream =
-  process.env.NODE_ENV !== "production"
-    ? pretty({
-        colorize: true,
-        singleLine: false,
-        levelFirst: true,
-        translateTime: "HH:MM:ss.l",
-        ignore: "pid,hostname,requestId",
-        messageFormat: (log, messageKey) => {
-          const msg = log[messageKey] as string;
-          if (log.requestId) return `(${log.requestId}) ${msg}`;
-          return msg;
-        },
-      })
-    : undefined;
+const consoleStream: DestinationStream = isProduction
+  ? pino.destination(1)
+  : pretty({
+      colorize: true,
+      singleLine: false,
+      levelFirst: true,
+      translateTime: "HH:MM:ss.l",
+      ignore: "pid,hostname,requestId",
+      messageFormat: (log, messageKey) => {
+        const msg = log[messageKey] as string;
+        if (log.requestId) return `(${log.requestId}) ${msg}`;
+        return msg;
+      },
+    });
+
+const fileStream = tryCreateFileStream();
+const streamEntries: StreamEntry<CustomLogLevels>[] = [{ stream: consoleStream }];
+
+if (fileStream) {
+  streamEntries.push({ stream: fileStream });
+}
+
+const stream = streamEntries.length > 1 ? pino.multistream(streamEntries) : streamEntries[0].stream;
 
 const createLogger = pino as unknown as (options: LoggerOptions<CustomLogLevels>, stream?: DestinationStream) => Logger<CustomLogLevels>;
 
@@ -140,7 +188,7 @@ export const logger = createLogger(
               levelLabel = String(level);
             }
             const line = formatLogLine(levelLabel, args, bindings as Record<string, unknown>);
-            if (line) recordRequestLog(requestId, line);
+            if (line) recordRequestLog(this, line);
           }
         } catch {
           // Avoid logging failures impacting primary flow.

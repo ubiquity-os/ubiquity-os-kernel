@@ -1,6 +1,7 @@
 import { tokenOctokit } from "../github-client.ts";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
+import { getLeadingMention } from "../utils/mention.ts";
 import { toOctokitLogMeta } from "../utils/octokit-log.ts";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
 
@@ -20,7 +21,7 @@ type PersonalAgentDeps = Readonly<{
   createTokenOctokit: (context: GitHubContext, token: string) => TokenOctokitLike;
   getDefaultBranchWithToken: (octokit: TokenOctokitLike, owner: string, repository: string) => Promise<string>;
   buildWorkflowDispatchInputs: (params: {
-    context: GitHubContext<"issue_comment.created">;
+    context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">;
     installationToken: string;
     defaultBranch: string;
   }) => Promise<Record<string, string>>;
@@ -81,17 +82,23 @@ function createTokenOctokit(context: GitHubContext, token: string) {
 }
 
 async function getInstallationTokenForRepo(context: GitHubContext, owner: string, repository: string): Promise<string | null> {
+  if (typeof context.eventHandler.getUnauthenticatedOctokit !== "function") {
+    context.logger.debug({ owner, repo: repository }, "Missing unauthenticated Octokit; cannot check personal-agent installation");
+    return null;
+  }
   try {
     const appOctokit = context.eventHandler.getUnauthenticatedOctokit();
     const installation = await appOctokit.rest.apps.getRepoInstallation({ owner, repo: repository });
     return await context.eventHandler.getToken(installation.data.id);
   } catch (error) {
-    context.logger.warn(
+    const status = getErrorStatus(error);
+    const log = status === 404 ? context.logger.debug : context.logger.warn;
+    log(
       {
         err: error,
         owner,
         repo: repository,
-        status: getErrorStatus(error),
+        status,
       },
       "Failed to mint installation token for personal-agent repo"
     );
@@ -99,35 +106,29 @@ async function getInstallationTokenForRepo(context: GitHubContext, owner: string
   }
 }
 
-export async function callPersonalAgent(context: GitHubContext<"issue_comment.created">, deps?: Partial<PersonalAgentDeps>) {
+export async function callPersonalAgent(
+  context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">,
+  deps?: Partial<PersonalAgentDeps>
+): Promise<boolean> {
   const resolvedDeps = resolvePersonalAgentDeps(deps);
   const { logger, payload } = context;
 
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
-  const body = payload.comment.body.trim();
+  const body = payload.comment.body?.trim() ?? "";
   const commentId = payload.comment.id;
-
-  if (!body.startsWith("@")) {
-    logger.debug(`Ignoring irrelevant comment: ${body}`);
-    return;
-  }
-
-  const targetUser = /^\s*@([a-z0-9-_]+)/i.exec(body);
-  if (!targetUser) {
-    logger.error(`Missing target username from comment: ${body}`);
-    return;
-  }
-
-  const personalAgentOwner = targetUser[1];
+  const leadingMention = getLeadingMention(body);
+  if (!leadingMention) return false;
+  const personalAgentOwner = leadingMention.toLowerCase();
+  if (!personalAgentOwner || personalAgentOwner === "ubiquityos") return false;
   const personalAgentRepo = "personal-agent";
-  logger.debug({ owner, personalAgentOwner, comment: body }, `Comment received`);
 
+  logger.debug({ owner, personalAgentOwner, comment: body }, "Personal-agent mention received");
   try {
     const installationToken = await resolvedDeps.getInstallationTokenForRepo(context, personalAgentOwner, personalAgentRepo);
     if (!installationToken) {
-      logger.error({ owner, repo, commentId, personalAgentOwner }, "Missing installation token; cannot dispatch personal agent");
-      return;
+      logger.debug({ owner, repo, commentId, personalAgentOwner }, "Personal-agent not registered; skipping");
+      return false;
     }
 
     logger.info(
@@ -163,7 +164,7 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
       },
       "Error dispatching personal-agent workflow"
     );
-    return;
+    return false;
   }
 
   try {
@@ -172,5 +173,5 @@ export async function callPersonalAgent(context: GitHubContext<"issue_comment.cr
     logger.warn({ err: error }, "Failed to update request comment run URL");
   }
 
-  logger.info(`Successfully sent the comment to ${personalAgentOwner}/${personalAgentRepo}`);
+  return true;
 }

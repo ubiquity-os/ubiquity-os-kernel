@@ -2,8 +2,8 @@
   "nodeModulesDir": "auto",
   "exclude": ["lib", "coverage"],
   "tasks": {
-    "dev": "deno run --allow-run --allow-env predev.ts && deno task dev:serve",
-    "dev:serve": "deno serve --allow-env --allow-net --allow-read --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
+    "dev": "deno run --allow-run --allow-env predev.ts && deno run --allow-read --allow-env --allow-run scripts/with-ingress-env.ts -- deno serve --watch --unstable-kv --allow-env --allow-net --allow-read --allow-write=logs --allow-run=git --allow-sys --sloppy-imports --env-file=.env --port 8787 src/kernel.ts",
+    "secrets:github": "deno run --allow-read --allow-write scripts/github-secrets.ts",
     "test": "deno test --allow-env --allow-net --allow-read --allow-sys",
     "check": "deno check --sloppy-imports src/kernel.ts",
     "commitlint": "deno run --allow-env --allow-read --allow-run --allow-sys npm:@commitlint/cli@19.3.0",
@@ -21,9 +21,7 @@
     "dash-logs": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts",
     "dash-logs:beta": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=7f8de540-0885-4313-84c8-d3d6b3a40a49 --deployment-id=ktca8xhgvq5d --since=1h --format=ndjson",
     "dash-logs:ai": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=ndjson",
-    "dash-logs:human": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=table",
-    "dev:easy": "deno run -A predev.ts && deno task dev:serve:easy",
-    "dev:serve:easy": "deno serve -A --sloppy-imports --env-file=.env --port 8787 src/kernel.ts"
+    "dash-logs:human": "deno run --allow-net --allow-env scripts/dash-logs-fetcher.ts --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=table"
   },
   "compilerOptions": {
     "lib": ["deno.ns", "deno.window"],

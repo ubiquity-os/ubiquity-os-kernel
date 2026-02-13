@@ -2,8 +2,6 @@ import { GitHubContext } from "../github-context.ts";
 import { upsertAgentRunMemory } from "../utils/agent-memory.ts";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 
-const botLoginCache = new Map<number, string>();
-
 type EditedCommentContext = GitHubContext<"issue_comment.edited" | "pull_request_review_comment.edited">;
 
 type ParsedAgentBlock = Readonly<{
@@ -66,13 +64,10 @@ function parseAgentBlock(block: string): ParsedAgentBlock | null {
 async function getInstallationBotLogin(context: EditedCommentContext): Promise<string> {
   const installationId = context.payload.installation?.id;
   if (typeof installationId !== "number" || !Number.isFinite(installationId)) return "";
-  const cached = botLoginCache.get(installationId);
-  if (cached) return cached;
 
   try {
     const { data } = await context.octokit.rest.users.getAuthenticated();
     const login = typeof data?.login === "string" ? data.login.trim() : "";
-    if (login) botLoginCache.set(installationId, login);
     return login;
   } catch (error) {
     context.logger.debug({ err: error }, "Failed to resolve bot login (non-fatal)");

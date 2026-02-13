@@ -46,39 +46,12 @@ const CLOSING_PAGE_SIZE = 50;
 const OUTBOUND_COMMENT_LIMIT = 30;
 const OUTBOUND_REFERENCE_LIMIT = 25;
 
-const ALIAS_CACHE_MAX_SIZE = 1000;
-const aliasCache = new Map<string, string>();
-const conversationLocks = new Map<string, Promise<void>>();
+const LOCK_TTL_MS = 15_000;
+const LOCK_WAIT_MS = 2_000;
+const LOCK_RETRY_MS = 100;
 
-async function withConversationLock<T>(key: string, work: () => Promise<T>): Promise<T> {
-  const previous = conversationLocks.get(key) ?? Promise.resolve();
-  let release: (() => void) | undefined;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const pending = previous.then(() => current);
-  conversationLocks.set(key, pending);
-  await previous;
-  try {
-    return await work();
-  } finally {
-    release?.();
-    if (conversationLocks.get(key) === pending) {
-      conversationLocks.delete(key);
-    }
-  }
-}
-
-function cacheAlias(key: string, value: string): void {
-  if (aliasCache.has(key)) {
-    aliasCache.delete(key);
-  } else if (aliasCache.size >= ALIAS_CACHE_MAX_SIZE) {
-    const oldestKey = aliasCache.keys().next().value;
-    if (typeof oldestKey === "string") {
-      aliasCache.delete(oldestKey);
-    }
-  }
-  aliasCache.set(key, value);
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +67,15 @@ function normalizeNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function logDebug(logger: LoggerLike | undefined, message: string, data?: Record<string, unknown>) {
+  if (!logger || typeof logger.debug !== "function") return;
+  if (data) {
+    logger.debug(data, message);
+  } else {
+    logger.debug(message);
+  }
+}
+
 function nodeKey(nodeId: string): KvKey {
   return [...KV_ROOT, "node", nodeId];
 }
@@ -102,12 +84,63 @@ function aliasKey(key: string): KvKey {
   return [...KV_ROOT, "alias", key];
 }
 
+function conversationLockKey(key: string): KvKey {
+  return [...KV_ROOT, "lock", key];
+}
+
 function keyNodesPrefix(key: string): KvKey {
   return [...KV_ROOT, "key", key, "nodes"];
 }
 
 function keyNodeKey(key: string, nodeId: string): KvKey {
   return [...keyNodesPrefix(key), nodeId];
+}
+
+async function releaseConversationLock(kv: KvLike, key: KvKey, token: string, logger?: LoggerLike): Promise<void> {
+  if (typeof kv.delete !== "function") return;
+  try {
+    const { value } = await kv.get(key);
+    const currentToken = isRecord(value) ? normalizeString(value.token) : "";
+    if (currentToken && currentToken !== token) return;
+    await kv.delete(key);
+  } catch (error) {
+    logDebug(logger, "Failed to release conversation lock (non-fatal).", { err: error });
+  }
+}
+
+async function withConversationLock<T>(
+  key: string,
+  kv: KvLike | null,
+  logger: LoggerLike | undefined,
+  work: () => Promise<T>
+): Promise<T> {
+  if (!kv || typeof kv.atomic !== "function") {
+    return await work();
+  }
+  const lockKey = conversationLockKey(key);
+  const token = crypto.randomUUID();
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (Date.now() <= deadline) {
+    try {
+      const result = await kv
+        .atomic()
+        .check({ key: lockKey, versionstamp: null })
+        .set(lockKey, { token }, { expireIn: LOCK_TTL_MS })
+        .commit();
+      if (result.ok) {
+        try {
+          return await work();
+        } finally {
+          await releaseConversationLock(kv, lockKey, token, logger);
+        }
+      }
+    } catch (error) {
+      logDebug(logger, "Failed to acquire conversation lock (non-fatal).", { err: error });
+      break;
+    }
+    await sleep(LOCK_RETRY_MS);
+  }
+  return await work();
 }
 
 function parseNodeRecord(value: unknown): ConversationNodeRecord | null {
@@ -598,11 +631,6 @@ async function getSubjectNode(context: GitHubContext): Promise<ConversationNode 
 }
 
 async function resolveAliasKey(kv: KvLike, key: string): Promise<string> {
-  if (aliasCache.has(key)) {
-    const cached = aliasCache.get(key) ?? key;
-    cacheAlias(key, cached);
-    return cached;
-  }
   let current = key;
   for (let i = 0; i < MAX_ALIAS_DEPTH; i += 1) {
     const { value } = await kv.get(aliasKey(current));
@@ -610,7 +638,6 @@ async function resolveAliasKey(kv: KvLike, key: string): Promise<string> {
     if (!next) break;
     current = next;
   }
-  cacheAlias(key, current);
   return current;
 }
 
@@ -706,14 +733,15 @@ export async function resolveConversationKeyForContext(context: GitHubContext, l
   const subject = await getSubjectNode(context);
   if (!subject) return null;
 
-  return await withConversationLock(subject.id, async () => {
+  const kv = await getKvClient(logger ?? context.logger);
+
+  return await withConversationLock(subject.id, kv, logger ?? context.logger, async () => {
     const snapshot = (await fetchConversationSnapshot(context, subject.id)) ?? { root: subject, linked: [] };
     const outbound = await fetchOutboundReferences(context, snapshot.root);
     const linked = dedupeNodes([...snapshot.linked, ...outbound]);
     const graph = buildGraph(snapshot.root, linked);
     const nodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as ConversationNode);
 
-    const kv = await getKvClient(logger ?? context.logger);
     if (!kv) {
       return { key: snapshot.root.id, root: snapshot.root, linked: snapshot.linked };
     }

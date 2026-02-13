@@ -12,33 +12,21 @@ Deno.test("/help: posts comment with commands + footer", async () => {
   const originalGitRevision = Deno.env.get("GIT_REVISION");
   Deno.env.set("GIT_REVISION", "deadbeef");
 
+  const pluginAlphaManifest = JSON.stringify({
+    name: "plugin-A",
+    short_name: "plugin-a",
+    homepage_url: "",
+    description: "plugin-a for tests",
+    "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+    commands: {
+      foo: { description: "foo command", "ubiquity:example": "/foo bar" },
+    },
+  });
+
+  // The kernel may fetch the same worker manifest more than once per request. Return a fresh Response each time.
   const fetchStub = stubFetch({
-    "https://plugin-a.internal/manifest.json": new Response(
-      JSON.stringify({
-        name: "plugin-A",
-        short_name: "plugin-a",
-        homepage_url: "",
-        description: "plugin-a for tests",
-        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
-        commands: {
-          foo: { description: "foo command", "ubiquity:example": "/foo bar" },
-        },
-      }),
-      { headers: { "content-type": "application/json" } }
-    ),
-    "https://plugin-a.internal//manifest.json": new Response(
-      JSON.stringify({
-        name: "plugin-A",
-        short_name: "plugin-a",
-        homepage_url: "",
-        description: "plugin-a for tests",
-        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
-        commands: {
-          foo: { description: "foo command", "ubiquity:example": "/foo bar" },
-        },
-      }),
-      { headers: { "content-type": "application/json" } }
-    ),
+    "https://plugin-a.internal/manifest.json": () => new Response(pluginAlphaManifest, { headers: { "content-type": "application/json" } }),
+    "https://plugin-a.internal//manifest.json": () => new Response(pluginAlphaManifest, { headers: { "content-type": "application/json" } }),
   });
 
   const createCommentCalls: Array<{ body: string }> = [];

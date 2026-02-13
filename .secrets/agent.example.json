@@ -1,0 +1,6 @@
+{
+  "owner": "ubiquity-os",
+  "repo": "ubiquity-os-kernel",
+  "workflow": "agent.yml",
+  "ref": "main"
+}
