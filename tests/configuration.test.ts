@@ -4,13 +4,19 @@ import { assertEquals, assertNotEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
 import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
 import { parsePluginIdentifier } from "../src/github/types/plugin-configuration.ts";
-import { CONFIG_FULL_PATH, DEV_CONFIG_FULL_PATH, getConfig, getConfigFullPathForEnvironment } from "../src/github/utils/config.ts";
+import {
+  CONFIG_FULL_PATH,
+  DEV_CONFIG_FULL_PATH,
+  getConfig,
+  getConfigFullPathForEnvironment,
+} from "../src/github/utils/config.ts";
 import { getManifest, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
 import { logger } from "../src/logger/logger.ts";
 
 const issueOpened = "issues.opened";
 const manifestPath = "manifest.json";
-const EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR = "Expected GitHub plugin identifier";
+const EXPECTED_GITHUB_PLUGIN_IDENTIFIER_ERROR =
+  "Expected GitHub plugin identifier";
 const repo = {
   owner: { login: "ubiquity" },
   name: "conversation-rewards",
@@ -30,7 +36,9 @@ Deno.test("Configuration: defaults to compute.yml workflow when none is provided
 });
 
 Deno.test("Configuration: parses Action path when branch and workflow are specified", async () => {
-  function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+  function getContent(
+    args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"],
+  ) {
     let data: string;
     if (args.path === manifestPath) {
       data = `
@@ -96,7 +104,8 @@ Deno.test("Configuration: parses Action path when branch and workflow are specif
 });
 
 Deno.test({
-  name: "Configuration: retrieves the configuration manifest from the proper branch if specified",
+  name:
+    "Configuration: retrieves the configuration manifest from the proper branch if specified",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -139,7 +148,9 @@ Deno.test({
     function getContent({ ref }: Record<string, string>) {
       return {
         data: {
-          content: btoa(JSON.stringify(ref ? content["withRef"] : content["withoutRef"])),
+          content: btoa(
+            JSON.stringify(ref ? content["withRef"] : content["withoutRef"]),
+          ),
         },
       };
     }
@@ -153,7 +164,7 @@ Deno.test({
           },
         },
       } as unknown as GitHubContext,
-      { owner, repo, ref, workflowId }
+      { owner, repo, ref, workflowId },
     );
     assertEquals(manifest, content["withRef"]);
     ref = undefined;
@@ -168,14 +179,185 @@ Deno.test({
           },
         },
       } as unknown as GitHubContext,
-      { owner, repo, ref, workflowId }
+      { owner, repo, ref, workflowId },
     );
     assertEquals(manifest, content["withoutRef"]);
   },
 });
 
+Deno.test({
+  name: "Configuration: prefers dist/<ref> for GitHub plugin manifests",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const owner = "ubiquity";
+    const repo = "ubiquity-os-kernel";
+    const workflowId = "action.yml";
+    const calls: Array<string | undefined> = [];
+    const content = {
+      name: "plugin-dist",
+      short_name: "plugin-dist",
+      homepage_url: "",
+      commands: {
+        command: {
+          description: "description",
+          "ubiquity:example": "example",
+        },
+      },
+      configuration: {},
+      description: "",
+      "ubiquity:listeners": [],
+      skipBotEvents: true,
+    };
+
+    function getContent({ ref }: Record<string, string | undefined>) {
+      calls.push(ref);
+      if (ref !== "dist/feature/ref") {
+        throw { status: 404 };
+      }
+      return {
+        data: {
+          content: btoa(JSON.stringify(content)),
+        },
+      };
+    }
+
+    const manifest = await getManifest(
+      {
+        octokit: {
+          rest: {
+            repos: {
+              getContent,
+            },
+          },
+        },
+      } as unknown as GitHubContext,
+      { owner, repo, ref: "feature/ref", workflowId },
+    );
+
+    assertEquals(manifest, content);
+    assertEquals(calls, ["dist/feature/ref"]);
+  },
+});
+
+Deno.test({
+  name:
+    "Configuration: falls back to source ref when dist/<ref> manifest is missing",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const owner = "ubiquity";
+    const repo = "ubiquity-os-kernel";
+    const workflowId = "action.yml";
+    const calls: Array<string | undefined> = [];
+    const sourceManifest = {
+      name: "plugin-source",
+      short_name: "plugin-source",
+      homepage_url: "",
+      commands: {
+        command: {
+          description: "description",
+          "ubiquity:example": "example",
+        },
+      },
+      configuration: {},
+      description: "",
+      "ubiquity:listeners": [],
+      skipBotEvents: true,
+    };
+
+    function getContent({ ref }: Record<string, string | undefined>) {
+      calls.push(ref);
+      if (ref === "dist/feature/ref") {
+        throw { status: 404 };
+      }
+      if (ref === "feature/ref") {
+        return {
+          data: {
+            content: btoa(JSON.stringify(sourceManifest)),
+          },
+        };
+      }
+      throw { status: 404 };
+    }
+
+    const manifest = await getManifest(
+      {
+        octokit: {
+          rest: {
+            repos: {
+              getContent,
+            },
+          },
+        },
+      } as unknown as GitHubContext,
+      { owner, repo, ref: "feature/ref", workflowId },
+    );
+
+    assertEquals(manifest, sourceManifest);
+    assertEquals(calls, ["dist/feature/ref", "feature/ref"]);
+  },
+});
+
+Deno.test({
+  name: "Configuration: does not rewrite dist/* refs when resolving manifests",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const owner = "ubiquity";
+    const repo = "ubiquity-os-kernel";
+    const workflowId = "action.yml";
+    const calls: Array<string | undefined> = [];
+    const content = {
+      name: "plugin-dist-ref",
+      short_name: "plugin-dist-ref",
+      homepage_url: "",
+      commands: {
+        command: {
+          description: "description",
+          "ubiquity:example": "example",
+        },
+      },
+      configuration: {},
+      description: "",
+      "ubiquity:listeners": [],
+      skipBotEvents: true,
+    };
+
+    function getContent({ ref }: Record<string, string | undefined>) {
+      calls.push(ref);
+      if (ref !== "dist/feature/ref") {
+        throw { status: 404 };
+      }
+      return {
+        data: {
+          content: btoa(JSON.stringify(content)),
+        },
+      };
+    }
+
+    const manifest = await getManifest(
+      {
+        octokit: {
+          rest: {
+            repos: {
+              getContent,
+            },
+          },
+        },
+      } as unknown as GitHubContext,
+      { owner, repo, ref: "dist/feature/ref", workflowId },
+    );
+
+    assertEquals(manifest, content);
+    assertEquals(calls, ["dist/feature/ref"]);
+  },
+});
+
 Deno.test("Configuration: does not skip bot event when skipBotEvents is set to false", async () => {
-  function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+  function getContent(
+    args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"],
+  ) {
     let data: string;
     if (args.path === manifestPath) {
       data = `
@@ -250,9 +432,9 @@ Deno.test("Configuration: does not skip bot event when skipBotEvents is set to f
         target: parsePluginIdentifier(pluginKey),
         settings: pluginSettings,
       },
-      issueOpened as EmitterWebhookEventName
+      issueOpened as EmitterWebhookEventName,
     ),
-    false
+    false,
   );
 });
 
@@ -262,7 +444,9 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const testConfigPath = getConfigFullPathForEnvironment("test");
-    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+    function getContent(
+      args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"],
+    ) {
       let data: string;
       if (args.path === manifestPath) {
         data = `
