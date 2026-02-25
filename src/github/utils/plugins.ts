@@ -23,9 +23,7 @@ const kernelManifestSchema = T.Intersect([
   T.Omit(sdkManifestSchema as unknown as TSchema, ["ubiquity:listeners"]),
   T.Object({
     // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
-    "ubiquity:listeners": T.Optional(
-      T.Array(T.String({ minLength: 1 }), { default: [] }),
-    ),
+    "ubiquity:listeners": T.Array(T.String({ minLength: 1 }), { default: [] }),
   }),
 ]);
 
@@ -43,10 +41,15 @@ function setManifestCache(key: string, manifest: Manifest) {
   manifestCache.set(key, manifest);
 }
 
+/** Builds a stable cache key scoped by owner/repo and optional ref. */
 function getManifestCacheKey(owner: string, repo: string, ref?: string) {
   return ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
 }
 
+/**
+ * Returns action-manifest lookup candidates in priority order.
+ * For source refs, artifact refs are preferred first and source ref is retained as fallback.
+ */
 function buildManifestRefCandidates(ref?: string): (string | undefined)[] {
   if (!ref) {
     return [undefined];
@@ -60,6 +63,7 @@ function buildManifestRefCandidates(ref?: string): (string | undefined)[] {
   return [`dist/${ref}`, ref];
 }
 
+/** Extracts an HTTP status from unknown thrown values (Error or plain object shapes). */
 function getHttpStatus(error: unknown): number | null {
   if (typeof error !== "object" || error === null) return null;
   if (!("status" in error)) return null;
