@@ -186,7 +186,9 @@ async function fetchActionManifest(
 ): Promise<Manifest | null> {
   const useCache = isManifestCacheEnabled(context);
   const refCandidates = buildManifestRefCandidates(ref);
-  const fallbackRef = refCandidates.length > 1 ? refCandidates[1] : undefined;
+  const fallbackRef = refCandidates.length > 1
+    ? refCandidates[refCandidates.length - 1]
+    : undefined;
 
   for (const candidateRef of refCandidates) {
     const manifestKey = getManifestCacheKey(owner, repo, candidateRef);
