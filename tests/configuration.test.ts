@@ -96,81 +96,88 @@ Deno.test("Configuration: parses Action path when branch and workflow are specif
 });
 
 Deno.test({
-  name: "Configuration: retrieves the configuration manifest from the proper branch if specified",
+  name: "Configuration: resolves GitHub plugin manifests from dist/<source-ref> with source-ref fallback",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
-    let repo = "ubiquity-os-kernel";
-    let ref: string | undefined = "fork/pull/1";
     const owner = "ubiquity";
+    const repo = "ubiquity-os-kernel";
     const workflowId = "action.yml";
-    const content: Record<string, object> = {
-      withRef: {
-        name: "plugin",
-        short_name: "plugin",
-        homepage_url: "",
-        commands: {
-          command: {
-            description: "description",
-            "ubiquity:example": "example",
-          },
+
+    const artifactManifest = {
+      name: "plugin",
+      short_name: "plugin",
+      homepage_url: "",
+      commands: {
+        command: {
+          description: "description",
+          "ubiquity:example": "example",
         },
-        configuration: {},
-        description: "",
-        "ubiquity:listeners": [],
-        skipBotEvents: true,
       },
-      withoutRef: {
-        name: "plugin-no-ref",
-        short_name: "plugin-no-ref",
-        homepage_url: "",
-        commands: {
-          command: {
-            description: "description",
-            "ubiquity:example": "example",
-          },
-        },
-        configuration: {},
-        description: "",
-        "ubiquity:listeners": [],
-        skipBotEvents: true,
-      },
+      configuration: {},
+      description: "",
+      "ubiquity:listeners": [],
+      skipBotEvents: true,
     };
+
+    const legacyManifest = {
+      ...artifactManifest,
+      name: "plugin-legacy",
+      short_name: "plugin-legacy",
+    };
+
+    const calls: string[] = [];
     function getContent({ ref }: Record<string, string>) {
-      return {
-        data: {
-          content: btoa(JSON.stringify(ref ? content["withRef"] : content["withoutRef"])),
-        },
-      };
+      calls.push(ref);
+      if (ref === "dist/fork/pull/1") {
+        return { data: { content: btoa(JSON.stringify(artifactManifest)) } };
+      }
+      if (ref === "dist/main") {
+        const error = new Error("Not Found") as Error & { status?: number };
+        error.status = 404;
+        throw error;
+      }
+      if (ref === "main") {
+        return { data: { content: btoa(JSON.stringify(legacyManifest)) } };
+      }
+      throw new Error(`Unexpected ref: ${ref}`);
     }
-    let manifest = await getManifest(
-      {
-        octokit: {
-          rest: {
-            repos: {
-              getContent,
-            },
+
+    const context = {
+      octokit: {
+        rest: {
+          apps: {
+            getRepoInstallation: async () => ({ data: { id: 123 } }),
+          },
+          repos: {
+            getContent,
           },
         },
-      } as unknown as GitHubContext,
-      { owner, repo, ref, workflowId }
-    );
-    assertEquals(manifest, content["withRef"]);
-    ref = undefined;
-    repo = "repo-2";
-    manifest = await getManifest(
-      {
-        octokit: {
+      },
+      eventHandler: {
+        getAuthenticatedOctokit: () => ({
           rest: {
             repos: {
-              getContent,
+              get: async () => ({ data: { default_branch: "main" } }),
             },
           },
-        },
-      } as unknown as GitHubContext,
-      { owner, repo, ref, workflowId }
-    );
-    assertEquals(manifest, content["withoutRef"]);
+        }),
+        environment: "test",
+      },
+      logger: {
+        debug: () => {},
+        error: () => {},
+        warn: () => {},
+      },
+    } as unknown as GitHubContext;
+
+    const withRefManifest = await getManifest(context, { owner, repo, ref: "fork/pull/1", workflowId });
+    assertEquals(withRefManifest, artifactManifest);
+
+    const withoutRefManifest = await getManifest(context, { owner, repo, ref: undefined, workflowId });
+    assertEquals(withoutRefManifest, legacyManifest);
+
+    assertEquals(calls, ["dist/fork/pull/1", "dist/main", "main"]);
   },
 });
 

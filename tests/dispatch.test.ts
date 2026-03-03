@@ -84,14 +84,14 @@ Deno.test("handleEvent: continues dispatching plugins if one throws", async () =
       ] as never;
     },
     getManifest: async () => ({ name: "plugin" }) as never,
-    resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin) }) as never,
+    resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin), sourceRef: String(plugin) }) as never,
     dispatchPluginTarget: async ({ plugin, pluginInput }) => {
       dispatches.push({ plugin: typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`, eventName: String(pluginInput.eventName) });
       dispatchAttempt += 1;
       if (dispatchAttempt === 1) {
         throw new Error("Test induced first call failure");
       }
-      return { target: { kind: "worker", targetUrl: "ok", ref: "ok" } } as never;
+      return { target: { kind: "worker", targetUrl: "ok", ref: "ok", sourceRef: "ok" } } as never;
     },
   };
 

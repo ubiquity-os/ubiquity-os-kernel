@@ -106,7 +106,7 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
       }
       return null;
     },
-    resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin) }) as never,
+    resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin), sourceRef: String(plugin) }) as never,
     dispatchPluginTarget: async ({ plugin, pluginInput }) => {
       const pluginId = typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`;
       captured.push({ plugin: pluginId, eventName: String(pluginInput.eventName), eventPayload: pluginInput.eventPayload });
@@ -114,7 +114,7 @@ Deno.test("kernel.plugin_error: dispatches to subscribed plugins when plugin dis
       if (dispatchAttempt === 1) {
         throw new Error("HTTP 502: bad gateway");
       }
-      return { target: { kind: "worker", targetUrl: pluginId, ref: pluginId } } as never;
+      return { target: { kind: "worker", targetUrl: pluginId, ref: pluginId, sourceRef: pluginId } } as never;
     },
   };
 
@@ -184,11 +184,11 @@ Deno.test({
         }
         return null;
       },
-      resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin) }) as never,
+      resolvePluginDispatchTarget: async ({ plugin }) => ({ kind: "worker", targetUrl: String(plugin), ref: String(plugin), sourceRef: String(plugin) }) as never,
       dispatchPluginTarget: async ({ plugin, pluginInput }) => {
         const pluginId = typeof plugin === "string" ? plugin : `${plugin.owner}/${plugin.repo}`;
         captured.push({ plugin: pluginId, eventName: String(pluginInput.eventName), eventPayload: pluginInput.eventPayload });
-        return { target: { kind: "worker", targetUrl: pluginId, ref: pluginId } } as never;
+        return { target: { kind: "worker", targetUrl: pluginId, ref: pluginId, sourceRef: pluginId } } as never;
       },
     };
 

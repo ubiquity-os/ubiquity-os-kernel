@@ -449,7 +449,7 @@ async function emitKernelPluginErrorEvent({
         eventPayload,
         settings?.with,
         authToken,
-        dispatchTarget.ref,
+        dispatchTarget.sourceRef,
         null
       );
 
@@ -542,7 +542,7 @@ async function emitKernelErrorEvent({
         eventPayload,
         settings?.with,
         authToken,
-        dispatchTarget.ref,
+        dispatchTarget.sourceRef,
         null
       );
 
@@ -722,7 +722,7 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
       const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
-      ref = dispatchTarget.ref;
+      ref = dispatchTarget.sourceRef;
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);

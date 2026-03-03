@@ -7,6 +7,7 @@ import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
 import { isPlainObject } from "./helpers.ts";
+import { getDefaultBranch } from "./workflow-dispatch.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
 const manifestCache = new Map<string, Manifest>();
@@ -54,6 +55,14 @@ function formatPluginTarget(target: string | GithubPlugin) {
   return typeof target === "string"
     ? target
     : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+}
+
+export function toArtifactRef(sourceRef: string) {
+  return sourceRef.startsWith("dist/") ? sourceRef : `dist/${sourceRef}`;
+}
+
+async function resolveSourceRef(context: GitHubContext, plugin: GithubPlugin) {
+  return plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
 }
 
 export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
@@ -121,14 +130,19 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
-async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
-  const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
+async function fetchActionManifest(context: GitHubContext, plugin: GithubPlugin): Promise<Manifest | null> {
+  const { owner, repo } = plugin;
+  const sourceRef = await resolveSourceRef(context, plugin);
+  const artifactRef = toArtifactRef(sourceRef);
   const useCache = isManifestCacheEnabled(context);
-  if (useCache) {
-    const cached = readManifestCache(manifestKey);
-    if (cached) return cached;
-  }
-  try {
+
+  async function fetchByRef(ref: string): Promise<Manifest | null> {
+    const manifestKey = `${owner}:${repo}:${ref}`;
+    if (useCache) {
+      const cached = readManifestCache(manifestKey);
+      if (cached) return cached;
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
     try {
@@ -139,21 +153,35 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
         ref,
         request: { signal: controller.signal },
       });
-      if ("content" in data) {
-        const content = Buffer.from(data.content, "base64").toString();
-        const contentParsed = JSON.parse(content);
-        const manifest = decodeManifest(context, contentParsed);
-        if (useCache) {
-          setManifestCache(manifestKey, manifest);
-        }
-        return manifest;
+      if (!("content" in data)) {
+        return null;
       }
+      const content = Buffer.from(data.content, "base64").toString();
+      const contentParsed = JSON.parse(content);
+      const manifest = decodeManifest(context, contentParsed);
+      if (useCache) {
+        setManifestCache(manifestKey, manifest);
+      }
+      return manifest;
     } finally {
       clearTimeout(timeout);
     }
-  } catch (e) {
-    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
   }
+
+  try {
+    return await fetchByRef(artifactRef);
+  } catch (error) {
+    context.logger.debug({ owner, repo, sourceRef, artifactRef, err: error }, "Artifact manifest lookup failed; trying source ref fallback");
+  }
+
+  if (artifactRef !== sourceRef) {
+    try {
+      return await fetchByRef(sourceRef);
+    } catch (error) {
+      context.logger.error({ owner, repo, sourceRef, artifactRef, err: error }, "Could not find a manifest for Action");
+    }
+  }
+
   return null;
 }
 

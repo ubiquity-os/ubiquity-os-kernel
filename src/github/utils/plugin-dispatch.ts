@@ -3,12 +3,12 @@ import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin } from "../types/plugin-configuration.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { withKernelContextWorkflowInputsIfNeeded } from "./plugin-dispatch-settings.ts";
-import { getManifest, getWorkerUrlFromManifest } from "./plugins.ts";
+import { getManifest, getWorkerUrlFromManifest, toArtifactRef } from "./plugins.ts";
 import { dispatchWorker, dispatchWorkflow, dispatchWorkflowWithRunUrl, getDefaultBranch } from "./workflow-dispatch.ts";
 
 export type PluginDispatchTarget =
-  | { kind: "worker"; targetUrl: string; ref: string }
-  | { kind: "workflow"; owner: string; repository: string; workflowId: string; ref: string };
+  | { kind: "worker"; targetUrl: string; ref: string; sourceRef: string }
+  | { kind: "workflow"; owner: string; repository: string; workflowId: string; ref: string; sourceRef: string };
 
 type ResolveDispatchTargetOptions = {
   context: GitHubContext;
@@ -20,13 +20,14 @@ export async function resolvePluginDispatchTarget({ context, plugin, manifest }:
   const resolvedManifest = manifest ?? (await getManifest(context, plugin));
   const workerUrl = getWorkerUrlFromManifest(resolvedManifest);
   if (workerUrl) {
-    return { kind: "worker", targetUrl: workerUrl, ref: workerUrl };
+    return { kind: "worker", targetUrl: workerUrl, ref: workerUrl, sourceRef: workerUrl };
   }
   if (typeof plugin === "string") {
-    return { kind: "worker", targetUrl: plugin, ref: plugin };
+    return { kind: "worker", targetUrl: plugin, ref: plugin, sourceRef: plugin };
   }
-  const ref = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
-  return { kind: "workflow", owner: plugin.owner, repository: plugin.repo, workflowId: plugin.workflowId, ref };
+  const sourceRef = plugin.ref ?? (await getDefaultBranch(context, plugin.owner, plugin.repo));
+  const ref = toArtifactRef(sourceRef);
+  return { kind: "workflow", owner: plugin.owner, repository: plugin.repo, workflowId: plugin.workflowId, ref, sourceRef };
 }
 
 type DispatchPluginTargetOptions = {

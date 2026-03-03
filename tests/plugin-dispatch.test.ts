@@ -39,7 +39,7 @@ Deno.test("resolvePluginDispatchTarget: prefers manifest worker urls for github 
 
   const target = await resolvePluginDispatchTarget({ context, plugin, manifest });
 
-  assertEquals(target, { kind: "worker", targetUrl: URL_EXAMPLE, ref: URL_EXAMPLE });
+  assertEquals(target, { kind: "worker", targetUrl: URL_EXAMPLE, ref: URL_EXAMPLE, sourceRef: URL_EXAMPLE });
   assertEquals(reposGetCalls, 0);
 });
 
@@ -80,5 +80,12 @@ Deno.test("resolvePluginDispatchTarget: falls back to workflow dispatch using th
 
   assertEquals(appsGetRepoInstallationCalls, 1);
   assertEquals(reposGetCalls, 1);
-  assertEquals(target, { kind: "workflow", owner: "octo", repository: "demo", workflowId: WORKFLOW_ID, ref: "main" });
+  assertEquals(target, {
+    kind: "workflow",
+    owner: "octo",
+    repository: "demo",
+    workflowId: WORKFLOW_ID,
+    ref: "dist/main",
+    sourceRef: "main",
+  });
 });

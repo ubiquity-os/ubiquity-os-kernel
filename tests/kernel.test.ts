@@ -96,7 +96,7 @@ Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", asy
         settings: { runsOn: [ISSUE_COMMENT_CREATED], skipBotEvents: false, with: {} },
       } as never,
     ],
-    resolvePluginDispatchTarget: async () => ({ kind: "worker", targetUrl: TEST_WORKER_URL, ref: TEST_WORKER_URL }) as never,
+    resolvePluginDispatchTarget: async () => ({ kind: "worker", targetUrl: TEST_WORKER_URL, ref: TEST_WORKER_URL, sourceRef: TEST_WORKER_URL }) as never,
     dispatchPluginTarget: async ({ target }) => {
       dispatched.push({ targetUrl: (target as { targetUrl: string }).targetUrl });
       return { target, response: new Response(null, { status: 200 }) };

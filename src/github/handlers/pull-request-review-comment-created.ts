@@ -183,7 +183,7 @@ async function dispatchReviewCommand(
   const stateId = crypto.randomUUID();
   const token = await context.eventHandler.getToken(context.payload.installation.id);
   const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: match.manifest });
-  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
+  const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.sourceRef, command);
 
   context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin from review thread.");
   try {
