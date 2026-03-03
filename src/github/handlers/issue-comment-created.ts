@@ -440,8 +440,8 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   const config = await getConfig(context);
-  if (!config) {
-    context.logger.debug("No configuration was found");
+  if (!config || !config.plugins) {
+    context.logger.debug("No configuration or plugins found");
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
