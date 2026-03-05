@@ -1,10 +1,10 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
-import { Type as T, type TSchema } from "@sinclair/typebox";
+import { type TSchema, Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
-import { GithubPlugin, PluginConfiguration, PluginSettings, isGithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { GithubPlugin, isGithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
 import { isPlainObject } from "./helpers.ts";
 
@@ -121,6 +121,56 @@ export function getManifest(context: GitHubContext, plugin: string | GithubPlugi
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
+function normalizeRefCandidate(ref: string): string {
+  return String(ref || "")
+    .trim()
+    .replace(/^refs\/heads\//, "")
+    .replace(/^refs\/tags\//, "");
+}
+
+function pushUnique(values: string[], value: string) {
+  if (!value) return;
+  if (!values.includes(value)) {
+    values.push(value);
+  }
+}
+
+function buildManifestRefCandidates(ref: string | undefined): (string | undefined)[] {
+  if (!ref) {
+    return [undefined];
+  }
+
+  const normalized = normalizeRefCandidate(ref);
+  if (!normalized) {
+    return [undefined];
+  }
+
+  const refs: string[] = [];
+  if (normalized.startsWith("dist/")) {
+    pushUnique(refs, normalized);
+  } else {
+    pushUnique(refs, `dist/${normalized}`);
+  }
+
+  if (normalized === "development") {
+    pushUnique(refs, "dist/develop");
+  }
+  if (normalized === "develop") {
+    pushUnique(refs, "dist/development");
+  }
+
+  pushUnique(refs, normalized);
+
+  if (normalized === "development") {
+    pushUnique(refs, "develop");
+  }
+  if (normalized === "develop") {
+    pushUnique(refs, "development");
+  }
+
+  return refs;
+}
+
 async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
@@ -128,32 +178,41 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
     const cached = readManifestCache(manifestKey);
     if (cached) return cached;
   }
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  const refCandidates = buildManifestRefCandidates(ref);
+  for (const refCandidate of refCandidates) {
     try {
-      const { data } = await context.octokit.rest.repos.getContent({
-        owner,
-        repo,
-        path: "manifest.json",
-        ref,
-        request: { signal: controller.signal },
-      });
-      if ("content" in data) {
-        const content = Buffer.from(data.content, "base64").toString();
-        const contentParsed = JSON.parse(content);
-        const manifest = decodeManifest(context, contentParsed);
-        if (useCache) {
-          setManifestCache(manifestKey, manifest);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      try {
+        const { data } = await context.octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: "manifest.json",
+          ref: refCandidate,
+          request: { signal: controller.signal },
+        });
+        if ("content" in data) {
+          const content = Buffer.from(data.content, "base64").toString();
+          const contentParsed = JSON.parse(content);
+          const manifest = decodeManifest(context, contentParsed);
+          if (useCache) {
+            setManifestCache(manifestKey, manifest);
+          }
+          return manifest;
         }
-        return manifest;
+      } finally {
+        clearTimeout(timeout);
       }
-    } finally {
-      clearTimeout(timeout);
+    } catch (e) {
+      const status = e && typeof e === "object" && "status" in e ? Number((e as { status?: number }).status) : null;
+      if (status === 404) {
+        context.logger.debug({ owner, repo, ref: refCandidate }, "Action manifest not found for ref candidate");
+        continue;
+      }
+      context.logger.warn({ owner, repo, ref: refCandidate, err: e }, "Failed to fetch action manifest for ref candidate");
     }
-  } catch (e) {
-    context.logger.error({ owner, repo, err: e }, "Could not find a manifest for Action");
   }
+  context.logger.error({ owner, repo, refCandidates }, "Could not find a manifest for Action");
   return null;
 }
 

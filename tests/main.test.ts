@@ -20,6 +20,10 @@ const logger = {
 const issueOpened = "issues.opened";
 const conversationRewardsRepo = "conversation-rewards";
 const ISSUE_COMMENT_CREATED = "issue_comment.created";
+const COMMAND_EXAMPLE = "/command";
+const NOT_FOUND_ERROR = "Not Found";
+const CONFIG_ORG_REPO = ".ubiquity-os";
+const DEV_CONFIG_PATH = ".github/.ubiquity-os.config.dev.yml";
 
 const eventHandler = {
   environment: "production",
@@ -199,12 +203,12 @@ Deno.test("getConfig: merges organization and repository configuration", async (
           "commands": {
             "command": {
               "description": "description",
-              "ubiquity:example": "/command"
+              "ubiquity:example": "${COMMAND_EXAMPLE}"
             }
           }
         }
         `;
-      } else if (args.repo !== ".ubiquity-os") {
+      } else if (args.repo !== CONFIG_ORG_REPO) {
         data = `
         plugins:
           repo-3/plugin-3:
@@ -330,7 +334,7 @@ Deno.test("getConfig: resolves imports before merging repo configuration", async
 
     function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
       let data: string;
-      if (args.repo === ".ubiquity-os") {
+      if (args.repo === CONFIG_ORG_REPO) {
         data = orgYaml;
       } else if (args.repo === conversationRewardsRepo) {
         data = repoYaml;
@@ -339,7 +343,7 @@ Deno.test("getConfig: resolves imports before merging repo configuration", async
       } else if (args.repo === "repo-shared") {
         data = repoImportYaml;
       } else {
-        throw new Error("Not Found");
+        throw new Error(NOT_FOUND_ERROR);
       }
 
       if (args.mediaType === undefined || args.mediaType?.format === "base64") {
@@ -375,9 +379,94 @@ Deno.test("getConfig: resolves imports before merging repo configuration", async
       logger,
     } as unknown as GitHubContext);
 
-    assertEquals(cfg.plugins["https://plugin-a.internal"]?.with, { source: "repo" });
-    assertEquals(cfg.plugins["https://plugin-b.internal"]?.with, { enabled: true });
+    assertEquals(cfg.plugins["https://plugin-a.internal"]?.with, {
+      source: "repo",
+    });
+    assertEquals(cfg.plugins["https://plugin-b.internal"]?.with, {
+      enabled: true,
+    });
     assertEquals(cfg.plugins["https://plugin-c.internal"]?.with, { level: 2 });
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: hydrates empty runsOn from dist artifact manifest refs", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  const pluginKey = "ubiquity-os-marketplace/command-query@development";
+  const orgYaml = `
+    plugins:
+      ${pluginKey}:
+        with:
+          allowPublicQuery: true
+  `;
+  const manifestJson = JSON.stringify({
+    name: "command-query",
+    short_name: pluginKey,
+    homepage_url: "",
+    description: "plugin manifest",
+    "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+    skipBotEvents: false,
+    commands: {},
+  });
+
+  try {
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      if (args.path === "manifest.json") {
+        if (args.ref === "dist/development") {
+          return {
+            data: {
+              content: btoa(manifestJson),
+            },
+          };
+        }
+        const notFound = new Error(NOT_FOUND_ERROR) as Error & {
+          status: number;
+        };
+        notFound.status = 404;
+        throw notFound;
+      }
+
+      if (args.mediaType?.format === "raw") {
+        if (args.repo === CONFIG_ORG_REPO && args.path === DEV_CONFIG_PATH) {
+          return { data: orgYaml };
+        }
+        const notFound = new Error(NOT_FOUND_ERROR) as Error & {
+          status: number;
+        };
+        notFound.status = 404;
+        throw notFound;
+      }
+
+      const notFound = new Error(NOT_FOUND_ERROR) as Error & { status: number };
+      notFound.status = 404;
+      throw notFound;
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity-os-marketplace" },
+          name: "command-query",
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler: {
+        environment: "development",
+      } as GitHubEventHandler,
+      logger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins[pluginKey]?.runsOn, [ISSUE_COMMENT_CREATED]);
   } finally {
     fetchStub.restore();
   }
