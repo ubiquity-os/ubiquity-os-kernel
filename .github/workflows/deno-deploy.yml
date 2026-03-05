@@ -55,7 +55,6 @@ jobs:
           NODE_ENV: "production"
           GIT_REVISION: ${{ github.sha }}
         with:
-          sourceRef: ${{ github.event.ref || github.event.workflow_run.head_branch || github.ref_name }}
           artifactPrefix: dist/
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
