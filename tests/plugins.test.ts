@@ -1,11 +1,7 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { assertEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
-import {
-  getManifest,
-  ResolvedPlugin,
-  shouldSkipPlugin,
-} from "../src/github/utils/plugins.ts";
+import { getManifest, ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
 
 const testLogger = {
   trace: () => {},
@@ -53,9 +49,9 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
         logger: testLogger,
       } as unknown as GitHubContext,
       basePlugin,
-      issueCommentCreated,
+      issueCommentCreated
     ),
-    true,
+    true
   );
 
   // Skipping because the plugin doesn't listen to the event
@@ -71,9 +67,9 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
         logger: testLogger,
       } as unknown as GitHubContext,
       basePlugin,
-      issueCommentCreated,
+      issueCommentCreated
     ),
-    true,
+    true
   );
 
   // Not skipping when runsOn matches the event
@@ -89,9 +85,9 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
         logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([issueCommentCreated]),
-      issueCommentCreated,
+      issueCommentCreated
     ),
-    false,
+    false
   );
 
   // Not skipping matching listener
@@ -107,9 +103,9 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
         logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([pullRequestOpened]),
-      pullRequestOpened,
+      pullRequestOpened
     ),
-    false,
+    false
   );
 
   // Skipping non-matching listener
@@ -125,9 +121,9 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
         logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([pullRequestOpened]),
-      "pull_request.closed",
+      "pull_request.closed"
     ),
-    true,
+    true
   );
 });
 
@@ -155,11 +151,7 @@ function createNotFoundError() {
   return error;
 }
 
-function createManifestContext(
-  getContent: (
-    args: { ref?: string },
-  ) => Promise<{ data: { content: string } }>,
-): GitHubContext {
+function createManifestContext(getContent: (args: { ref?: string }) => Promise<{ data: { content: string } }>): GitHubContext {
   return {
     octokit: {
       rest: {
