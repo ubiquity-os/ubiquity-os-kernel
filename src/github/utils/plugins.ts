@@ -1,10 +1,19 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { type TSchema, Type as T } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { Manifest, manifestSchema as sdkManifestSchema } from "@ubiquity-os/plugin-sdk/manifest";
+import {
+  Manifest,
+  manifestSchema as sdkManifestSchema,
+} from "@ubiquity-os/plugin-sdk/manifest";
 import { Buffer } from "node:buffer";
 import { GitHubContext } from "../github-context.ts";
-import { GithubPlugin, isGithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration.ts";
+import {
+  GithubPlugin,
+  isGithubPlugin,
+  parsePluginIdentifier,
+  PluginConfiguration,
+  PluginSettings,
+} from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
 import { isPlainObject } from "./helpers.ts";
 
@@ -14,7 +23,9 @@ const kernelManifestSchema = T.Intersect([
   T.Omit(sdkManifestSchema as unknown as TSchema, ["ubiquity:listeners"]),
   T.Object({
     // Allow kernel-defined synthetic events (e.g. "kernel.plugin_error") without rejecting the entire manifest.
-    "ubiquity:listeners": T.Optional(T.Array(T.String({ minLength: 1 }), { default: [] })),
+    "ubiquity:listeners": T.Optional(
+      T.Array(T.String({ minLength: 1 }), { default: [] }),
+    ),
   }),
 ]);
 
@@ -39,7 +50,8 @@ export type ResolvedPlugin = {
 };
 
 function isManifestCacheEnabled(context: GitHubContext) {
-  const environment = String(context.eventHandler?.environment ?? "").toLowerCase();
+  const environment = String(context.eventHandler?.environment ?? "")
+    .toLowerCase();
   // Keep non-production environments hot-reload friendly.
   if (environment !== "production" && environment !== "prod") {
     return false;
@@ -53,7 +65,9 @@ function isManifestCacheEnabled(context: GitHubContext) {
 function formatPluginTarget(target: string | GithubPlugin) {
   return typeof target === "string"
     ? target
-    : `${target.owner}/${target.repo}${target.workflowId ? ":" + target.workflowId : ""}${target.ref ? "@" + target.ref : ""}`;
+    : `${target.owner}/${target.repo}${
+      target.workflowId ? ":" + target.workflowId : ""
+    }${target.ref ? "@" + target.ref : ""}`;
 }
 
 export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
@@ -75,15 +89,28 @@ export function mergeWithDefaults<T>(defaults: T, overrides: unknown): T {
   return result as T;
 }
 
-export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedPlugin, event: EmitterWebhookEventName) {
-  if (plugin.settings?.skipBotEvents && "sender" in context.payload && context.payload.sender?.type === "Bot") {
-    context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because sender is bot");
+export async function shouldSkipPlugin(
+  context: GitHubContext,
+  plugin: ResolvedPlugin,
+  event: EmitterWebhookEventName,
+) {
+  if (
+    plugin.settings?.skipBotEvents && "sender" in context.payload &&
+    context.payload.sender?.type === "Bot"
+  ) {
+    context.logger.debug(
+      { plugin: formatPluginTarget(plugin.target) },
+      "Skipping plugin because sender is bot",
+    );
     return true;
   }
   const runsOn = plugin.settings?.runsOn;
   if (Array.isArray(runsOn)) {
     if (runsOn.length === 0) {
-      context.logger.debug({ plugin: formatPluginTarget(plugin.target) }, "Skipping plugin because runsOn is empty");
+      context.logger.debug(
+        { plugin: formatPluginTarget(plugin.target) },
+        "Skipping plugin because runsOn is empty",
+      );
       return true;
     }
     return !runsOn.includes(event);
@@ -94,7 +121,7 @@ export async function shouldSkipPlugin(context: GitHubContext, plugin: ResolvedP
 export async function getPluginsForEvent(
   context: GitHubContext,
   plugins: PluginConfiguration["plugins"],
-  event: EmitterWebhookEventName
+  event: EmitterWebhookEventName,
 ): Promise<ResolvedPlugin[]> {
   const allowedPlugins: ResolvedPlugin[] = [];
   for (const [pluginKey, settings] of Object.entries(plugins)) {
@@ -102,7 +129,10 @@ export async function getPluginsForEvent(
     try {
       target = parsePluginIdentifier(pluginKey);
     } catch (error) {
-      context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
+      context.logger.error(
+        { plugin: pluginKey, err: error },
+        "Invalid plugin identifier; skipping",
+      );
       continue;
     }
     const resolvedPlugin: ResolvedPlugin = {
@@ -117,8 +147,13 @@ export async function getPluginsForEvent(
   return allowedPlugins;
 }
 
-export function getManifest(context: GitHubContext, plugin: string | GithubPlugin) {
-  return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
+export function getManifest(
+  context: GitHubContext,
+  plugin: string | GithubPlugin,
+) {
+  return isGithubPlugin(plugin)
+    ? fetchActionManifest(context, plugin)
+    : fetchWorkerManifest(context, plugin);
 }
 
 function normalizeRefCandidate(ref: string): string {
@@ -135,7 +170,9 @@ function pushUnique(values: string[], value: string) {
   }
 }
 
-function buildManifestRefCandidates(ref: string | undefined): (string | undefined)[] {
+function buildManifestRefCandidates(
+  ref: string | undefined,
+): (string | undefined)[] {
   if (!ref) {
     return [undefined];
   }
@@ -150,28 +187,16 @@ function buildManifestRefCandidates(ref: string | undefined): (string | undefine
     pushUnique(refs, normalized);
   } else {
     pushUnique(refs, `dist/${normalized}`);
-  }
-
-  if (normalized === "development") {
-    pushUnique(refs, "dist/develop");
-  }
-  if (normalized === "develop") {
-    pushUnique(refs, "dist/development");
-  }
-
-  pushUnique(refs, normalized);
-
-  if (normalized === "development") {
-    pushUnique(refs, "develop");
-  }
-  if (normalized === "develop") {
-    pushUnique(refs, "development");
+    pushUnique(refs, normalized);
   }
 
   return refs;
 }
 
-async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
+async function fetchActionManifest(
+  context: GitHubContext,
+  { owner, repo, ref }: GithubPlugin,
+): Promise<Manifest | null> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
   if (useCache) {
@@ -204,19 +229,33 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
         clearTimeout(timeout);
       }
     } catch (e) {
-      const status = e && typeof e === "object" && "status" in e ? Number((e as { status?: number }).status) : null;
+      const status = e && typeof e === "object" && "status" in e
+        ? Number((e as { status?: number }).status)
+        : null;
       if (status === 404) {
-        context.logger.debug({ owner, repo, ref: refCandidate }, "Action manifest not found for ref candidate");
+        context.logger.debug(
+          { owner, repo, ref: refCandidate },
+          "Action manifest not found for ref candidate",
+        );
         continue;
       }
-      context.logger.warn({ owner, repo, ref: refCandidate, err: e }, "Failed to fetch action manifest for ref candidate");
+      context.logger.warn(
+        { owner, repo, ref: refCandidate, err: e },
+        "Failed to fetch action manifest for ref candidate",
+      );
     }
   }
-  context.logger.error({ owner, repo, refCandidates }, "Could not find a manifest for Action");
+  context.logger.error(
+    { owner, repo, refCandidates },
+    "Could not find a manifest for Action",
+  );
   return null;
 }
 
-async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
+async function fetchWorkerManifest(
+  context: GitHubContext,
+  url: string,
+): Promise<Manifest | null> {
   const useCache = isManifestCacheEnabled(context);
   if (useCache) {
     const cached = readManifestCache(url);
@@ -237,7 +276,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
             statusText: result.statusText,
             body: body.slice(0, 500),
           },
-          "Could not find a manifest for Worker"
+          "Could not find a manifest for Worker",
         );
         return null;
       }
@@ -251,13 +290,19 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       clearTimeout(timeout);
     }
   } catch (e) {
-    context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
+    context.logger.error(
+      { manifestUrl, err: e },
+      "Could not find a manifest for Worker",
+    );
   }
   return null;
 }
 
 function decodeManifest(context: GitHubContext, manifest: unknown) {
-  const manifestWithDefaults = mergeWithDefaults(Value.Create(kernelManifestSchema), manifest);
+  const manifestWithDefaults = mergeWithDefaults(
+    Value.Create(kernelManifestSchema),
+    manifest,
+  );
   const errors = [...Value.Errors(kernelManifestSchema, manifestWithDefaults)];
   if (errors.length) {
     for (const error of errors) {
@@ -273,5 +318,7 @@ export function getWorkerUrlFromManifest(manifest?: Manifest | null) {
     return null;
   }
   const homepageUrl = manifest.homepage_url;
-  return typeof homepageUrl === "string" && homepageUrl.length ? homepageUrl : null;
+  return typeof homepageUrl === "string" && homepageUrl.length
+    ? homepageUrl
+    : null;
 }
