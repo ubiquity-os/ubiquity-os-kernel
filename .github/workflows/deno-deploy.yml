@@ -55,7 +55,6 @@ jobs:
           NODE_ENV: "production"
           GIT_REVISION: ${{ github.sha }}
         with:
-          artifactPrefix: dist/
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
