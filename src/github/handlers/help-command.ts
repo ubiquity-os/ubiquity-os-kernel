@@ -256,18 +256,11 @@ async function applyCommandResponsePolicy(context: GitHubContext<"issue_comment.
 
   const commentNodeId = await getCommentNodeId(context);
   const comments = await fetchRecentComments(context, locator);
-  const current = commentNodeId ? comments.find((comment) => comment.id === commentNodeId) : null;
-  const isCurrentMinimized = current?.isMinimized ?? false;
-
-  if (commentNodeId && !isCurrentMinimized) {
-    await minimizeComment(context, commentNodeId);
-  }
-
+  
+  // Only minimize previous command response comments (bot comments)
+  // Do NOT minimize the user's original slash command comment
   const previous = findPreviousCommandResponseComment(comments, commentNodeId);
   if (previous && !previous.isMinimized) {
-    if (commentNodeId && !isCurrentMinimized) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
     await minimizeComment(context, previous.id);
   }
 }
