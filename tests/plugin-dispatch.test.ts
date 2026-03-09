@@ -9,7 +9,6 @@ const URL_EXAMPLE = "https://worker.example";
 const WORKFLOW_ID = "action.yml";
 const DEVELOPMENT_REF = "development";
 const DIST_DEVELOPMENT_REF = "dist/development";
-const DIST_DEVELOP_REF = "dist/develop";
 const MANIFEST_FIXTURE = {
   name: "plugin",
   short_name: "ubiquity-os-marketplace/daemon-spec-rewriter@development",
@@ -148,7 +147,7 @@ Deno.test("resolvePluginDispatchTarget: uses dist/development when artifact mani
   assertEquals(reposGetCalls, 0);
 });
 
-Deno.test("resolvePluginDispatchTarget: supports develop/development artifact compatibility aliases", async () => {
+Deno.test("resolvePluginDispatchTarget: does not alias development to develop", async () => {
   const refsTried: string[] = [];
   let reposGetCalls = 0;
   const context = {
@@ -157,7 +156,7 @@ Deno.test("resolvePluginDispatchTarget: supports develop/development artifact co
         repos: {
           getContent: async ({ ref }: { ref?: string }) => {
             refsTried.push(String(ref));
-            if (ref === DIST_DEVELOP_REF) {
+            if (ref === DEVELOPMENT_REF) {
               return {
                 data: {
                   content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
@@ -191,8 +190,8 @@ Deno.test("resolvePluginDispatchTarget: supports develop/development artifact co
   const plugin: GithubPlugin = { owner: "octo", repo: "demo", workflowId: WORKFLOW_ID, ref: DEVELOPMENT_REF };
   const target = await resolvePluginDispatchTarget({ context, plugin });
 
-  assertEquals(target, { kind: "workflow", owner: "octo", repository: "demo", workflowId: WORKFLOW_ID, ref: DIST_DEVELOP_REF });
-  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DIST_DEVELOP_REF]);
+  assertEquals(target, { kind: "workflow", owner: "octo", repository: "demo", workflowId: WORKFLOW_ID, ref: DEVELOPMENT_REF });
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DEVELOPMENT_REF]);
   assertEquals(reposGetCalls, 0);
 });
 
@@ -240,6 +239,6 @@ Deno.test("resolvePluginDispatchTarget: falls back to source branch when artifac
   const target = await resolvePluginDispatchTarget({ context, plugin });
 
   assertEquals(target, { kind: "workflow", owner: "octo", repository: "demo", workflowId: WORKFLOW_ID, ref: DEVELOPMENT_REF });
-  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DIST_DEVELOP_REF, DEVELOPMENT_REF]);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DEVELOPMENT_REF]);
   assertEquals(reposGetCalls, 0);
 });
