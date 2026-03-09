@@ -9,7 +9,17 @@ import { getEnvValue } from "./env.ts";
 import { isPlainObject } from "./helpers.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
-const manifestCache = new Map<string, Manifest>();
+type ManifestCacheEntry = {
+  manifest: Manifest;
+  ref?: string;
+};
+
+export type ManifestResolution = {
+  manifest: Manifest | null;
+  ref?: string;
+};
+
+const manifestCache = new Map<string, ManifestCacheEntry>();
 const kernelManifestSchema = T.Intersect([
   T.Omit(sdkManifestSchema as unknown as TSchema, ["ubiquity:listeners"]),
   T.Object({
@@ -18,18 +28,18 @@ const kernelManifestSchema = T.Intersect([
   }),
 ]);
 
-function readManifestCache(key: string): Manifest | null {
+function readManifestCache(key: string): ManifestCacheEntry | null {
   return manifestCache.get(key) ?? null;
 }
 
-function setManifestCache(key: string, manifest: Manifest) {
+function setManifestCache(key: string, entry: ManifestCacheEntry) {
   if (manifestCache.has(key)) {
     manifestCache.delete(key);
   } else if (manifestCache.size >= MAX_MANIFEST_CACHE_SIZE) {
     const oldestKey = manifestCache.keys().next().value;
     if (oldestKey) manifestCache.delete(oldestKey);
   }
-  manifestCache.set(key, manifest);
+  manifestCache.set(key, entry);
 }
 
 export type ResolvedPlugin = {
@@ -118,6 +128,10 @@ export async function getPluginsForEvent(
 }
 
 export function getManifest(context: GitHubContext, plugin: string | GithubPlugin) {
+  return getManifestResolution(context, plugin).then((resolution) => resolution.manifest);
+}
+
+export function getManifestResolution(context: GitHubContext, plugin: string | GithubPlugin): Promise<ManifestResolution> {
   return isGithubPlugin(plugin) ? fetchActionManifest(context, plugin) : fetchWorkerManifest(context, plugin);
 }
 
@@ -135,7 +149,7 @@ function pushUnique(values: string[], value: string) {
   }
 }
 
-function buildManifestRefCandidates(ref: string | undefined): (string | undefined)[] {
+export function buildManifestRefCandidates(ref: string | undefined): (string | undefined)[] {
   if (!ref) {
     return [undefined];
   }
@@ -156,12 +170,12 @@ function buildManifestRefCandidates(ref: string | undefined): (string | undefine
   return refs;
 }
 
-async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<Manifest | null> {
+async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<ManifestResolution> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
   if (useCache) {
     const cached = readManifestCache(manifestKey);
-    if (cached) return cached;
+    if (cached) return { manifest: cached.manifest, ref: cached.ref };
   }
   const refCandidates = buildManifestRefCandidates(ref);
   for (const refCandidate of refCandidates) {
@@ -181,9 +195,9 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
           const contentParsed = JSON.parse(content);
           const manifest = decodeManifest(context, contentParsed);
           if (useCache) {
-            setManifestCache(manifestKey, manifest);
+            setManifestCache(manifestKey, { manifest, ref: refCandidate });
           }
-          return manifest;
+          return { manifest, ref: refCandidate };
         }
       } finally {
         clearTimeout(timeout);
@@ -198,14 +212,14 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
     }
   }
   context.logger.error({ owner, repo, refCandidates }, "Could not find a manifest for Action");
-  return null;
+  return { manifest: null };
 }
 
-async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<Manifest | null> {
+async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<ManifestResolution> {
   const useCache = isManifestCacheEnabled(context);
   if (useCache) {
     const cached = readManifestCache(url);
-    if (cached) return cached;
+    if (cached) return { manifest: cached.manifest, ref: cached.ref };
   }
   const manifestUrl = `${url}/manifest.json`;
   try {
@@ -224,21 +238,21 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
           },
           "Could not find a manifest for Worker"
         );
-        return null;
+        return { manifest: null };
       }
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
       if (useCache) {
-        setManifestCache(url, manifest);
+        setManifestCache(url, { manifest });
       }
-      return manifest;
+      return { manifest };
     } finally {
       clearTimeout(timeout);
     }
   } catch (e) {
     context.logger.error({ manifestUrl, err: e }, "Could not find a manifest for Worker");
   }
-  return null;
+  return { manifest: null };
 }
 
 function decodeManifest(context: GitHubContext, manifest: unknown) {
