@@ -178,7 +178,7 @@ async function resolveManifestSourceRef(context: GitHubContext, owner: string, r
   try {
     return await getDefaultBranch(context, owner, repo);
   } catch (error) {
-    context.logger.warn(
+    context.logger?.warn?.(
       { owner, repo, err: error },
       "Failed to resolve plugin default branch for artifact manifest lookup; falling back to legacy no-ref lookup"
     );
