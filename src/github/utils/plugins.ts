@@ -7,6 +7,7 @@ import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, isGithubPlugin, parsePluginIdentifier, PluginConfiguration, PluginSettings } from "../types/plugin-configuration.ts";
 import { getEnvValue } from "./env.ts";
 import { isPlainObject } from "./helpers.ts";
+import { getDefaultBranch } from "./workflow-dispatch.ts";
 
 const MAX_MANIFEST_CACHE_SIZE = 100;
 type ManifestCacheEntry = {
@@ -170,6 +171,21 @@ export function buildManifestRefCandidates(ref: string | undefined): (string | u
   return refs;
 }
 
+async function resolveManifestSourceRef(context: GitHubContext, owner: string, repo: string, ref: string | undefined): Promise<string | undefined> {
+  if (ref) {
+    return ref;
+  }
+  try {
+    return await getDefaultBranch(context, owner, repo);
+  } catch (error) {
+    context.logger.warn(
+      { owner, repo, err: error },
+      "Failed to resolve plugin default branch for artifact manifest lookup; falling back to legacy no-ref lookup"
+    );
+    return undefined;
+  }
+}
+
 async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }: GithubPlugin): Promise<ManifestResolution> {
   const manifestKey = ref ? `${owner}:${repo}:${ref}` : `${owner}:${repo}`;
   const useCache = isManifestCacheEnabled(context);
@@ -177,7 +193,8 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
     const cached = readManifestCache(manifestKey);
     if (cached) return { manifest: cached.manifest, ref: cached.ref };
   }
-  const refCandidates = buildManifestRefCandidates(ref);
+  const sourceRef = await resolveManifestSourceRef(context, owner, repo, ref);
+  const refCandidates = buildManifestRefCandidates(sourceRef);
   for (const refCandidate of refCandidates) {
     try {
       const controller = new AbortController();
