@@ -211,7 +211,7 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
           const content = Buffer.from(data.content, "base64").toString();
           const contentParsed = JSON.parse(content);
           const manifest = decodeManifest(context, contentParsed);
-          if (useCache) {
+          if (useCache && refCandidate?.startsWith("dist/")) {
             setManifestCache(manifestKey, { manifest, ref: refCandidate });
           }
           return { manifest, ref: refCandidate };
@@ -226,6 +226,7 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
         continue;
       }
       context.logger.warn({ owner, repo, ref: refCandidate, err: e }, "Failed to fetch action manifest for ref candidate");
+      return { manifest: null };
     }
   }
   context.logger.error({ owner, repo, refCandidates }, "Could not find a manifest for Action");

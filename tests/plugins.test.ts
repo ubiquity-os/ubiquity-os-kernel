@@ -1,7 +1,7 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { assertEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
-import { getManifest, ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
+import { getManifest, getManifestResolution, ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
 
 const testLogger = {
   trace: () => {},
@@ -161,11 +161,20 @@ function createNotFoundError() {
   return error;
 }
 
+function createServerError() {
+  const error = new Error("Internal Server Error") as Error & {
+    status: number;
+  };
+  error.status = 500;
+  return error;
+}
+
 type ManifestContextOptions = {
   getContent: (args: { ref?: string }) => Promise<{ data: { content: string } }>;
   defaultBranch?: string;
   failDefaultBranchLookup?: boolean;
   onDefaultBranchLookup?: () => void;
+  environment?: string;
 };
 
 function createManifestContext({
@@ -173,6 +182,7 @@ function createManifestContext({
   defaultBranch = MAIN_REF,
   failDefaultBranchLookup = false,
   onDefaultBranchLookup,
+  environment = "development",
 }: ManifestContextOptions): GitHubContext {
   return {
     octokit: {
@@ -186,7 +196,7 @@ function createManifestContext({
       },
     },
     eventHandler: {
-      environment: "development",
+      environment,
       getAuthenticatedOctokit: () => ({
         rest: {
           repos: {
@@ -346,4 +356,76 @@ Deno.test("getManifest: no-ref plugins gracefully fall back to legacy lookup whe
   assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
   assertEquals(defaultBranchLookups, 1);
   assertEquals(refsTried, [undefined]);
+});
+
+Deno.test("getManifest: stops lookup on non-404 artifact fetch failures", async () => {
+  const refsTried: string[] = [];
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(String(ref));
+      if (ref === DIST_DEVELOPMENT_REF) {
+        throw createServerError();
+      }
+      if (ref === DEVELOPMENT_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+  });
+
+  const manifest = await getManifest(context, { ...PLUGIN_TARGET });
+
+  assertEquals(manifest, null);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF]);
+});
+
+Deno.test("getManifest: source fallback results are not cached for no-ref plugins", async () => {
+  const refsTried: (string | undefined)[] = [];
+  let call = 0;
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(ref);
+      call += 1;
+      if (call <= 2) {
+        if (ref === MAIN_REF) {
+          return {
+            data: {
+              content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+            },
+          };
+        }
+        throw createNotFoundError();
+      }
+
+      if (ref === DIST_MAIN_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+    defaultBranch: MAIN_REF,
+    environment: "production",
+  });
+
+  const first = await getManifestResolution(context, {
+    owner: PLUGIN_OWNER,
+    repo: "command-query-cache-test",
+    workflowId: PLUGIN_WORKFLOW_ID,
+  });
+  const second = await getManifestResolution(context, {
+    owner: PLUGIN_OWNER,
+    repo: "command-query-cache-test",
+    workflowId: PLUGIN_WORKFLOW_ID,
+  });
+
+  assertEquals(first.ref, MAIN_REF);
+  assertEquals(second.ref, DIST_MAIN_REF);
+  assertEquals(refsTried, [DIST_MAIN_REF, MAIN_REF, DIST_MAIN_REF]);
 });
