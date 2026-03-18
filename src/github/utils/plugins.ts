@@ -234,12 +234,13 @@ async function fetchActionManifest(context: GitHubContext, { owner, repo, ref }:
 }
 
 async function fetchWorkerManifest(context: GitHubContext, url: string): Promise<ManifestResolution> {
+  const sanitizedUrl = url.replace(/\/+$/, ""); // Makes sure to avoid trailing slash
   const useCache = isManifestCacheEnabled(context);
   if (useCache) {
-    const cached = readManifestCache(url);
+    const cached = readManifestCache(sanitizedUrl);
     if (cached) return { manifest: cached.manifest, ref: cached.ref };
   }
-  const manifestUrl = `${url}/manifest.json`;
+  const manifestUrl = `${sanitizedUrl}/manifest.json`; // Potential double slash here
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
@@ -261,7 +262,7 @@ async function fetchWorkerManifest(context: GitHubContext, url: string): Promise
       const jsonData = await result.json();
       const manifest = decodeManifest(context, jsonData);
       if (useCache) {
-        setManifestCache(url, { manifest });
+        setManifestCache(sanitizedUrl, { manifest });
       }
       return { manifest };
     } finally {
