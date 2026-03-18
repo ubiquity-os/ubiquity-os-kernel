@@ -193,7 +193,10 @@ Deno.test({
       skipBotEvents: false,
     });
     assertEquals(refsTried, ["dist/feature/test"]);
-    assertEquals(entries.some((entry) => entry.message.includes("Could not find a valid manifest")), false);
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a valid manifest")),
+      false
+    );
   },
 });
 
@@ -260,8 +263,14 @@ Deno.test({
       skipBotEvents: false,
     });
     assertEquals(refsTried, ["dist/feature/fallback", "feature/fallback"]);
-    assertEquals(entries.some((entry) => entry.message.includes("Could not find a valid manifest")), false);
-    assertEquals(entries.some((entry) => entry.message.includes("Could not find a manifest for Action")), false);
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a valid manifest")),
+      false
+    );
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a manifest for Action")),
+      false
+    );
   },
 });
 
