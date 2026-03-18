@@ -1,13 +1,14 @@
 import {
-  ConfigurationHandler,
   CONFIG_DEV_FULL_PATH,
   CONFIG_ORG_REPO as SDK_CONFIG_ORG_REPO,
   CONFIG_PROD_FULL_PATH,
+  ConfigurationHandler,
 } from "@ubiquity-os/plugin-sdk/configuration";
 import type { YAMLException } from "js-yaml";
 import type { ValueError } from "@sinclair/typebox/value";
 import { GitHubContext } from "../github-context.ts";
-import type { PluginConfiguration } from "../types/plugin-configuration.ts";
+import { parsePluginIdentifier, type PluginConfiguration } from "../types/plugin-configuration.ts";
+import { getManifest } from "./plugins.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
 
 export const CONFIG_FULL_PATH = CONFIG_PROD_FULL_PATH;
@@ -21,7 +22,12 @@ const ENVIRONMENT_TO_CONFIG_SUFFIX: Record<string, string> = {
 const VALID_CONFIG_SUFFIX = /^[a-z0-9][a-z0-9_-]*$/i;
 
 type ConfigLocation = { owner: string; repo: string };
-export type ConfigSource = { owner: string; repo: string; path: string; sha?: string | null };
+export type ConfigSource = {
+  owner: string;
+  repo: string;
+  path: string;
+  sha?: string | null;
+};
 
 type ConfigurationErrors = (YAMLException | ValueError)[];
 
@@ -83,6 +89,55 @@ function normalizeConfigurationErrors(errors: unknown): ConfigurationErrors | nu
   return null;
 }
 
+async function hydratePluginRunsOn(context: GitHubContext, configuration: PluginConfiguration): Promise<PluginConfiguration> {
+  const hydratedPlugins: PluginConfiguration["plugins"] = {};
+  let hasMutated = false;
+
+  for (const [pluginKey, pluginSettings] of Object.entries(configuration.plugins ?? {})) {
+    if (!pluginSettings || typeof pluginSettings !== "object") {
+      hydratedPlugins[pluginKey] = pluginSettings;
+      continue;
+    }
+
+    const existingRunsOn = Array.isArray(pluginSettings.runsOn) ? pluginSettings.runsOn : [];
+    if (existingRunsOn.length > 0) {
+      hydratedPlugins[pluginKey] = pluginSettings;
+      continue;
+    }
+
+    let pluginIdentifier: ReturnType<typeof parsePluginIdentifier>;
+    try {
+      pluginIdentifier = parsePluginIdentifier(pluginKey);
+    } catch {
+      hydratedPlugins[pluginKey] = pluginSettings;
+      continue;
+    }
+
+    const manifest = await getManifest(context, pluginIdentifier);
+    const listeners = manifest?.["ubiquity:listeners"];
+    if (!Array.isArray(listeners) || listeners.length === 0) {
+      hydratedPlugins[pluginKey] = pluginSettings;
+      continue;
+    }
+
+    hydratedPlugins[pluginKey] = {
+      ...pluginSettings,
+      with: pluginSettings.with ?? {},
+      runsOn: listeners,
+    };
+    hasMutated = true;
+  }
+
+  if (!hasMutated) {
+    return configuration;
+  }
+
+  return {
+    ...configuration,
+    plugins: hydratedPlugins,
+  };
+}
+
 function createConfigurationHandler(context: GitHubContext): ConfigurationHandler {
   const environment = normalizeEnvironmentName(context.eventHandler.environment);
   return new ConfigurationHandler(context.logger, context.octokit, environment || null, {
@@ -139,5 +194,5 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   if (!resolved.__sources) {
     resolved.__sources = [];
   }
-  return resolved;
+  return await hydratePluginRunsOn(context, resolved);
 }

@@ -1,8 +1,16 @@
 import { EmitterWebhookEventName } from "@octokit/webhooks";
 import { assertEquals } from "jsr:@std/assert";
 import { GitHubContext } from "../src/github/github-context.ts";
-import { ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
-import { logger } from "../src/logger/logger.ts";
+import { getManifest, getManifestResolution, ResolvedPlugin, shouldSkipPlugin } from "../src/github/utils/plugins.ts";
+
+const testLogger = {
+  trace: () => {},
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  github: () => {},
+};
 
 Deno.test("Plugin tests: should skip plugins if needed", async () => {
   const pluginAddress = "http://localhost";
@@ -38,7 +46,7 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
             type: "Bot",
           },
         },
-        logger,
+        logger: testLogger,
       } as unknown as GitHubContext,
       basePlugin,
       issueCommentCreated
@@ -56,7 +64,7 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
             type: "User",
           },
         },
-        logger,
+        logger: testLogger,
       } as unknown as GitHubContext,
       basePlugin,
       issueCommentCreated
@@ -74,7 +82,7 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
             type: "User",
           },
         },
-        logger,
+        logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([issueCommentCreated]),
       issueCommentCreated
@@ -92,7 +100,7 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
             type: "User",
           },
         },
-        logger,
+        logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([pullRequestOpened]),
       pullRequestOpened
@@ -110,11 +118,314 @@ Deno.test("Plugin tests: should skip plugins if needed", async () => {
             type: "User",
           },
         },
-        logger,
+        logger: testLogger,
       } as unknown as GitHubContext,
       pluginWithRunsOn([pullRequestOpened]),
       "pull_request.closed"
     ),
     true
   );
+});
+
+const MANIFEST_FIXTURE = {
+  name: "plugin",
+  short_name: "ubiquity-os-marketplace/command-query@development",
+  homepage_url: "",
+  description: "plugin fixture",
+  "ubiquity:listeners": ["issue_comment.created"],
+  commands: {},
+};
+const NOT_FOUND_ERROR = "Not Found";
+const DIST_DEVELOPMENT_REF = "dist/development";
+const DEVELOPMENT_REF = "development";
+const DIST_MAIN_REF = "dist/main";
+const MAIN_REF = "main";
+const PLUGIN_OWNER = "ubiquity-os-marketplace";
+const PLUGIN_REPO = "command-query";
+const PLUGIN_WORKFLOW_ID = "compute.yml";
+const PLUGIN_TARGET = {
+  owner: PLUGIN_OWNER,
+  repo: PLUGIN_REPO,
+  workflowId: PLUGIN_WORKFLOW_ID,
+  ref: DEVELOPMENT_REF,
+} as const;
+const NO_REF_PLUGIN_TARGET = {
+  owner: PLUGIN_OWNER,
+  repo: PLUGIN_REPO,
+  workflowId: PLUGIN_WORKFLOW_ID,
+} as const;
+
+function createNotFoundError() {
+  const error = new Error(NOT_FOUND_ERROR) as Error & { status: number };
+  error.status = 404;
+  return error;
+}
+
+function createServerError() {
+  const error = new Error("Internal Server Error") as Error & {
+    status: number;
+  };
+  error.status = 500;
+  return error;
+}
+
+type ManifestContextOptions = {
+  getContent: (args: { ref?: string }) => Promise<{ data: { content: string } }>;
+  defaultBranch?: string;
+  failDefaultBranchLookup?: boolean;
+  onDefaultBranchLookup?: () => void;
+  environment?: string;
+};
+
+function createManifestContext({
+  getContent,
+  defaultBranch = MAIN_REF,
+  failDefaultBranchLookup = false,
+  onDefaultBranchLookup,
+  environment = "development",
+}: ManifestContextOptions): GitHubContext {
+  return {
+    octokit: {
+      rest: {
+        apps: {
+          getRepoInstallation: async () => ({ data: { id: 123 } }),
+        },
+        repos: {
+          getContent,
+        },
+      },
+    },
+    eventHandler: {
+      environment,
+      getAuthenticatedOctokit: () => ({
+        rest: {
+          repos: {
+            get: async () => {
+              onDefaultBranchLookup?.();
+              if (failDefaultBranchLookup) {
+                throw new Error("default branch lookup failed");
+              }
+              return { data: { default_branch: defaultBranch } };
+            },
+          },
+        },
+      }),
+    },
+    logger: testLogger,
+  } as unknown as GitHubContext;
+}
+
+Deno.test("getManifest: prefers dist/<ref> for GitHub plugins", async () => {
+  const refsTried: string[] = [];
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(String(ref));
+      if (ref === DIST_DEVELOPMENT_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+  });
+
+  const manifest = await getManifest(context, { ...PLUGIN_TARGET });
+
+  assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF]);
+});
+
+Deno.test("getManifest: does not alias development to develop", async () => {
+  const refsTried: string[] = [];
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(String(ref));
+      throw createNotFoundError();
+    },
+  });
+
+  const manifest = await getManifest(context, { ...PLUGIN_TARGET });
+
+  assertEquals(manifest, null);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DEVELOPMENT_REF]);
+});
+
+Deno.test("getManifest: falls back to source branch ref when dist refs are absent", async () => {
+  const refsTried: string[] = [];
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(String(ref));
+      if (ref === DEVELOPMENT_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+  });
+
+  const manifest = await getManifest(context, { ...PLUGIN_TARGET });
+
+  assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF, DEVELOPMENT_REF]);
+});
+
+Deno.test("getManifest: no-ref plugins prefer dist/<default_branch>", async () => {
+  const refsTried: (string | undefined)[] = [];
+  let defaultBranchLookups = 0;
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(ref);
+      if (ref === DIST_MAIN_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+    defaultBranch: MAIN_REF,
+    onDefaultBranchLookup: () => {
+      defaultBranchLookups += 1;
+    },
+  });
+
+  const manifest = await getManifest(context, { ...NO_REF_PLUGIN_TARGET });
+
+  assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
+  assertEquals(defaultBranchLookups, 1);
+  assertEquals(refsTried, [DIST_MAIN_REF]);
+});
+
+Deno.test("getManifest: no-ref plugins fall back to <default_branch> when dist refs are absent", async () => {
+  const refsTried: (string | undefined)[] = [];
+  let defaultBranchLookups = 0;
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(ref);
+      if (ref === MAIN_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+    defaultBranch: MAIN_REF,
+    onDefaultBranchLookup: () => {
+      defaultBranchLookups += 1;
+    },
+  });
+
+  const manifest = await getManifest(context, { ...NO_REF_PLUGIN_TARGET });
+
+  assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
+  assertEquals(defaultBranchLookups, 1);
+  assertEquals(refsTried, [DIST_MAIN_REF, MAIN_REF]);
+});
+
+Deno.test("getManifest: no-ref plugins gracefully fall back to legacy lookup when default branch lookup fails", async () => {
+  const refsTried: (string | undefined)[] = [];
+  let defaultBranchLookups = 0;
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(ref);
+      if (ref === undefined) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+    failDefaultBranchLookup: true,
+    onDefaultBranchLookup: () => {
+      defaultBranchLookups += 1;
+    },
+  });
+
+  const manifest = await getManifest(context, { ...NO_REF_PLUGIN_TARGET });
+
+  assertEquals(manifest?.short_name, MANIFEST_FIXTURE.short_name);
+  assertEquals(defaultBranchLookups, 1);
+  assertEquals(refsTried, [undefined]);
+});
+
+Deno.test("getManifest: stops lookup on non-404 artifact fetch failures", async () => {
+  const refsTried: string[] = [];
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(String(ref));
+      if (ref === DIST_DEVELOPMENT_REF) {
+        throw createServerError();
+      }
+      if (ref === DEVELOPMENT_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+  });
+
+  const manifest = await getManifest(context, { ...PLUGIN_TARGET });
+
+  assertEquals(manifest, null);
+  assertEquals(refsTried, [DIST_DEVELOPMENT_REF]);
+});
+
+Deno.test("getManifest: source fallback results are not cached for no-ref plugins", async () => {
+  const refsTried: (string | undefined)[] = [];
+  let call = 0;
+  const context = createManifestContext({
+    getContent: async ({ ref }) => {
+      refsTried.push(ref);
+      call += 1;
+      if (call <= 2) {
+        if (ref === MAIN_REF) {
+          return {
+            data: {
+              content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+            },
+          };
+        }
+        throw createNotFoundError();
+      }
+
+      if (ref === DIST_MAIN_REF) {
+        return {
+          data: {
+            content: btoa(JSON.stringify(MANIFEST_FIXTURE)),
+          },
+        };
+      }
+      throw createNotFoundError();
+    },
+    defaultBranch: MAIN_REF,
+    environment: "production",
+  });
+
+  const first = await getManifestResolution(context, {
+    owner: PLUGIN_OWNER,
+    repo: "command-query-cache-test",
+    workflowId: PLUGIN_WORKFLOW_ID,
+  });
+  const second = await getManifestResolution(context, {
+    owner: PLUGIN_OWNER,
+    repo: "command-query-cache-test",
+    workflowId: PLUGIN_WORKFLOW_ID,
+  });
+
+  assertEquals(first.ref, MAIN_REF);
+  assertEquals(second.ref, DIST_MAIN_REF);
+  assertEquals(refsTried, [DIST_MAIN_REF, MAIN_REF, DIST_MAIN_REF]);
 });

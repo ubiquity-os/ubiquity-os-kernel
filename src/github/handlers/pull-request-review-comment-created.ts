@@ -5,7 +5,7 @@ import { GithubPlugin, PluginSettings, parsePluginIdentifier } from "../types/pl
 import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
 import { getConfig } from "../utils/config.ts";
-import { getManifest } from "../utils/plugins.ts";
+import { getManifestResolution } from "../utils/plugins.ts";
 import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import {
@@ -134,11 +134,12 @@ type ReviewCommandMatch = {
   target: string | GithubPlugin;
   settings: PluginSettings;
   manifest: Manifest;
+  manifestRef?: string;
   resolvedCommandName: string;
 };
 
 function resolveReviewCommandMatch(
-  pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest }[],
+  pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest; manifestRef?: string }[],
   commandName: string
 ): ReviewCommandMatch | null {
   const requested = commandName.toLowerCase();
@@ -182,7 +183,12 @@ async function dispatchReviewCommand(
 
   const stateId = crypto.randomUUID();
   const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: match.manifest });
+  const dispatchTarget = await resolvePluginDispatchTarget({
+    context,
+    plugin,
+    manifest: match.manifest,
+    manifestRef: match.manifestRef,
+  });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
   context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin from review thread.");
@@ -248,7 +254,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest }[] = [];
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest; manifestRef?: string }[] = [];
   const manifests: Manifest[] = [];
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -258,9 +264,9 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
       context.logger.error({ plugin: pluginKey, err: error }, "Invalid plugin identifier; skipping");
       continue;
     }
-    const manifest = await getManifest(context, target);
+    const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
     manifests.push(manifest);
   }
 

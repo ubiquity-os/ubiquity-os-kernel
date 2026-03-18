@@ -5,7 +5,7 @@ import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configurati
 import { getAgentMemorySnippet, listAgentMemoryEntries, upsertAgentRunMemory } from "../utils/agent-memory.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
 import { getConfig } from "../utils/config.ts";
-import { getManifest } from "../utils/plugins.ts";
+import { getManifestResolution } from "../utils/plugins.ts";
 import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { postHelpCommand } from "./help-command.ts";
@@ -252,7 +252,7 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -265,9 +265,9 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     if (isBotAuthor && pluginSettings?.skipBotEvents) {
       continue;
     }
-    const manifest = await getManifest(context, target);
+    const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
   }
 
   let matchedPluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
@@ -297,7 +297,12 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
 
   const stateId = crypto.randomUUID();
   const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: matchedPluginWithManifest.manifest });
+  const dispatchTarget = await resolvePluginDispatchTarget({
+    context,
+    plugin,
+    manifest: matchedPluginWithManifest.manifest,
+    manifestRef: matchedPluginWithManifest.manifestRef,
+  });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
   context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch slash command plugin.");
@@ -445,7 +450,7 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest }[] = [];
+  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
   const manifests: Manifest[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
@@ -459,9 +464,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     if (isBotAuthor && pluginSettings?.skipBotEvents) {
       continue;
     }
-    const manifest = await getManifest(context, target);
+    const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest });
+    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
     manifests.push(manifest);
   }
 
@@ -600,7 +605,12 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   const stateId = crypto.randomUUID();
   const token = await context.eventHandler.getToken(context.payload.installation.id);
-  const dispatchTarget = await resolvePluginDispatchTarget({ context, plugin, manifest: pluginWithManifest.manifest });
+  const dispatchTarget = await resolvePluginDispatchTarget({
+    context,
+    plugin,
+    manifest: pluginWithManifest.manifest,
+    manifestRef: pluginWithManifest.manifestRef,
+  });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
   context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin.");

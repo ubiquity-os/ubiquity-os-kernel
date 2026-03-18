@@ -13,6 +13,10 @@ export function stubFetch(handlers: Record<string, Response | FetchHandler>) {
     if (!handler) {
       throw new Error(`Unexpected fetch: ${request.method} ${request.url}`);
     }
-    return typeof handler === "function" ? await handler(request) : handler;
+    if (typeof handler === "function") {
+      return await handler(request);
+    }
+    // Return a fresh clone so repeated fetches can read the body independently.
+    return handler.clone();
   });
 }
