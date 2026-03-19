@@ -20,6 +20,41 @@ const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
 
+type LogEntry = {
+  level: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+};
+
+function createNotFoundError() {
+  const error = new Error("Not Found") as Error & { status: number };
+  error.status = 404;
+  return error;
+}
+
+function createTestLogger() {
+  const entries: LogEntry[] = [];
+  const capture =
+    (level: string) =>
+    (...args: unknown[]) => {
+      const message = [...args].reverse().find((value): value is string => typeof value === "string") ?? "";
+      const metadata = args.find((value): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value));
+      entries.push({ level, message, metadata });
+    };
+
+  return {
+    entries,
+    logger: {
+      trace: capture("trace"),
+      debug: capture("debug"),
+      info: capture("info"),
+      warn: capture("warn"),
+      error: capture("error"),
+      github: capture("github"),
+    },
+  };
+}
+
 Deno.test("Configuration: defaults to compute.yml workflow when none is provided", () => {
   assertEquals(parsePluginIdentifier("ubiquity/test-plugin@fix/action-entry"), {
     owner: "ubiquity",
@@ -93,6 +128,150 @@ Deno.test("Configuration: parses Action path when branch and workflow are specif
       settings1: "enabled",
     },
   });
+});
+
+Deno.test({
+  name: "Configuration: getConfig prefers dist/<ref> during SDK manifest enrichment",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const refsTried: string[] = [];
+    const { entries, logger: testLogger } = createTestLogger();
+    const pluginKey = "ubiquity/test-plugin:action.yml@feature/test";
+
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      if (args.path === manifestPath) {
+        refsTried.push(String(args.ref));
+        if (args.ref === "dist/feature/test") {
+          const data = JSON.stringify({
+            name: "plugin",
+            short_name: "ubiquity/test-plugin@feature/test",
+            description: "plugin fixture",
+            commands: {},
+            "ubiquity:listeners": [issueOpened],
+            skipBotEvents: false,
+          });
+          return {
+            data: {
+              content: btoa(data),
+            },
+          };
+        }
+        throw createNotFoundError();
+      }
+
+      if (args.path === CONFIG_FULL_PATH && args.repo === repo.name) {
+        const data = `plugins:
+  ${pluginKey}:`;
+        return args.mediaType?.format === "raw" ? { data } : { data: { content: btoa(data) } };
+      }
+
+      throw createNotFoundError();
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: repo,
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler,
+      logger: testLogger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins[pluginKey], {
+      with: {},
+      runsOn: [issueOpened],
+      skipBotEvents: false,
+    });
+    assertEquals(refsTried, ["dist/feature/test"]);
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a valid manifest")),
+      false
+    );
+  },
+});
+
+Deno.test({
+  name: "Configuration: getConfig falls back to source ref after dist 404 without logging manifest not found",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const refsTried: string[] = [];
+    const { entries, logger: testLogger } = createTestLogger();
+    const pluginKey = "ubiquity/fallback-plugin:action.yml@feature/fallback";
+
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      if (args.path === manifestPath) {
+        refsTried.push(String(args.ref));
+        if (args.ref === "feature/fallback") {
+          const data = JSON.stringify({
+            name: "plugin",
+            short_name: "ubiquity/fallback-plugin@feature/fallback",
+            description: "plugin fixture",
+            commands: {},
+            "ubiquity:listeners": [issueOpened],
+            skipBotEvents: false,
+          });
+          return {
+            data: {
+              content: btoa(data),
+            },
+          };
+        }
+        throw createNotFoundError();
+      }
+
+      if (args.path === CONFIG_FULL_PATH && args.repo === repo.name) {
+        const data = `plugins:
+  ${pluginKey}:`;
+        return args.mediaType?.format === "raw" ? { data } : { data: { content: btoa(data) } };
+      }
+
+      throw createNotFoundError();
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: repo,
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler,
+      logger: testLogger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins[pluginKey], {
+      with: {},
+      runsOn: [issueOpened],
+      skipBotEvents: false,
+    });
+    assertEquals(refsTried, ["dist/feature/fallback", "feature/fallback"]);
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a valid manifest")),
+      false
+    );
+    assertEquals(
+      entries.some((entry) => entry.message.includes("Could not find a manifest for Action")),
+      false
+    );
+  },
 });
 
 Deno.test({

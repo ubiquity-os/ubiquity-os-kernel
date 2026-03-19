@@ -8,7 +8,7 @@ import type { YAMLException } from "js-yaml";
 import type { ValueError } from "@sinclair/typebox/value";
 import { GitHubContext } from "../github-context.ts";
 import { parsePluginIdentifier, type PluginConfiguration } from "../types/plugin-configuration.ts";
-import { getManifest } from "./plugins.ts";
+import { getManifest as getKernelManifest } from "./plugins.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
 
 export const CONFIG_FULL_PATH = CONFIG_PROD_FULL_PATH;
@@ -30,6 +30,7 @@ export type ConfigSource = {
 };
 
 type ConfigurationErrors = (YAMLException | ValueError)[];
+type GithubPluginTarget = Exclude<ReturnType<typeof parsePluginIdentifier>, string>;
 
 function normalizeEnvironmentName(environment: string | null | undefined): string {
   return String(environment ?? "")
@@ -113,7 +114,7 @@ async function hydratePluginRunsOn(context: GitHubContext, configuration: Plugin
       continue;
     }
 
-    const manifest = await getManifest(context, pluginIdentifier);
+    const manifest = await getKernelManifest(context, pluginIdentifier);
     const listeners = manifest?.["ubiquity:listeners"];
     if (!Array.isArray(listeners) || listeners.length === 0) {
       hydratedPlugins[pluginKey] = pluginSettings;
@@ -140,22 +141,29 @@ async function hydratePluginRunsOn(context: GitHubContext, configuration: Plugin
 
 function createConfigurationHandler(context: GitHubContext): ConfigurationHandler {
   const environment = normalizeEnvironmentName(context.eventHandler.environment);
-  return new ConfigurationHandler(context.logger, context.octokit, environment || null, {
-    octokitFactory: async (location: ConfigLocation) => {
-      const payloadOwner = readPayloadOwner(context);
-      if (payloadOwner && payloadOwner.toLowerCase() === location.owner.trim().toLowerCase()) {
-        return context.octokit;
+  const octokitFactory = async (location: ConfigLocation) => {
+    const payloadOwner = readPayloadOwner(context);
+    if (payloadOwner && payloadOwner.toLowerCase() === location.owner.trim().toLowerCase()) {
+      return context.octokit;
+    }
+    if (typeof context.eventHandler.getAuthenticatedOctokit !== "function") {
+      return null;
+    }
+    const installationId = await tryGetInstallationIdForOwner(context.eventHandler, location.owner);
+    if (installationId === null) {
+      return null;
+    }
+    return context.eventHandler.getAuthenticatedOctokit(installationId);
+  };
+
+  return new (class extends ConfigurationHandler {
+    public override getManifest(plugin: string | GithubPluginTarget) {
+      if (typeof plugin === "string") {
+        return super.getManifest(plugin);
       }
-      if (typeof context.eventHandler.getAuthenticatedOctokit !== "function") {
-        return null;
-      }
-      const installationId = await tryGetInstallationIdForOwner(context.eventHandler, location.owner);
-      if (installationId === null) {
-        return null;
-      }
-      return context.eventHandler.getAuthenticatedOctokit(installationId);
-    },
-  });
+      return getKernelManifest(context, plugin);
+    }
+  })(context.logger, context.octokit, environment || null, { octokitFactory });
 }
 
 /**
