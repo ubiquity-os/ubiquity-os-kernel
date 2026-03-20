@@ -726,14 +726,14 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
       context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);
-      await deps.dispatchPluginTarget({
+      const result = await deps.dispatchPluginTarget({
         context,
         plugin,
         target: dispatchTarget,
         pluginInput: inputs,
         getKernelPublicKeyPem: () => eventHandler.getKernelPublicKeyPem(),
       });
-      context.logger.debug({ plugin: pluginEntry.key }, "Event dispatched");
+      context.logger.info({ plugin: pluginEntry.key, result }, `Event dispatched to ${result.runUrl ?? result.target.ref}`);
     } catch (e) {
       context.logger.error({ plugin: pluginEntry.key, err: e }, "Error processing plugin; skipping");
       await emitKernelPluginErrorEvent({

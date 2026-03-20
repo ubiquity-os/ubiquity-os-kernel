@@ -234,7 +234,7 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
     throw new Error(`HTTP (target: ${targetUrl}) ${result.status}: ${errText}`);
   }
 
-  return result.json();
+  return (await result.json()) as Record<string, unknown>;
 }
 
 export async function getDefaultBranch(context: GitHubContext, owner: string, repository: string) {

@@ -86,12 +86,12 @@ export async function dispatchPluginTarget({
     return { target, runUrl };
   }
 
-  await dispatchWorkflow(context, {
+  const response = await dispatchWorkflow(context, {
     owner: target.owner,
     repository: target.repository,
     workflowId: target.workflowId,
     ref: target.ref,
     inputs: workflowInputs,
   });
-  return { target };
+  return { target, response };
 }
