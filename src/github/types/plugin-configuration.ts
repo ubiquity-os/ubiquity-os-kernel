@@ -1,7 +1,8 @@
-import { emitterEventNames } from "@octokit/webhooks";
-import { StaticDecode, TLiteral, Type as T, Union } from "@sinclair/typebox";
+import type { ConfigurationHandler } from "@ubiquity-os/plugin-sdk/configuration";
+import { isGithubPlugin } from "@ubiquity-os/plugin-sdk/configuration";
 
 const pluginNameRegex = new RegExp("^([0-9a-zA-Z-._]+)\\/([0-9a-zA-Z-._]+)(?::([0-9a-zA-Z-._]+))?(?:@([0-9a-zA-Z-._]+(?:\\/[0-9a-zA-Z-._]+)*))?$");
+const urlRegex = /^https?:\/\/\S+$/;
 
 export type GithubPlugin = {
   owner: string;
@@ -10,7 +11,15 @@ export type GithubPlugin = {
   ref?: string;
 };
 
-export function parsePluginIdentifier(value: string): GithubPlugin {
+export type PluginConfiguration = Awaited<ReturnType<ConfigurationHandler["getConfiguration"]>>;
+export type PluginSettings = PluginConfiguration["plugins"][string];
+
+export { isGithubPlugin };
+
+export function parsePluginIdentifier(value: string): string | GithubPlugin {
+  if (urlRegex.test(value)) {
+    return value;
+  }
   const matches = value.match(pluginNameRegex);
   if (!matches) {
     throw new Error(`Invalid plugin name: ${value}`);
@@ -22,43 +31,3 @@ export function parsePluginIdentifier(value: string): GithubPlugin {
     ref: matches[4] || undefined,
   };
 }
-
-type IntoStringLiteralUnion<T> = { [K in keyof T]: T[K] extends string ? TLiteral<T[K]> : never };
-
-export function stringLiteralUnion<T extends string[]>(values: readonly [...T]): Union<IntoStringLiteralUnion<T>> {
-  const literals = values.map((value) => T.Literal(value));
-  return T.Union(literals as never);
-}
-
-const emitterType = stringLiteralUnion(emitterEventNames);
-
-const runsOnSchema = T.Array(emitterType, { default: [] });
-
-// We accept null when a key has no following body
-const pluginSettingsSchema = T.Union(
-  [
-    T.Null(),
-    T.Object(
-      {
-        with: T.Record(T.String(), T.Unknown(), { default: {} }),
-        runsOn: T.Optional(runsOnSchema),
-        skipBotEvents: T.Optional(T.Boolean()),
-      },
-      { default: {} }
-    ),
-  ],
-  { default: null }
-);
-
-export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;
-
-export const configSchema = T.Object(
-  {
-    plugins: T.Record(T.String(), pluginSettingsSchema, { default: {} }),
-  },
-  {
-    additionalProperties: true,
-  }
-);
-
-export type PluginConfiguration = StaticDecode<typeof configSchema>;

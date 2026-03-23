@@ -1,403 +1,141 @@
-import { afterEach, describe, expect, it, jest } from "@jest/globals";
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { config } from "dotenv";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { logger } from "../src/logger/logger";
-import "./__mocks__/webhooks";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import { stubFetch } from "./test-utils/fetch-stub.ts";
 
-jest.mock("@octokit/plugin-paginate-rest", () => ({}));
-jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
-jest.mock("@octokit/plugin-retry", () => ({}));
-jest.mock("@octokit/plugin-throttling", () => ({}));
-jest.mock("@octokit/auth-app", () => ({}));
+import type { GitHubContext } from "../src/github/github-context.ts";
+import { postHelpCommand } from "../src/github/handlers/help-command.ts";
+import { CONFIG_FULL_PATH } from "../src/github/utils/config.ts";
 
-config({ path: ".dev.vars" });
+const EXPECTED_COMMAND_RESPONSE_MARKER = '\n\n<!-- "commentKind": "command-response" -->';
+const ISSUE_COMMENT_CREATED = "issue_comment.created";
 
-const name = "ubiquity-os-kernel";
-const eventName = "issue_comment.created";
-const fooDescription = "foo command";
-const barDescription = "bar command";
-const helloDescription = "This command says hello to the username provided in the parameters.";
-const helloExample = "/hello @pavlovcik";
-const helloUsernameDescription = "the user to say hello to";
+Deno.test("/help: posts comment with commands + footer", async () => {
+  const originalGitRevision = Deno.env.get("GIT_REVISION");
+  Deno.env.set("GIT_REVISION", "deadbeef");
 
-afterEach(() => {
-  jest.clearAllMocks();
-  jest.resetAllMocks();
-  jest.resetModules();
-});
+  const fetchStub = stubFetch({
+    "https://plugin-a.internal/manifest.json": new Response(
+      JSON.stringify({
+        name: "plugin-A",
+        short_name: "plugin-a",
+        homepage_url: "",
+        description: "plugin-a for tests",
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+        commands: {
+          foo: { description: "foo command", "ubiquity:example": "/foo bar" },
+        },
+      }),
+      { headers: { "content-type": "application/json" } }
+    ),
+    "https://plugin-a.internal//manifest.json": new Response(
+      JSON.stringify({
+        name: "plugin-A",
+        short_name: "plugin-a",
+        homepage_url: "",
+        description: "plugin-a for tests",
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+        commands: {
+          foo: { description: "foo command", "ubiquity:example": "/foo bar" },
+        },
+      }),
+      { headers: { "content-type": "application/json" } }
+    ),
+  });
 
-const eventHandler = {
-  environment: "production",
-  getToken: jest.fn().mockReturnValue("1234"),
-  signPayload: jest.fn().mockReturnValue("sha256=1234"),
-  logger: logger,
-} as unknown as GitHubEventHandler;
+  const createCommentCalls: Array<{ body: string }> = [];
 
-const payload = {
-  repository: {
-    owner: { login: "ubiquity" },
-    name,
-  },
-  issue: { number: 1 },
-  installation: {
-    id: 1,
-  },
-};
-
-describe("Event related tests", () => {
-  it("Should post the help menu", async () => {
-    const configurationHandler = createConfigurationHandler({
-      configuration: {
-        plugins: {
-          "ubiquity-os/plugin-a": { with: {} },
-          "ubiquity-os/plugin-b": { with: {} },
+  const octokit = {
+    rest: {
+      issues: {
+        createComment: async ({ body }: { body: string }) => {
+          createCommentCalls.push({ body });
+          return {};
         },
       },
-      manifests: {
-        "plugin-a": {
-          name: "plugin-A",
-          homepage_url: "https://plugin-a.internal",
-          commands: {
-            foo: {
-              description: fooDescription,
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: barDescription,
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        },
-        "plugin-b": {
-          name: "plugin-B",
-          commands: {
-            hello: {
-              description: helloDescription,
-              "ubiquity:example": helloExample,
-              parameters: {
-                type: "object",
-                properties: {
-                  username: {
-                    type: "string",
-                    description: helloUsernameDescription,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+      repos: {
+        getContent: async ({ path }: { owner: string; repo: string; path: string }) => {
+          if (path === CONFIG_FULL_PATH) {
+            return {
+              data: `
+              plugins:
+                https://plugin-a.internal:
+                  with: {}
+                ubiquity-os/plugin-b:
+                  with: {}
+              `,
+            };
+          }
 
-    const issues = {
-      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
-        return params;
-      },
-    };
-    const spy = jest.spyOn(issues, "createComment");
-
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    await issueCommentCreated({
-      id: "",
-      key: eventName,
-      octokit: {
-        rest: {
-          issues,
-        },
-      },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      tool_calls: [
-                        {
-                          type: "function",
-                          function: {
-                            name: "help",
-                            arguments: "",
-                          },
-                        },
-                      ],
+          if (path === "manifest.json") {
+            return {
+              data: {
+                content: btoa(
+                  JSON.stringify({
+                    name: "plugin-B",
+                    short_name: "plugin-b",
+                    homepage_url: "",
+                    description: "plugin-b for tests",
+                    "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+                    commands: {
+                      hello: {
+                        description: "hello command",
+                        "ubiquity:example": "/hello @pavlovcik",
+                      },
                     },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
-      eventHandler: eventHandler,
-      configurationHandler,
-      payload: {
-        ...payload,
-        comment: {
-          body: "@UbiquityOS can you tell me all available commands",
-        },
-      } as unknown as GitHubContext<"issue_comment.created">["payload"],
-      logger: logger,
-    } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy.mock.calls).toEqual([
-      [
-        {
-          body:
-            "### Available Commands\n\n\n| Command | Description | Example |\n|---|---|---|\n| `/help` | List" +
-            " all available commands. | `/help` |\n| `/bar` | bar command | `/bar foo` |\n| `/foo` | foo command | `/foo bar` |\n| `/hello` | This command says hello to the username provided in the parameters. | `/hello @pavlovcik` |",
-          issue_number: 1,
-          owner: "ubiquity",
-          repo: name,
-        },
-      ],
-    ]);
-  });
-
-  it("Should call appropriate plugin", async () => {
-    const configurationHandler = createConfigurationHandler({
-      configuration: {
-        plugins: {
-          "ubiquity-os/plugin-a": { with: {} },
-          "ubiquity-os/plugin-b": { with: {} },
-        },
-      },
-      manifests: {
-        "plugin-a": {
-          name: "plugin-A",
-          commands: {
-            foo: {
-              description: fooDescription,
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: barDescription,
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        },
-        "plugin-b": {
-          name: "plugin-B",
-          commands: {
-            hello: {
-              description: helloDescription,
-              "ubiquity:example": helloExample,
-              parameters: {
-                type: "object",
-                properties: {
-                  username: {
-                    type: "string",
-                    description: helloUsernameDescription,
-                  },
-                },
+                  })
+                ),
               },
-            },
-          },
-        },
-      },
-    });
+            };
+          }
 
-    const dispatchWorkflow = jest.fn();
-    jest.mock("../src/github/utils/workflow-dispatch", () => ({
-      getDefaultBranch: jest.fn().mockImplementation(() => Promise.resolve("main")),
-      dispatchWorkflow: dispatchWorkflow,
-    }));
+          return { data: null };
+        },
+      },
+    },
+  };
 
-    const issues = {
-      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
-        return params;
-      },
-    };
-    const spy = jest.spyOn(issues, "createComment");
+  const context = {
+    id: "",
+    key: ISSUE_COMMENT_CREATED,
+    name: ISSUE_COMMENT_CREATED,
+    payload: {
+      repository: { owner: { login: "ubiquity" }, name: "ubiquity-os-kernel" },
+      issue: { number: 1 },
+      installation: { id: 1 },
+      comment: { id: 101, node_id: "test-node-id", body: "/help", user: { login: "test-user", type: "User" } },
+    } as never,
+    octokit: octokit as never,
+    eventHandler: { environment: "production" } as never,
+    logger: { trace: () => {}, info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, github: () => {} } as never,
+    llm: "",
+    configurationHandler: {} as never,
+  } as GitHubContext<typeof ISSUE_COMMENT_CREATED>;
 
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    await issueCommentCreated({
-      id: "",
-      key: eventName,
-      octokit: {
-        rest: {
-          issues,
-        },
-      },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      tool_calls: [
-                        {
-                          type: "function",
-                          function: {
-                            name: "hello",
-                            arguments: JSON.stringify({ username: "pavlovcik" }),
-                          },
-                        },
-                      ],
-                    },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
-      eventHandler: eventHandler,
-      configurationHandler,
-      payload: {
-        ...payload,
-        comment: {
-          body: "@UbiquityOS can you say hello to @pavlovcik",
-        },
-      } as unknown as GitHubContext<"issue_comment.created">["payload"],
-      logger,
-    } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(0);
-    expect(dispatchWorkflow.mock.calls.length).toEqual(1);
-    expect(dispatchWorkflow.mock.calls[0][1]).toMatchObject({
-      owner: "ubiquity-os",
-      repository: "plugin-b",
-      ref: "main",
-      workflowId: "compute.yml",
-      inputs: {
-        command: JSON.stringify({ name: "hello", parameters: { username: "pavlovcik" } }),
-      },
-    });
-  });
+  try {
+    await postHelpCommand(context);
+  } finally {
+    fetchStub.restore();
+    if (originalGitRevision === undefined) {
+      Deno.env.delete("GIT_REVISION");
+    } else {
+      Deno.env.set("GIT_REVISION", originalGitRevision);
+    }
+  }
 
-  it("Should not answer with arbitrary requests", async () => {
-    const configurationHandler = createConfigurationHandler({
-      configuration: {
-        plugins: {
-          "ubiquity-os/plugin-a": { with: {} },
-          "ubiquity-os/plugin-b": { with: {} },
-        },
-      },
-      manifests: {
-        "plugin-a": {
-          name: "plugin-A",
-          commands: {
-            foo: {
-              description: fooDescription,
-              "ubiquity:example": "/foo bar",
-            },
-            bar: {
-              description: barDescription,
-              "ubiquity:example": "/bar foo",
-            },
-          },
-        },
-        "plugin-b": {
-          name: "plugin-B",
-          commands: {
-            hello: {
-              description: helloDescription,
-              "ubiquity:example": helloExample,
-              parameters: {
-                type: "object",
-                properties: {
-                  username: {
-                    type: "string",
-                    description: helloUsernameDescription,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+  assertEquals(createCommentCalls.length, 1);
+  const body = createCommentCalls[0].body;
+  assertStringIncludes(body, "| Command | Description | Example |");
+  assertStringIncludes(body, "| `/help` | List all available commands. | `/help` |");
+  assertStringIncludes(body, "`/foo`");
+  assertStringIncludes(body, "`/hello`");
+  assertStringIncludes(body, "###### UbiquityOS Production [deadbee](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/deadbee)");
+  assertStringIncludes(body, EXPECTED_COMMAND_RESPONSE_MARKER);
 
-    const issues = {
-      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
-        return params;
-      },
-    };
-    const spy = jest.spyOn(issues, "createComment");
-
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    await issueCommentCreated({
-      id: "",
-      key: eventName,
-      octokit: {
-        rest: {
-          issues,
-        },
-      },
-      openAi: {
-        chat: {
-          completions: {
-            create: function () {
-              return {
-                choices: [
-                  {
-                    message: {
-                      content: "Sorry, but I can't help with that.",
-                    },
-                  },
-                ],
-              };
-            },
-          },
-        },
-      },
-      eventHandler: eventHandler,
-      configurationHandler,
-      payload: {
-        ...payload,
-        comment: {
-          body: "@UbiquityOS who is the creator of the universe",
-        },
-      } as unknown as GitHubContext<"issue_comment.created">["payload"],
-      logger,
-    } as unknown as GitHubContext);
-    expect(spy).toBeCalledTimes(0);
-  });
-
-  it("Should not post the help menu when /help command if there is no available command", async () => {
-    const issues = {
-      createComment(params?: RestEndpointMethodTypes["issues"]["createComment"]["parameters"]) {
-        return params;
-      },
-    };
-    const spy = jest.spyOn(issues, "createComment");
-    const configurationHandler = createConfigurationHandler({
-      configuration: {
-        plugins: {
-          "ubiquity-os/plugin-b": { with: {} },
-        },
-      },
-      manifests: {
-        "plugin-b": {
-          name: "plugin",
-        },
-      },
-    });
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    await issueCommentCreated({
-      id: "",
-      key: eventName,
-      octokit: {
-        rest: {
-          issues,
-        },
-      },
-      eventHandler: eventHandler,
-      configurationHandler,
-      payload: {
-        ...payload,
-        comment: {
-          body: "/help",
-        },
-      } as unknown as GitHubContext<"issue_comment.created">["payload"],
-      logger,
-    } as unknown as GitHubContext);
-    expect(spy).not.toBeCalled();
-  });
+  const helpIndex = body.indexOf("| `/help` |");
+  const fooIndex = body.indexOf("`/foo`");
+  const helloIndex = body.indexOf("`/hello`");
+  assert(helpIndex > -1);
+  assert(fooIndex > -1);
+  assert(helloIndex > -1);
+  assert(helpIndex < fooIndex);
+  assert(helpIndex < helloIndex);
 });

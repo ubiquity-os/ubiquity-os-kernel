@@ -1,11 +1,26 @@
 {
   "name": "Hello world",
+  "short_name": "hello-world",
+  "homepage_url": "",
   "description": "Hello world plugin for testing.",
   "ubiquity:listeners": ["issue_comment.created"],
   "commands": {
     "hello": {
       "ubiquity:example": "/hello",
-      "description": "Greet Ubiquibot!"
+      "description": "A test plugin."
+    },
+    "llm": {
+      "ubiquity:example": "/llm tell me a short joke",
+      "description": "Run an LLM prompt and reply with the result.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Prompt to send to the language model."
+          }
+        }
+      }
     }
   }
 }

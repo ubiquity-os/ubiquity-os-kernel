@@ -1,0 +1,51 @@
+[submodule "lib/plugins/command-codex"]
+	path = lib/plugins/command-codex
+	url = https://github.com/ubiquity-os-marketplace/command-codex.git
+[submodule "lib/plugins/command-start-stop"]
+	path = lib/plugins/command-start-stop
+	url = https://github.com/ubiquity-os-marketplace/command-start-stop.git
+[submodule "lib/plugins/daemon-planner"]
+	path = lib/plugins/daemon-planner
+	url = https://github.com/ubiquity-os-marketplace/daemon-planner.git
+[submodule "lib/plugins/text-conversation-rewards"]
+	path = lib/plugins/text-conversation-rewards
+	url = https://github.com/ubiquity-os-marketplace/text-conversation-rewards.git
+[submodule "lib/plugins/text-vector-embeddings"]
+	path = lib/plugins/text-vector-embeddings
+	url = https://github.com/ubiquity-os-marketplace/text-vector-embeddings.git
+[submodule "lib/plugins/command-query"]
+	path = lib/plugins/command-query
+	url = https://github.com/ubiquity-os-marketplace/command-query.git
+[submodule "lib/plugins/daemon-xp"]
+	path = lib/plugins/daemon-xp
+	url = https://github.com/ubiquity-os-marketplace/daemon-xp.git
+[submodule "lib/plugins/daemon-pricing"]
+	path = lib/plugins/daemon-pricing
+	url = https://github.com/ubiquity-os-marketplace/daemon-pricing.git
+[submodule "lib/plugins/command-config"]
+	path = lib/plugins/command-config
+	url = https://github.com/ubiquity-os-marketplace/command-config.git
+[submodule "lib/plugins/daemon-disqualifier"]
+	path = lib/plugins/daemon-disqualifier
+	url = https://github.com/ubiquity-os-marketplace/daemon-disqualifier.git
+[submodule "lib/plugins/command-wallet"]
+	path = lib/plugins/command-wallet
+	url = https://github.com/ubiquity-os-marketplace/command-wallet.git
+[submodule "lib/plugins/daemon-merging"]
+	path = lib/plugins/daemon-merging
+	url = https://github.com/ubiquity-os-marketplace/daemon-merging.git
+[submodule "lib/plugins/daemon-spec-rewriter"]
+	path = lib/plugins/daemon-spec-rewriter
+	url = https://github.com/ubiquity-os-marketplace/daemon-spec-rewriter.git
+[submodule "lib/ai.ubq.fi"]
+	path = lib/ai.ubq.fi
+	url = https://github.com/ubiquity/ai.ubq.fi.git
+[submodule "lib/plugin-sdk"]
+	path = lib/plugin-sdk
+	url = https://github.com/ubiquity-os/plugin-sdk.git
+[submodule "lib/plugins/personal-agent"]
+	path = lib/plugins/personal-agent
+	url = https://github.com/ubiquity-os/personal-agent.git
+[submodule "lib/plugins/daemon-hotfix"]
+	path = lib/plugins/daemon-hotfix
+	url = https://github.com/0x4007-ubiquity-os/daemon-hotfix.git

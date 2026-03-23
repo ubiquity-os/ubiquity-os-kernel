@@ -1,20 +1,22 @@
-# @ubiquity-os/ubiquity-os-kernel
+@ubiquity-os/ubiquity-os-kernel
 
 The kernel is designed to:
 
-- Interface with plugins (GitHub Actions) for longer running processes.
-- Run on Cloudflare Workers.
+- Interface with plugins (GitHub Actions) for longer-running processes.
+- Run on Deno Deploy.
 
 ## Environment Variables
 
+Minimum secrets for the kernel are `APP_PRIVATE_KEY` and `APP_WEBHOOK_SECRET` (plus the non-secret `APP_ID`).
+
 - **`APP_PRIVATE_KEY`**
-  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}. Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.dev.vars` file:
+  Obtain a private key from your GitHub App settings and convert it to the Public-Key Cryptography Standards #8 (PKCS#8) format. A new private key in PEM format can be generated and downloaded from [https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}](https://github.com/organizations/{your-organization-name}/settings/apps/{your-github-app-name}). Use the following command to perform PEM to PKCS#8 conversion and append the result to your `.env` file:
 
   ```sh
-  echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .dev.vars
+  echo "APP_PRIVATE_KEY=\"$(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM | awk 'BEGIN{ORS="\\n"} 1')\"" >> .env
   ```
 
-  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command.
+  **Note:** Replace `YOUR_APP_PRIVATE_KEY.PEM` with the path to your actual PEM file when running the command. On Windows, run the command via WSL or Git Bash.
 
 - **`APP_WEBHOOK_SECRET`**
   Set this value in both your GitHub App settings and here.
@@ -22,63 +24,89 @@ The kernel is designed to:
 - **`APP_ID`**
   Retrieve this from your GitHub App settings.
 
-- **`WEBHOOK_PROXY_URL` (only for development)**
-  Obtain a webhook URL at [smee.io](https://smee.io/) and set it in your GitHub App settings.
-
-- **`OPENROUTER_API_KEY`**
-  API key used for LLM requests.
-
-- **`OPENROUTER_MODEL`**
-  Fully qualified model identifier (default: `deepseek/deepseek-chat-v3-0324:free`).
-
-- **`OPENROUTER_BASE_URL`**
-  Base URL for the OpenRouter (or OpenAI-compatible) API (default: `https://openrouter.ai/api/v1`).
+For local development, expose the kernel with a public HTTPS tunnel (ngrok or a self-hosted reverse proxy) and point the GitHub App webhook directly at that public URL. The kernel derives its refresh endpoint from the incoming webhook host unless `UOS_KERNEL_BASE_URL` (or `UOS_KERNEL_TRUSTED_HOSTS`) is set.
 
 ### Quick Start
 
 ```bash
-git clone https://github.com/ubiquity-os/ubiquity-os-kernel
+git clone --recurse-submodules https://github.com/ubiquity-os/ubiquity-os-kernel
 cd ubiquity-os-kernel
-bun install
-bun dev
+deno task dev
 ```
 
-### Deploying to Cloudflare Workers
+`deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
 
-1. **Install Dependencies:**
-   - Execute `bun install` to install the required dependencies.
+For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
 
-2. **Create a GitHub App:**
+Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, [`command-config`](https://github.com/ubiquity-os-marketplace/command-config)).
+
+We keep the `lib/plugins/hello-world-plugin` example in this repo to make local testing and CI smoke checks easy; production plugins should live in their own repositories.
+
+### Deno import map
+
+The Deno import map in `deno.json` is intentional: it centralizes version pins for npm packages and keeps source imports clean (no `npm:` specifiers in code). The root `package.json` is only for tooling integrations.
+
+## Conversation Graph and Agent Context
+
+The kernel builds a conversation graph for each issue/PR event so the agent can answer with context that spans linked threads.
+
+What the graph contains:
+
+- The root issue or pull request.
+- Linked threads from timeline cross-references and outbound GitHub URLs in bodies and comments.
+- Optional semantic matches from the vector DB (issues, PRs, issue comments, review comments).
+
+Agent context selection:
+
+- `buildConversationContext` collects the graph plus recent comments and runs a lightweight selector using the user query.
+- The root node is always included; comment bodies are trimmed to 256 characters by default, with full URLs preserved for follow-up fetches.
+- Semantic matches are included when the vector DB is configured.
+
+Vector DB configuration (Supabase):
+
+- Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+
+Conversation graph CLI (debug/preview):
+
+```bash
+GITHUB_TOKEN=... deno run -A --sloppy-imports scripts/conversation-graph.ts <github-url> --context
+```
+
+Useful flags: `--all`, `--no-semantic`, `--context-max-comments`, `--context-max-comment-chars`.
+
+### Deploying to Deno Deploy
+
+Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml`.
+
+1. **Create a GitHub App:**
+
    - Generate a GitHub App and configure its settings.
    - Navigate to app settings and click `Permissions & events`.
    - Ensure the app is subscribed to all events with the following permissions:
 
      Repository permissions:
+
      - Actions: Read & Write
      - Contents: Read & Write
      - Issues: Read & Write
      - Pull Requests: Read & Write
 
      Organization permissions:
+
      - Members: Read only
 
-3. **Cloudflare Account Setup:**
-   - If not done already, create a Cloudflare account.
-   - Run `npx wrangler login` to log in.
+2. **Set repository secrets (required):**
 
-4. **Manage Secrets:**
-   - Add (env) secrets using `npx wrangler secret put <KEY> --env dev`.
-   - For the private key, execute the following (replace `YOUR_APP_PRIVATE_KEY.PEM` with the actual PEM file path):
+   - `DENO_DEPLOY_TOKEN`
+   - `APP_WEBHOOK_SECRET`
+   - `APP_ID`
+   - `APP_PRIVATE_KEY`
 
-     ```sh
-     echo $(openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in YOUR_APP_PRIVATE_KEY.PEM) | npx wrangler secret put APP_PRIVATE_KEY --env dev
-     ```
+   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_KERNEL_BASE_URL`, `UOS_KERNEL_TRUSTED_HOSTS`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
 
-5. **Deploy the Kernel:**
-   - Execute `bun run deploy-dev` to deploy the kernel.
+3. **Deploy:**
 
-6. **Setup database (optional)**
-   - You can set up your local database by going through [this repository](https://github.com/ubiquity-os/database) and following the instructions.
+   - Push to `main` (or run the workflow manually) to deploy.
 
 ### Plugin-Kernel Input/Output Interface
 
@@ -117,22 +145,22 @@ const input: PluginInput = {
 The kernel supports 2 types of plugins:
 
 1. GitHub actions ([wiki](https://github.com/ubiquity-os/ubiquity-os-kernel/wiki/How-it-works))
-2. Cloudflare Workers (which are simple backend servers with a single API route)
+2. HTTP plugins (simple backend servers with a single API route)
 
-How to run a "hello-world" plugin the Cloudflare way:
+How to run a "hello-world" plugin locally:
 
-1. Run `bun dev` to spin up the kernel
-2. Run `bun plugin:hello-world` to spin up a local server for the "hello-world" plugin
+1. Run `deno task dev` to spin up the kernel
+2. Run `bun run plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
-	```yml
-	plugins:
-    http://127.0.0.1:9090:
-      skipBotEvents: true
-      runsOn:
-        - issue_comment.created
-      with:
-        response: world
-	```
+   ```yml
+   plugins:
+   http://127.0.0.1:9090:
+     skipBotEvents: true
+     runsOn:
+       - issue_comment.created
+     with:
+       response: world
+   ```
 4. Post a `/hello` comment in any issue
 5. The bot should respond with the `world` message ([example](https://github.com/rndquu-org/test-repo/issues/54#issuecomment-2149313139))
 
@@ -149,10 +177,12 @@ A screencast tutorial on how to set up and run a hello world plugin is available
 
 ## Testing
 
+CI runs the Deno test workflow (`.github/workflows/testing.yml`) in place of the previous bun-based workflow, and unused file checks are handled by `deno task deps:unused` (replacing knip).
+
 ### Jest
 
 To start Jest tests, run
 
 ```shell
-bun test
+bun run jest:test
 ```

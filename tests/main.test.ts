@@ -1,324 +1,473 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
-import { config } from "dotenv";
-import { http, HttpResponse } from "msw";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { getConfig } from "../src/github/utils/config";
-import { app } from "../src/kernel";
-import { logger } from "../src/logger/logger"; // has to be imported after the mocks
-import { server } from "./__mocks__/node";
-import "./__mocks__/webhooks";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import { stubFetch } from "./test-utils/fetch-stub.ts";
 
-jest.mock("@octokit/plugin-paginate-rest", () => ({}));
-jest.mock("@octokit/plugin-rest-endpoint-methods", () => ({}));
-jest.mock("@octokit/plugin-retry", () => ({}));
-jest.mock("@octokit/plugin-throttling", () => ({}));
-jest.mock("@octokit/auth-app", () => ({}));
-jest.mock("@octokit/core", () => ({
-  Octokit: {
-    plugin: jest.fn(() => ({ defaults: jest.fn() })),
-  },
-}));
+import type { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
+import process from "node:process";
+import type { GitHubContext } from "../src/github/github-context.ts";
+import type { GitHubEventHandler } from "../src/github/github-event-handler.ts";
+import { getConfig } from "../src/github/utils/config.ts";
+import { app } from "../src/kernel.ts";
+
+const logger = {
+  trace: () => {},
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  github: () => {},
+} as never;
 
 const issueOpened = "issues.opened";
-const fooDescription = "foo command";
-const barDescription = "bar command";
-const fooExample = "/foo bar";
-const barExample = "/bar foo";
+const conversationRewardsRepo = "conversation-rewards";
+const ISSUE_COMMENT_CREATED = "issue_comment.created";
+const COMMAND_EXAMPLE = "/command";
+const NOT_FOUND_ERROR = "Not Found";
+const CONFIG_ORG_REPO = ".ubiquity-os";
+const DEV_CONFIG_PATH = ".github/.ubiquity-os.config.dev.yml";
 
 const eventHandler = {
   environment: "production",
 } as GitHubEventHandler;
 
-config({ path: ".dev.vars" });
-
-beforeAll(() => {
-  server.listen();
-});
-afterEach(() => {
-  server.resetHandlers();
-});
-afterAll(() => {
-  server.close();
-});
-
-describe("Worker tests", () => {
-  beforeEach(() => {
-    server.use(
-      http.get("https://api.github.com/repos/ubiquity-os/plugin-a/contents/manifest.json", () =>
-        HttpResponse.json({
-          content: Buffer.from(
-            JSON.stringify({
-              name: "plugin",
-              homepage_url: "https://plugin-a.internal",
-              commands: {
-                foo: {
-                  description: fooDescription,
-                  "ubiquity:example": fooExample,
-                },
-                bar: {
-                  description: barDescription,
-                  "ubiquity:example": barExample,
-                },
-              },
-            })
-          ).toString("base64"),
-          encoding: "base64",
-        })
-      )
-    );
+function stubPluginAlphaManifest() {
+  return stubFetch({
+    "https://plugin-a.internal/manifest.json": new Response(
+      JSON.stringify({
+        name: "plugin",
+        short_name: "plugin",
+        homepage_url: "",
+        description: "plugin-a for tests",
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+        commands: {
+          foo: {
+            description: "foo command",
+            "ubiquity:example": "/foo bar",
+          },
+          bar: {
+            description: "bar command",
+            "ubiquity:example": "/bar foo",
+          },
+        },
+      }),
+      { headers: { "content-type": "application/json" } }
+    ),
+    "https://plugin-a.internal//manifest.json": new Response(
+      JSON.stringify({
+        name: "plugin",
+        short_name: "plugin",
+        homepage_url: "",
+        description: "plugin-a for tests",
+        "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+        commands: {
+          foo: {
+            description: "foo command",
+            "ubiquity:example": "/foo bar",
+          },
+          bar: {
+            description: "bar command",
+            "ubiquity:example": "/bar foo",
+          },
+        },
+      }),
+      { headers: { "content-type": "application/json" } }
+    ),
   });
-  it("Should fail on missing env variables", async () => {
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => jest.fn());
+}
+
+Deno.test("kernel: fails on missing env variables", async () => {
+  const originalEnv = { ...process.env };
+  try {
     process.env = {
       ENVIRONMENT: "production",
       APP_WEBHOOK_SECRET: "",
       APP_ID: "",
       APP_PRIVATE_KEY: "",
-      OPENROUTER_API_KEY: "token",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat-v3-0324:free",
-      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1",
-    };
-    const res = await app.request("http://localhost:8080", {
-      method: "POST",
+    } as never;
+    const res = await app.request("http://localhost:8080", { method: "POST" });
+    assertEquals(res.status, 500);
+    const json = await res.json();
+    assertStringIncludes(String((json as { error: string })?.error ?? ""), "Unable to decode value");
+  } finally {
+    process.env = originalEnv;
+  }
+});
+
+Deno.test("getConfig: generates default configuration when no repo defined", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  try {
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: "",
+      },
+      octokit: {},
+      eventHandler: eventHandler,
+      logger,
+    } as unknown as GitHubContext);
+    assertEquals(Boolean(cfg), true);
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: generates default configuration when target repo lacks one", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  try {
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name: "ubiquity-os-kernel",
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent() {
+              return { data: null };
+            },
+          },
+        },
+      },
+      eventHandler: eventHandler,
+      logger,
+    } as unknown as GitHubContext);
+    assertEquals(Boolean(cfg), true);
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: fills plugin config with defaults", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  try {
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name: "ubiquity-os-kernel",
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent() {
+              return {
+                data: `
+                plugins:
+                  https://plugin-a.internal:
+                    with: {}
+                `,
+              };
+            },
+          },
+        },
+      },
+      eventHandler: eventHandler,
+      logger,
+    } as unknown as GitHubContext);
+    assertEquals(Boolean(cfg), true);
+    assertEquals(cfg.plugins, {
+      "https://plugin-a.internal": {
+        runsOn: [ISSUE_COMMENT_CREATED],
+        skipBotEvents: true,
+        with: {},
+      },
     });
-    expect(res.status).toEqual(500);
-    expect(await res.json()).toEqual({ error: "Error: Unable to decode value as it does not match the expected schema" });
-    consoleSpy.mockReset();
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: merges organization and repository configuration", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  try {
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      let data: string;
+      if (args.path === "manifest.json") {
+        data = `
+        {
+          "name": "plugin",
+          "short_name": "plugin",
+          "homepage_url": "",
+          "description": "plugin-b for tests",
+          "ubiquity:listeners": ["${ISSUE_COMMENT_CREATED}"],
+          "commands": {
+            "command": {
+              "description": "description",
+              "ubiquity:example": "${COMMAND_EXAMPLE}"
+            }
+          }
+        }
+        `;
+      } else if (args.repo !== CONFIG_ORG_REPO) {
+        data = `
+        plugins:
+          repo-3/plugin-3:
+            with:
+              setting1: false
+          repo-1/plugin-1:
+            with:
+              setting2: true`;
+      } else {
+        data = `
+        plugins:
+          uses-1/plugin-1:
+            with:
+              settings1: 'enabled'
+          repo-1/plugin-1:
+            with:
+              setting1: false
+          repo-2/plugin-2:
+            with:
+              setting2: true`;
+      }
+
+      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+        return {
+          data: {
+            content: btoa(data),
+          },
+        };
+      }
+      if (args.mediaType?.format === "raw") {
+        return { data };
+      }
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name: conversationRewardsRepo,
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler: eventHandler,
+      logger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins["repo-3/plugin-3"], {
+      runsOn: [ISSUE_COMMENT_CREATED],
+      skipBotEvents: true,
+      with: {
+        setting1: false,
+      },
+    });
+    assertEquals(cfg.plugins["repo-1/plugin-1"], {
+      runsOn: [ISSUE_COMMENT_CREATED],
+      skipBotEvents: true,
+      with: {
+        setting2: true,
+      },
+    });
+    assertEquals(cfg.plugins["uses-1/plugin-1"], {
+      runsOn: [ISSUE_COMMENT_CREATED],
+      skipBotEvents: true,
+      with: {
+        settings1: "enabled",
+      },
+    });
+    assertEquals(cfg.plugins["repo-2/plugin-2"], {
+      runsOn: [ISSUE_COMMENT_CREATED],
+      skipBotEvents: true,
+      with: {
+        setting2: true,
+      },
+    });
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: resolves imports before merging repo configuration", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  try {
+    const orgYaml = `
+      imports:
+        - ubiquity/shared-config
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org"
+      `;
+    const orgImportYaml = `
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "org-import"
+        https://plugin-b.internal:
+          with:
+            enabled: true
+      `;
+    const repoYaml = `
+      imports:
+        - ubiquity/repo-shared
+      plugins:
+        https://plugin-a.internal:
+          with:
+            source: "repo"
+      `;
+    const repoImportYaml = `
+      plugins:
+        https://plugin-c.internal:
+          with:
+            level: 2
+      `;
+
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      let data: string;
+      if (args.repo === CONFIG_ORG_REPO) {
+        data = orgYaml;
+      } else if (args.repo === conversationRewardsRepo) {
+        data = repoYaml;
+      } else if (args.repo === "shared-config") {
+        data = orgImportYaml;
+      } else if (args.repo === "repo-shared") {
+        data = repoImportYaml;
+      } else {
+        throw new Error(NOT_FOUND_ERROR);
+      }
+
+      if (args.mediaType === undefined || args.mediaType?.format === "base64") {
+        return {
+          data: {
+            content: btoa(data),
+          },
+        };
+      }
+      if (args.mediaType?.format === "raw") {
+        return { data };
+      }
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity" },
+          name: conversationRewardsRepo,
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
+          },
+        },
+      },
+      eventHandler: eventHandler,
+      logger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins["https://plugin-a.internal"]?.with, {
+      source: "repo",
+    });
+    assertEquals(cfg.plugins["https://plugin-b.internal"]?.with, {
+      enabled: true,
+    });
+    assertEquals(cfg.plugins["https://plugin-c.internal"]?.with, { level: 2 });
+  } finally {
+    fetchStub.restore();
+  }
+});
+
+Deno.test("getConfig: hydrates empty runsOn from dist artifact manifest refs", async () => {
+  const fetchStub = stubPluginAlphaManifest();
+  const pluginKey = "ubiquity-os-marketplace/command-query@development";
+  const orgYaml = `
+    plugins:
+      ${pluginKey}:
+        with:
+          allowPublicQuery: true
+  `;
+  const manifestJson = JSON.stringify({
+    name: "command-query",
+    short_name: pluginKey,
+    homepage_url: "",
+    description: "plugin manifest",
+    "ubiquity:listeners": [ISSUE_COMMENT_CREATED],
+    skipBotEvents: false,
+    commands: {},
   });
 
-  describe("Configuration tests", () => {
-    it("Should generate a default configuration when no repo is defined", async () => {
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: "",
-        },
-        octokit: {},
-        eventHandler: eventHandler,
-        logger,
-      } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-    });
-    it("Should generate a default configuration when the target repo does not contain one", async () => {
-      const configurationHandler = createConfigurationHandler({ configuration: { plugins: {} } });
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "ubiquity-os-kernel",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent() {
-                return { data: null };
-              },
+  try {
+    function getContent(args: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
+      if (args.path === "manifest.json") {
+        if (args.ref === "dist/development") {
+          return {
+            data: {
+              content: btoa(manifestJson),
             },
+          };
+        }
+        const notFound = new Error(NOT_FOUND_ERROR) as Error & {
+          status: number;
+        };
+        notFound.status = 404;
+        throw notFound;
+      }
+
+      if (args.mediaType?.format === "raw") {
+        if (args.repo === CONFIG_ORG_REPO && args.path === DEV_CONFIG_PATH) {
+          return { data: orgYaml };
+        }
+        const notFound = new Error(NOT_FOUND_ERROR) as Error & {
+          status: number;
+        };
+        notFound.status = 404;
+        throw notFound;
+      }
+
+      const notFound = new Error(NOT_FOUND_ERROR) as Error & { status: number };
+      notFound.status = 404;
+      throw notFound;
+    }
+
+    const cfg = await getConfig({
+      key: issueOpened,
+      name: issueOpened,
+      id: "",
+      payload: {
+        repository: {
+          owner: { login: "ubiquity-os-marketplace" },
+          name: "command-query",
+        },
+      } as unknown as GitHubContext<"issues.closed">["payload"],
+      octokit: {
+        rest: {
+          repos: {
+            getContent,
           },
         },
-        eventHandler: eventHandler,
-        configurationHandler,
-        logger,
-      } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-    });
-    it("Should fill the config with defaults", async () => {
-      const configurationHandler = createConfigurationHandler({
-        configuration: {
-          plugins: {
-            "ubiquity-os/plugin-a": { with: {}, skipBotEvents: true, runsOn: [] },
-          },
-        },
-        manifests: {
-          "plugin-a": {
-            name: "plugin",
-            commands: {
-              foo: {
-                description: fooDescription,
-                "ubiquity:example": "/foo",
-              },
-            },
-          },
-        },
-      });
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "ubiquity-os-kernel",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent(params?: RestEndpointMethodTypes["repos"]["getContent"]["parameters"]) {
-                if (params?.path === "manifest.json") {
-                  return {
-                    data: {
-                      content: Buffer.from(
-                        JSON.stringify({
-                          name: "plugin",
-                          commands: {
-                            foo: {
-                              description: fooDescription,
-                              "ubiquity:example": "/foo",
-                            },
-                          },
-                        })
-                      ).toString("base64"),
-                    },
-                  };
-                }
-                return {
-                  data: `
-                  plugins:
-                    ubiquity-os/plugin-a: {}
-                  `,
-                };
-              },
-            },
-          },
-        },
-        eventHandler: eventHandler,
-        configurationHandler,
-        logger,
-      } as unknown as GitHubContext);
-      expect(cfg).toBeTruthy();
-      expect(cfg.plugins).toEqual({
-        "ubiquity-os/plugin-a": {
-          runsOn: [],
-          skipBotEvents: true,
-          with: {},
-        },
-      });
-    });
-    it("Should merge organization and repository configuration", async () => {
-      const configurationHandler = createConfigurationHandler({
-        configuration: {
-          plugins: {
-            "repo-3/plugin-3": {
-              with: {
-                setting1: false,
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-            "repo-1/plugin-1": {
-              with: {
-                setting2: true,
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-            "uses-1/plugin-1": {
-              with: {
-                settings1: "enabled",
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-            "repo-2/plugin-2": {
-              with: {
-                setting2: true,
-              },
-              runsOn: [],
-              skipBotEvents: true,
-            },
-          },
-        },
-        manifests: {
-          "plugin-3": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-          "plugin-1": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-          "plugin-2": {
-            name: "plugin",
-            commands: {
-              command: {
-                description: "description",
-                "ubiquity:example": "/command",
-              },
-            },
-          },
-        },
-      });
-      const cfg = await getConfig({
-        key: issueOpened,
-        name: issueOpened,
-        id: "",
-        payload: {
-          repository: {
-            owner: { login: "ubiquity" },
-            name: "conversation-rewards",
-          },
-        } as unknown as GitHubContext<"issues.closed">["payload"],
-        octokit: {
-          rest: {
-            repos: {
-              getContent: jest.fn(),
-            },
-          },
-        },
-        eventHandler: eventHandler,
-        configurationHandler,
-        logger,
-      } as unknown as GitHubContext);
-      expect(cfg.plugins).toMatchObject({
-        "repo-3/plugin-3": {
-          runsOn: [],
-          skipBotEvents: true,
-          with: {
-            setting1: false,
-          },
-        },
-        "repo-1/plugin-1": {
-          runsOn: [],
-          skipBotEvents: true,
-          with: {
-            setting2: true,
-          },
-        },
-        "uses-1/plugin-1": {
-          runsOn: [],
-          skipBotEvents: true,
-          with: {
-            settings1: "enabled",
-          },
-        },
-        "repo-2/plugin-2": {
-          runsOn: [],
-          skipBotEvents: true,
-          with: {
-            setting2: true,
-          },
-        },
-      });
-    });
-  });
+      },
+      eventHandler: {
+        environment: "development",
+      } as GitHubEventHandler,
+      logger,
+    } as unknown as GitHubContext);
+
+    assertEquals(cfg.plugins[pluginKey]?.runsOn, [ISSUE_COMMENT_CREATED]);
+  } finally {
+    fetchStub.restore();
+  }
 });

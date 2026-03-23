@@ -1,14 +1,33 @@
 import { Type as T, type Static } from "@sinclair/typebox";
 
 export const envSchema = T.Object({
-  ENVIRONMENT: T.Union([T.Literal("production"), T.Literal("development")], { default: "development" }),
+  // Matches `.github/.ubiquity-os.config.<ENVIRONMENT>.yml` (with `production` mapping to `.github/.ubiquity-os.config.yml`).
+  ENVIRONMENT: T.String({ minLength: 1, default: "development", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$" }),
   APP_WEBHOOK_SECRET: T.String({ minLength: 1 }),
-  APP_ID: T.String({ minLength: 1 }),
+  APP_ID: T.String({ minLength: 1, pattern: "^[0-9]+$" }),
   APP_PRIVATE_KEY: T.String({ minLength: 1 }),
-  OPENROUTER_API_KEY: T.String({ minLength: 1 }),
-  OPENROUTER_MODEL: T.String({ minLength: 1, default: "deepseek/deepseek-chat-v3-0324:free" }),
-  OPENROUTER_BASE_URL: T.String({ minLength: 1, default: "https://openrouter.ai/api/v1" }),
-  X25519_PRIVATE_KEY: T.Optional(T.String()),
+  UOS_AGENT_OWNER: T.String({ minLength: 1, default: "ubiquity-os" }),
+  UOS_AGENT_REPO: T.String({ minLength: 1, default: "ubiquity-os-kernel" }),
+  UOS_AGENT_WORKFLOW: T.String({ minLength: 1, default: "agent.yml" }),
+  // Optional override for which branch/tag to dispatch the agent workflow from (useful for testing without updating default branch).
+  UOS_AGENT_REF: T.Optional(T.String()),
+  // Router model endpoint.
+  UOS_AI_BASE_URL: T.String({ minLength: 1, default: "https://ai-ubq-fi.deno.dev" }),
+  // Optional bypass token for AI router.
+  UOS_AI_TOKEN: T.Optional(T.String()),
+  // Optional external KV for agent run memory (expects /kv endpoint).
+  UOS_AGENT_MEMORY_URL: T.Optional(T.String({ minLength: 1 })),
+  // Base64-encoded 32-byte key for AES-256-GCM at-rest encryption.
+  UOS_AGENT_MEMORY_KEY: T.Optional(T.String({ minLength: 1 })),
+  // Optional bearer token for diagnostics endpoints (e.g. agent memory queue).
+  UOS_DIAGNOSTICS_TOKEN: T.Optional(T.String({ minLength: 1 })),
+  // Optional base URL for kernel refresh token callbacks (overrides Host header).
+  UOS_KERNEL_BASE_URL: T.Optional(T.String({ minLength: 1 })),
+  // Optional comma-separated list of trusted Host header values for refresh URL generation.
+  UOS_KERNEL_TRUSTED_HOSTS: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_URL: T.Optional(T.String({ minLength: 1 })),
+  SUPABASE_ANON_KEY: T.Optional(T.String({ minLength: 1 })),
+  UOS_KERNEL_REFRESH_INTERVAL_SECONDS: T.Optional(T.String({ minLength: 1 })),
 });
 
 export type Env = Static<typeof envSchema>;
@@ -20,9 +39,21 @@ declare global {
       APP_ID: string;
       APP_WEBHOOK_SECRET: string;
       APP_PRIVATE_KEY: string;
-      OPENROUTER_API_KEY: string;
-      OPENROUTER_MODEL: string;
-      OPENROUTER_BASE_URL: string;
+      ENVIRONMENT?: string;
+      UOS_AGENT_OWNER?: string;
+      UOS_AGENT_REPO?: string;
+      UOS_AGENT_WORKFLOW?: string;
+      UOS_AGENT_REF?: string;
+      UOS_AI_BASE_URL?: string;
+      UOS_AI_TOKEN?: string;
+      UOS_AGENT_MEMORY_URL?: string;
+      UOS_AGENT_MEMORY_KEY?: string;
+      UOS_DIAGNOSTICS_TOKEN?: string;
+      UOS_KERNEL_BASE_URL?: string;
+      UOS_KERNEL_TRUSTED_HOSTS?: string;
+      SUPABASE_URL?: string;
+      SUPABASE_ANON_KEY?: string;
+      UOS_KERNEL_REFRESH_INTERVAL_SECONDS?: string;
     }
   }
 }

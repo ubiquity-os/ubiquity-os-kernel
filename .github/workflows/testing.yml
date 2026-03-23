@@ -1,0 +1,21 @@
+name: Run Testing Suite
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  testing:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Deno Test
+        run: deno test --allow-all

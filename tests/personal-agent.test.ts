@@ -1,121 +1,112 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { drop } from "@mswjs/data";
-import { customOctokit as Octokit } from "@ubiquity-os/plugin-sdk/octokit";
-import { GitHubContext } from "../src/github/github-context";
-import { GitHubEventHandler } from "../src/github/github-event-handler";
-import { logger } from "../src/logger/logger";
-import { db } from "./__mocks__/db";
-import { server } from "./__mocks__/node";
-import { createConfigurationHandler } from "./test-utils/configuration-handler";
+import { assertEquals } from "jsr:@std/assert";
 
-const createWorkflowDispatch = jest.fn(() => ({}));
-const commentCreateEvent = "issue_comment.created";
+import type { GitHubContext } from "../src/github/github-context.ts";
+import { callPersonalAgent } from "../src/github/handlers/personal-agent.ts";
 
-beforeAll(() => {
-  server.listen();
-});
-afterEach(() => {
-  server.resetHandlers();
-  jest.clearAllMocks();
-});
-afterAll(() => server.close());
+type LogCall = { args: unknown[] };
 
-describe("Personal Agent tests", () => {
-  beforeEach(async () => {
-    drop(db);
-  });
-
-  it("Should handle personal agent command", async () => {
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, infoSpy, debugSpy } = createContext("@test_acc2 help");
-
-    expect(context.key).toBe(commentCreateEvent);
-
-    await issueCommentCreated(context);
-
-    expect(errorSpy).not.toHaveBeenCalled();
-    expect(debugSpy).toHaveBeenNthCalledWith(
-      1,
-      {
-        personalAgentOwner: "test_acc2",
-        owner: "test_acc",
-        comment: "@test_acc2 help",
-      },
-      `Comment received`
-    );
-    expect(infoSpy).toHaveBeenNthCalledWith(1, `Successfully sent the comment to test_acc2/personal-agent`);
-    expect(createWorkflowDispatch).toHaveBeenCalledTimes(1);
-  });
-
-  it("Should ignore irrelevant comments", async () => {
-    const issueCommentCreated = (await import("../src/github/handlers/issue-comment-created")).default;
-    const { context, errorSpy, debugSpy } = createContext("foo bar");
-
-    expect(context.key).toBe(commentCreateEvent);
-    expect(context.payload.comment.body).toBe("foo bar");
-
-    await issueCommentCreated(context);
-
-    expect(errorSpy).not.toHaveBeenCalled();
-    expect(debugSpy).toHaveBeenNthCalledWith(1, "Ignoring irrelevant comment: foo bar");
-    expect(createWorkflowDispatch).not.toHaveBeenCalled();
-  });
-});
-
-function createContext(commentBody: string) {
-  const context = createContextInner(commentBody);
-  const infoSpy = jest.spyOn(context.logger, "info");
-  const errorSpy = jest.spyOn(context.logger, "error");
-  const debugSpy = jest.spyOn(context.logger, "debug");
-
-  return {
-    context,
-    infoSpy,
-    errorSpy,
-    debugSpy,
+function createLogger() {
+  const calls = {
+    debug: [] as LogCall[],
+    info: [] as LogCall[],
+    warn: [] as LogCall[],
+    error: [] as LogCall[],
+    github: [] as LogCall[],
   };
+  const logger = {
+    debug: (...args: unknown[]) => calls.debug.push({ args }),
+    info: (...args: unknown[]) => calls.info.push({ args }),
+    warn: (...args: unknown[]) => calls.warn.push({ args }),
+    error: (...args: unknown[]) => calls.error.push({ args }),
+    github: (...args: unknown[]) => calls.github.push({ args }),
+  };
+  return { logger, calls };
 }
 
-function createContextInner(commentBody: string): GitHubContext<"issue_comment.created"> {
-  const octokit = {
-    rest: {
-      actions: {
-        createWorkflowDispatch: createWorkflowDispatch,
-      },
-      apps: {
-        getRepoInstallation: () => ({
-          data: { id: 123456 },
-        }),
-        listInstallations: () => ({ data: [{ id: 123456, account: { login: "test_acc2" } }] }),
-      },
-      repos: {
-        get: () => ({
-          data: { default_branch: "main" },
-        }),
-      },
-    },
-  };
+function createContext(commentBody: string): GitHubContext<"issue_comment.created"> {
+  const { logger } = createLogger();
   return {
     id: "",
-    key: commentCreateEvent,
-    name: commentCreateEvent,
+    key: "issue_comment.created",
+    name: "issue_comment.created",
     payload: {
       action: "created",
-      repository: { owner: { login: "test_acc" } },
-      comment: { body: commentBody },
+      repository: { owner: { login: "test_acc" }, name: "ubiquity-os-kernel" },
+      installation: { id: 123456 },
+      comment: {
+        id: 1001,
+        body: commentBody,
+        user: {
+          login: "test_acc",
+          type: "User",
+        },
+      },
       issue: { user: { login: "test_acc2" }, number: 1 },
     } as GitHubContext<"issue_comment.created">["payload"],
-    logger: logger,
-    octokit: octokit as unknown as InstanceType<typeof Octokit>,
+    logger: logger as never,
+    octokit: {} as never,
     eventHandler: {
       environment: "production",
-      getToken: jest.fn().mockReturnValue("1234"),
-      signPayload: jest.fn().mockReturnValue("sha256=1234"),
-      getAuthenticatedOctokit: jest.fn().mockReturnValue(octokit),
-      logger: logger,
-    } as unknown as GitHubEventHandler,
-    openAi: {} as unknown as GitHubContext<"issue_comment.created">["openAi"],
+      logger: logger as never,
+    } as never,
     llm: "",
-    configurationHandler: createConfigurationHandler() as unknown as GitHubContext<"issue_comment.created">["configurationHandler"],
   };
 }
+
+Deno.test("callPersonalAgent: dispatches workflow for @mention", async () => {
+  const context = createContext("@test_acc2 help");
+
+  const createWorkflowDispatchCalls: unknown[] = [];
+  const updateRequestCommentRunUrlCalls: unknown[] = [];
+
+  await callPersonalAgent(context, {
+    getInstallationTokenForRepo: async () => "token_123",
+    createTokenOctokit: () =>
+      ({
+        rest: {
+          repos: {
+            get: async () => ({ data: { default_branch: "main" } }),
+          },
+          actions: {
+            createWorkflowDispatch: async (args: unknown) => {
+              createWorkflowDispatchCalls.push(args);
+              return {};
+            },
+          },
+        },
+      }) as never,
+    buildWorkflowDispatchInputs: async () => ({ foo: "bar" }),
+    updateRequestCommentRunUrl: async (...args) => {
+      updateRequestCommentRunUrlCalls.push(args);
+    },
+  });
+
+  assertEquals(createWorkflowDispatchCalls.length, 1);
+  assertEquals(updateRequestCommentRunUrlCalls.length, 1);
+});
+
+Deno.test("callPersonalAgent: ignores irrelevant comments", async () => {
+  const context = createContext("foo bar");
+
+  const createWorkflowDispatchCalls: unknown[] = [];
+
+  await callPersonalAgent(context, {
+    getInstallationTokenForRepo: async () => "token_123",
+    createTokenOctokit: () =>
+      ({
+        rest: {
+          repos: {
+            get: async () => ({ data: { default_branch: "main" } }),
+          },
+          actions: {
+            createWorkflowDispatch: async (args: unknown) => {
+              createWorkflowDispatchCalls.push(args);
+              return {};
+            },
+          },
+        },
+      }) as never,
+  });
+
+  assertEquals(createWorkflowDispatchCalls.length, 0);
+});
