@@ -1,5 +1,6 @@
 import { GitHubContext } from "../github-context.ts";
 import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { COMMAND_RESPONSE_MARKER, hasCommandResponseMarker } from "../utils/comment-routing.ts";
 import { getConfig } from "../utils/config.ts";
 import { getManifest } from "../utils/plugins.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
@@ -9,7 +10,6 @@ type CommandRow = {
   row: string;
 };
 
-const COMMAND_RESPONSE_MARKER = '"commentKind": "command-response"';
 const COMMAND_RESPONSE_COMMENT_LIMIT = 50;
 const RECENT_COMMENTS_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!, $last: Int!) {
@@ -94,7 +94,12 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   const comments = ["| Command | Description | Example |", "|---|---|---|"];
   const commandRows = new Map<string, string>();
   const configuration = await getConfig(context);
-  context.logger.info({ pluginCount: Object.keys(configuration?.plugins || {}).length }, "Processing help command");
+  context.logger.info(
+    {
+      pluginCount: Object.keys(configuration?.plugins || {}).length,
+    },
+    "Processing help command"
+  );
 
   commandRows.set("help", "| `/help` | List all available commands. | `/help` |");
 
@@ -108,7 +113,13 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
     }
 
     const manifestCommands = await parseCommandsFromManifest(context, plugin);
-    context.logger.debug({ plugin: pluginKey, commandsCount: manifestCommands.length }, "Parsed commands for plugin");
+    context.logger.debug(
+      {
+        plugin: pluginKey,
+        commandsCount: manifestCommands.length,
+      },
+      "Parsed commands for plugin"
+    );
 
     for (const command of manifestCommands) {
       commandRows.set(command.key, command.row);
@@ -125,7 +136,9 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
         return a.localeCompare(b);
       })
       .map(([, row]) => row);
-    const footer = `\n\n###### UbiquityOS ${environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()} [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
+    const footer = `\n\n###### UbiquityOS ${
+      environment.charAt(0).toUpperCase() + environment.slice(1).toLowerCase()
+    } [${commitHash}](https://github.com/ubiquity-os/ubiquity-os-kernel/commit/${commitHash})`;
     const body = appendCommandResponseMarker(comments.concat(commands).join("\n") + footer);
     await context.octokit.rest.issues.createComment({
       body,
@@ -139,10 +152,6 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
 function appendCommandResponseMarker(body: string): string {
   if (body.includes(COMMAND_RESPONSE_MARKER)) return body;
   return `${body}\n\n<!-- ${COMMAND_RESPONSE_MARKER} -->`;
-}
-
-function hasCommandResponseMarker(body: string | null | undefined): boolean {
-  return typeof body === "string" && body.includes(COMMAND_RESPONSE_MARKER);
 }
 
 function getIssueLocator(context: GitHubContext<"issue_comment.created">): { owner: string; repo: string; issueNumber: number } | null {
@@ -174,7 +183,10 @@ async function getCommentNodeId(context: GitHubContext<"issue_comment.created">)
     const fetchedNodeId = (data as { node_id?: string | null }).node_id;
     return typeof fetchedNodeId === "string" && fetchedNodeId.trim() ? fetchedNodeId : null;
   } catch (error) {
-    context.logger.debug("Failed to fetch comment node id (non-fatal)", { err: error, commentId });
+    context.logger.debug("Failed to fetch comment node id (non-fatal)", {
+      err: error,
+      commentId,
+    });
     return null;
   }
 }
@@ -214,7 +226,9 @@ async function fetchRecentComments(
     const nodes = data.repository?.issueOrPullRequest?.comments?.nodes ?? [];
     return nodes.filter((node): node is GraphqlCommentNode => Boolean(node));
   } catch (error) {
-    context.logger.debug("Failed to fetch recent comments (non-fatal)", { err: error });
+    context.logger.debug("Failed to fetch recent comments (non-fatal)", {
+      err: error,
+    });
     return [];
   }
 }
@@ -244,7 +258,10 @@ async function minimizeComment(
       classifier,
     });
   } catch (error) {
-    context.logger.debug("Failed to minimize comment (non-fatal)", { err: error, commentNodeId });
+    context.logger.debug("Failed to minimize comment (non-fatal)", {
+      err: error,
+      commentNodeId,
+    });
   }
 }
 
