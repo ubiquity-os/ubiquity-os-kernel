@@ -260,6 +260,10 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     context.logger.debug("No configuration was found");
     return;
   }
+  if (!config.plugins) {
+    context.logger.warn("No plugins in configuration, skipping command routing");
+    return;
+  }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
@@ -457,6 +461,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const config = await getConfig(context);
   if (!config) {
     context.logger.debug("No configuration was found");
+    return;
+  }
+  if (!config.plugins) {
+    context.logger.warn("No plugins in configuration, skipping command routing");
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
