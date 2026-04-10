@@ -9,6 +9,7 @@ import { getManifestResolution } from "../utils/plugins.ts";
 import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { postHelpCommand } from "./help-command.ts";
+import { postVersionCommand } from "./version-command.ts";
 import { dispatchInternalAgent } from "./internal-agent.ts";
 import { buildRouterPrompt } from "./router-prompt.ts";
 import { callPersonalAgent } from "./personal-agent.ts";
@@ -140,6 +141,11 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     return;
   }
 
+  if (bodyLower.startsWith(`/version`)) {
+    await postVersionCommand(context);
+    return;
+  }
+
   if (afterMention !== null) {
     if (context.payload.comment.user?.type === "User") {
       await addReactionEyes(context);
@@ -147,6 +153,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     if (slashInvocation) {
       if (slashInvocation.name === "help") {
         await postHelpCommand(context);
+        return;
+      }
+      if (slashInvocation.name === "version") {
+        await postVersionCommand(context);
         return;
       }
       await dispatchSlashCommand(context, slashInvocation);
@@ -571,6 +581,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   if (commandName === "help") {
     await postHelpCommand(context);
+    return;
+  }
+  if (commandName === "version") {
+    await postVersionCommand(context);
     return;
   }
   if (commandName === "agent") {
