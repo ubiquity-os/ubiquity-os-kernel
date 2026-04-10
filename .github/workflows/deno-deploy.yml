@@ -34,6 +34,11 @@ jobs:
 
       - uses: ubiquity-os/deno-deploy@issue-17-optional-manifest-lifecycle
         env:
+          # The feature action branch uses the new Deno API and currently needs a
+          # different token type than the repo's long-lived deploy secret. Keep
+          # this PR branch on a dry run so the workflow wiring can be validated
+          # before the token migration lands.
+          DRY_RUN: ${{ github.ref_name == 'issue-17-disable-manifest-build' && 'true' || '' }}
           APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
