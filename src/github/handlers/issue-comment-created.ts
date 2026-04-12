@@ -453,6 +453,11 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
   const manifests: Manifest[] = [];
 
+  if (!config.plugins) {
+    context.logger.warn(`No plugins configuration found, cannot route command`);
+    return;
+  }
+
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
     try {
