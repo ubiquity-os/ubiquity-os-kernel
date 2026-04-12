@@ -251,6 +251,11 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     return;
   }
 
+  if (!config.plugins) {
+    context.logger.warn(`No plugins configuration found, cannot route slash command`);
+    return;
+  }
+
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
 
@@ -449,14 +454,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     context.logger.debug("No configuration was found");
     return;
   }
+
+  if (!config.plugins) {
+    context.logger.warn(`No plugins configuration found, cannot route slash command`);
+    return;
+  }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
   const manifests: Manifest[] = [];
-
-  if (!config.plugins) {
-    context.logger.warn(`No plugins configuration found, cannot route command`);
-    return;
-  }
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
