@@ -136,6 +136,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   }
 
   if (bodyLower.startsWith(`/help`)) {
+    if (!isHuman) {
+      context.logger.debug({ author: context.payload.comment.user?.login }, "Ignoring /help command from non-human author");
+      return;
+    }
     await postHelpCommand(context);
     return;
   }
@@ -146,6 +150,10 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     }
     if (slashInvocation) {
       if (slashInvocation.name === "help") {
+        if (!isHuman) {
+          context.logger.debug({ author: context.payload.comment.user?.login }, "Ignoring @ubiquityos help command from non-human author");
+          return;
+        }
         await postHelpCommand(context);
         return;
       }
@@ -526,6 +534,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
 
   if (decision.action === "ignore") return;
   if (decision.action === "help") {
+    if (!isHuman) {
+      context.logger.debug({ author: context.payload.comment.user?.login }, "Ignoring help action from non-human author in commandRouter");
+      return;
+    }
     await postHelpCommand(context);
     return;
   }
@@ -570,6 +582,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
 
   if (commandName === "help") {
+    if (!isHuman) {
+      context.logger.debug({ author: context.payload.comment.user?.login }, "Ignoring help command from non-human author in commandRouter");
+      return;
+    }
     await postHelpCommand(context);
     return;
   }
