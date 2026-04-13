@@ -23,7 +23,7 @@
     "npm:@octokit/webhooks-types@7.6.1": "7.6.1",
     "npm:@octokit/webhooks@14.2.0": "14.2.0",
     "npm:@sinclair/typebox@0.34.41": "0.34.41",
-    "npm:@ubiquity-os/plugin-sdk@3.12.2": "3.12.2_@sinclair+typebox@0.34.41",
+    "npm:@ubiquity-os/plugin-sdk@3.12.5": "3.12.5_@sinclair+typebox@0.34.41",
     "npm:cspell@8.9.0": "8.9.0",
     "npm:dotenv@16.4.5": "16.4.5",
     "npm:eslint-plugin-check-file@2.8.0": "2.8.0_eslint@9.7.0",
@@ -1072,8 +1072,8 @@
         "eslint-visitor-keys@4.2.1"
       ]
     },
-    "@ubiquity-os/plugin-sdk@3.12.2_@sinclair+typebox@0.34.41": {
-      "integrity": "sha512-LNBR5qEW4o7z8XGtRJVp0unl9h0mAchgqagZQ7+ippP85LLWCCQe1WPQu6P3W7yoxqwgV5LmteOLGTebnUp6LA==",
+    "@ubiquity-os/plugin-sdk@3.12.5_@sinclair+typebox@0.34.41": {
+      "integrity": "sha512-T1TAdD6rZDVrRELrEiQWM5bBRdzvFzMD+o6lthCahlGkvTOG3xxPHe8iXVnYrq60qnnMTrlUGm/uV9cIujZZ5A==",
       "dependencies": [
         "@actions/core",
         "@actions/github",
@@ -1087,7 +1087,7 @@
         "@octokit/webhooks",
         "@sinclair/typebox@0.34.41",
         "@ubiquity-os/ubiquity-os-logger",
-        "hono@4.12.8",
+        "hono@4.12.11",
         "js-yaml@4.1.1",
         "ms",
         "openai"
@@ -1810,8 +1810,8 @@
     "help-me@5.0.0": {
       "integrity": "sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg=="
     },
-    "hono@4.12.8": {
-      "integrity": "sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A=="
+    "hono@4.12.11": {
+      "integrity": "sha512-r4xbIa3mGGGoH9nN4A14DOg2wx7y2oQyJEb5O57C/xzETG/qx4c7CVDQ5WMeKHZ7ORk2W0hZ/sQKXTav3cmYBA=="
     },
     "hono@4.9.1": {
       "integrity": "sha512-qfvdJ42t6CQE0N/iSCa8KsW8SQqYD67YB+TYbwPHlnALvX+s7ynh8otR1NEk5jXtUg73gpV/B82OSufDmwtX3w=="
@@ -2150,8 +2150,8 @@
         "mimic-function"
       ]
     },
-    "openai@6.32.0": {
-      "integrity": "sha512-j3k+BjydAf8yQlcOI7WUQMQTbbF5GEIMAE2iZYCOzwwB3S2pCheaWYp+XZRNAch4jWVc52PMDGRRjutao3lLCg==",
+    "openai@6.33.0": {
+      "integrity": "sha512-xAYN1W3YsDXJWA5F277135YfkEk6H7D3D6vWwRhJ3OEkzRgcyK8z/P5P9Gyi/wB4N8kK9kM5ZjprfvyHagKmpw==",
       "bin": true
     },
     "optionator@0.9.4": {
@@ -2708,7 +2708,7 @@
       "npm:@octokit/webhooks-types@7.6.1",
       "npm:@octokit/webhooks@14.2.0",
       "npm:@sinclair/typebox@0.34.41",
-      "npm:@ubiquity-os/plugin-sdk@3.12.2",
+      "npm:@ubiquity-os/plugin-sdk@3.12.5",
       "npm:cspell@8.9.0",
       "npm:dotenv@16.4.5",
       "npm:eslint-plugin-check-file@2.8.0",
