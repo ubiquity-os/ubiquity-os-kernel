@@ -56,7 +56,7 @@ jobs:
           GIT_REVISION: ${{ github.sha }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
-          action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
+          action: ${{ github.event_name == 'delete' && 'delete' || 'provision' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
           entrypoint: src/kernel.ts
           buildManifest: false
