@@ -59,4 +59,4 @@ jobs:
           action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
           organization: ${{ secrets.DENO_ORG_NAME }}
           entrypoint: src/kernel.ts
-          project_name: ${{ secrets.DENO_PROJECT_NAME }}
+          buildManifest: false
