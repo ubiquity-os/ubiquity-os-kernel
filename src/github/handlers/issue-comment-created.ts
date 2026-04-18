@@ -3,6 +3,7 @@ import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
 import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
 import { getAgentMemorySnippet, listAgentMemoryEntries, upsertAgentRunMemory } from "../utils/agent-memory.ts";
+import { extractAfterUbiquityosMention, getCreatedCommentRouteContext, type SlashCommandInvocation } from "../utils/comment-routing.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
 import { getConfig } from "../utils/config.ts";
 import { getManifestResolution } from "../utils/plugins.ts";
@@ -16,11 +17,6 @@ import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts"
 import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 import { buildConversationContext } from "../utils/conversation-context.ts";
 import { getRouterDecision } from "./router-decision.ts";
-
-type SlashCommandInvocation = {
-  name: string;
-  rawArgs: string;
-};
 
 async function addReactionEyes(context: GitHubContext<"issue_comment.created">) {
   const commentId = context.payload.comment.id;
@@ -114,11 +110,9 @@ async function isUserHelpRequest(context: GitHubContext<"issue_comment.created">
 }
 
 export default async function issueCommentCreated(context: GitHubContext<"issue_comment.created">) {
-  const body = context.payload.comment.body.trim();
-  const bodyLower = body.toLowerCase();
-  const afterMention = extractAfterUbiquityosMention(body);
-  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
-  const isHuman = context.payload.comment.user?.type === "User";
+  const routeContext = getCreatedCommentRouteContext(context.payload.comment.body, context.payload.comment.user?.type);
+  const body = routeContext.trimmedBody;
+  const { afterMention, slashInvocation, isHumanAuthor: isHuman } = routeContext;
   const shouldSkip = await shouldSkipDuplicateCommentEvent({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,
@@ -130,12 +124,18 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     return;
   }
 
-  if (!isHuman && !slashInvocation && afterMention === null) {
-    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Ignoring comment from non-human author");
+  if (!isHuman) {
+    context.logger.debug(
+      {
+        author: context.payload.comment.user?.login,
+        type: context.payload.comment.user?.type,
+      },
+      "Ignoring comment from non-human author"
+    );
     return;
   }
 
-  if (bodyLower.startsWith(`/help`)) {
+  if (afterMention === null && slashInvocation?.name.toLowerCase() === "help") {
     await postHelpCommand(context);
     return;
   }
@@ -155,16 +155,15 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
     const agentPrefixMatch = /^agent\b/i.exec(afterMention);
     if (agentPrefixMatch) {
       const task = afterMention.replace(/^agent\b/i, "").trim() || body.trim();
-      await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+      await dispatchInternalAgent(context, task, {
+        postReply: (reply) => postReply(context, reply),
+      });
       return;
     }
     await commandRouter(context);
-  } else if (body.startsWith(`/`)) {
-    const slashInvocation = extractSlashCommandInvocation(body);
-    if (slashInvocation) {
-      await dispatchSlashCommand(context, slashInvocation);
-      return;
-    }
+  } else if (slashInvocation) {
+    await dispatchSlashCommand(context, slashInvocation);
+    return;
   } else if (isHuman && (await isUserHelpRequest(context))) {
     const issueAuthor = context.payload.issue.user?.login;
     context.payload.comment.body = context.payload.comment.body.replace(`@${issueAuthor}`, `@ubiquityos`);
@@ -172,21 +171,6 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
   } else {
     await callPersonalAgent(context);
   }
-}
-
-export function extractSlashCommandInvocation(text: string): SlashCommandInvocation | null {
-  const match = /^\s*\/([\w-]+)\b(.*)$/s.exec(text);
-  if (!match) return null;
-  return {
-    name: match[1],
-    rawArgs: (match[2] ?? "").trim(),
-  };
-}
-
-export function extractAfterUbiquityosMention(text: string): string | null {
-  const match = /@ubiquityos\b/i.exec(text);
-  if (!match || match.index === undefined) return null;
-  return text.slice(match.index + match[0].length).trim();
 }
 
 function listUserMentions(text: string): string[] {
@@ -252,7 +236,12 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
+  const pluginsWithManifest: {
+    target: string | GithubPlugin;
+    settings: (typeof config.plugins)[string];
+    manifest: Manifest;
+    manifestRef?: string;
+  }[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -267,7 +256,12 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     }
     const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
+    pluginsWithManifest.push({
+      target,
+      settings: pluginSettings,
+      manifest,
+      manifestRef,
+    });
   }
 
   let matchedPluginWithManifest: (typeof pluginsWithManifest)[number] | undefined;
@@ -305,7 +299,14 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
-  context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch slash command plugin.");
+  context.logger.info(
+    {
+      plugin,
+      worker: dispatchTarget.kind === "worker",
+      command,
+    },
+    "Will dispatch slash command plugin."
+  );
   try {
     const { target, runUrl } = await dispatchPluginTarget({
       context,
@@ -356,7 +357,13 @@ async function postReply(context: GitHubContext<"issue_comment.created">, body: 
       repo: context.payload.repository.name,
     });
   } catch (error) {
-    context.logger.warn({ err: error, issueNumber: context.payload.issue.number }, "Failed to post reply (non-fatal)");
+    context.logger.warn(
+      {
+        err: error,
+        issueNumber: context.payload.issue.number,
+      },
+      "Failed to post reply (non-fatal)"
+    );
   }
 }
 
@@ -380,7 +387,12 @@ export function describeCommands(manifests: Manifest[]): CommandDescriptor[] {
     }
   }
 
-  setCommand({ name: "help", description: "Show all available commands and examples.", example: "/help", parameters: {} });
+  setCommand({
+    name: "help",
+    description: "Show all available commands and examples.",
+    example: "/help",
+    parameters: {},
+  });
   setCommand({
     name: "agent",
     description: "Run the full-power agent to handle complex requests.",
@@ -450,7 +462,12 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: (typeof config.plugins)[string]; manifest: Manifest; manifestRef?: string }[] = [];
+  const pluginsWithManifest: {
+    target: string | GithubPlugin;
+    settings: (typeof config.plugins)[string];
+    manifest: Manifest;
+    manifestRef?: string;
+  }[] = [];
   const manifests: Manifest[] = [];
 
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
@@ -466,7 +483,12 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     }
     const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
+    pluginsWithManifest.push({
+      target,
+      settings: pluginSettings,
+      manifest,
+      manifestRef,
+    });
     manifests.push(manifest);
   }
 
@@ -475,7 +497,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const labels = getIssueLabelNames(context.payload.issue.labels);
   const issueBody = truncateForRouter(context.payload.issue.body);
   const conversation = await resolveConversationKeyForContext(context, context.logger);
-  const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
+  const conversationContext = conversation
+    ? await buildConversationContext({
+        context,
+        conversation,
+        maxItems: 5,
+        maxChars: 1600,
+      })
+    : "";
   const agentMemory = await getAgentMemorySnippet({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,
@@ -559,7 +588,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   }
   if (decision.action === "agent") {
     const task = String(decision.task ?? "").trim() || extractAfterUbiquityosMention(context.payload.comment.body) || context.payload.comment.body.trim();
-    await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+    await dispatchInternalAgent(context, task, {
+      postReply: (reply) => postReply(context, reply),
+    });
     return;
   }
 
@@ -578,7 +609,9 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
       getAgentTaskFromParameters(decision.command?.parameters) ??
       extractAfterUbiquityosMention(context.payload.comment.body) ??
       context.payload.comment.body.trim();
-    await dispatchInternalAgent(context, task, { postReply: (reply) => postReply(context, reply) });
+    await dispatchInternalAgent(context, task, {
+      postReply: (reply) => postReply(context, reply),
+    });
     return;
   }
 
@@ -613,7 +646,14 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
-  context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin.");
+  context.logger.info(
+    {
+      plugin,
+      worker: dispatchTarget.kind === "worker",
+      command,
+    },
+    "Will dispatch command plugin."
+  );
   try {
     const { target, runUrl } = await dispatchPluginTarget({
       context,
