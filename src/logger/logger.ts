@@ -1,3 +1,4 @@
+import process from "node:process";
 import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
 import pretty from "pino-pretty";
 import { recordRequestLog } from "./request-log-store.ts";
@@ -109,17 +110,11 @@ function normalizeChunk(chunk: string | Uint8Array): string {
   return textDecoder.decode(chunk);
 }
 
-function selectConsoleMethod(line: string) {
-  try {
-    const parsed = JSON.parse(line) as { level?: unknown };
-    const parsedLevel = parsed.level;
-    if (typeof parsedLevel === "number") {
-      if (parsedLevel >= 50) return console.error;
-      if (parsedLevel >= 40) return console.warn;
-      if (parsedLevel >= 30) return console.info;
-    }
-  } catch {
-    // Fall back to console.log for non-JSON or partially written lines.
+function selectConsoleMethod(level: unknown) {
+  if (typeof level === "number") {
+    if (level >= 50) return console.error;
+    if (level >= 40) return console.warn;
+    if (level >= 30) return console.info;
   }
   return console.log;
 }
@@ -129,7 +124,13 @@ function createConsoleSyncStream(): DestinationStream {
     write(chunk) {
       const line = normalizeChunk(chunk).replace(/[\r\n]+$/u, "");
       if (!line) return true;
-      selectConsoleMethod(line).call(console, line);
+      try {
+        const parsed = JSON.parse(line) as { level?: unknown };
+        selectConsoleMethod(parsed.level).call(console, JSON.stringify(parsed, null, 2));
+      } catch {
+        // Fall back to the raw line for non-JSON or partially written chunks.
+        console.log(line);
+      }
       return true;
     },
   } as DestinationStream;
