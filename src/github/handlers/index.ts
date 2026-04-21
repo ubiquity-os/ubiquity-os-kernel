@@ -5,10 +5,11 @@ import { GitHubContext } from "../github-context.ts";
 import { GitHubEventHandler } from "../github-event-handler.ts";
 import { isGithubPlugin, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { getConfig, getConfigFullPathForEnvironment, type ConfigSource } from "../utils/config.ts";
+import { type ConfigSource, getConfig, getConfigFullPathForEnvironment } from "../utils/config.ts";
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
-import { ResolvedPlugin, getManifest, getPluginsForEvent } from "../utils/plugins.ts";
+import { getManifest, getPluginsForEvent, ResolvedPlugin } from "../utils/plugins.ts";
+import { getCreatedCommentRouteContext, shouldSkipBotInvocationDispatch } from "../utils/comment-routing.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
 import pullRequestReviewCommentCreated from "./pull-request-review-comment-created.ts";
@@ -138,7 +139,9 @@ function extractRepositoryFullName(payload: unknown): string {
 
   const owner = (payload.repository as { owner?: { login?: unknown } }).owner?.login;
   const name = (payload.repository as { name?: unknown }).name;
-  if (typeof owner === "string" && typeof name === "string" && owner && name) return `${owner}/${name}`;
+  if (typeof owner === "string" && typeof name === "string" && owner && name) {
+    return `${owner}/${name}`;
+  }
   return "";
 }
 
@@ -404,8 +407,12 @@ async function emitKernelPluginErrorEvent({
   const safePluginWith: Record<string, unknown> = {};
   const failingWith = failingPluginEntry.settings?.with;
   if (failingWith && typeof failingWith === "object") {
-    if ("sourceRepo" in failingWith) safePluginWith.sourceRepo = (failingWith as { sourceRepo?: unknown }).sourceRepo;
-    if ("sourceRef" in failingWith) safePluginWith.sourceRef = (failingWith as { sourceRef?: unknown }).sourceRef;
+    if ("sourceRepo" in failingWith) {
+      safePluginWith.sourceRepo = (failingWith as { sourceRepo?: unknown }).sourceRepo;
+    }
+    if ("sourceRef" in failingWith) {
+      safePluginWith.sourceRef = (failingWith as { sourceRef?: unknown }).sourceRef;
+    }
   }
 
   const targetInstallationId = targetRepo ? await tryGetRepoInstallationId(context.eventHandler, targetRepo.owner, targetRepo.repo) : null;
@@ -440,7 +447,10 @@ async function emitKernelPluginErrorEvent({
     const settings = pluginEntry.settings;
     const stateId = crypto.randomUUID();
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
       const inputs = new PluginInput(
         context.eventHandler,
@@ -533,7 +543,10 @@ async function emitKernelErrorEvent({
     const settings = pluginEntry.settings;
     const stateId = crypto.randomUUID();
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       const eventPayload = payload as unknown as EmitterWebhookEvent<EmitterWebhookEventName>["payload"];
       const inputs = new PluginInput(
         context.eventHandler,
@@ -600,20 +613,8 @@ export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<Ha
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler, resolvedDeps), eventHandler.logger, eventHandler, resolvedDeps)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
 
-function extractLeadingSlashCommandName(body: string): string | null {
-  const trimmed = body.trimStart();
-  const match = /^\/([\w-]+)/u.exec(trimmed);
-  return match?.[1] ? match[1].toLowerCase() : null;
-}
-
-function extractSlashCommandNameFromCommentBody(body: string): string | null {
-  const direct = extractLeadingSlashCommandName(body);
-  if (direct) return direct;
-
-  const mention = /@ubiquityos\b/i.exec(body);
-  if (!mention || mention.index === undefined) return null;
-  const afterMention = body.slice(mention.index + mention[0].length);
-  return extractLeadingSlashCommandName(afterMention);
+function getCreatedCommentRoutingContext(context: GitHubContext<"issue_comment.created" | "pull_request_review_comment.created">) {
+  return getCreatedCommentRouteContext(context.payload.comment?.body, context.payload.comment?.user?.type);
 }
 
 async function filterPluginsForSlashCommandEvent(
@@ -685,7 +686,15 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
   if (context.key === "issue_comment.created") {
     const issueContext = context as GitHubContext<"issue_comment.created">;
-    const commandName = extractSlashCommandNameFromCommentBody(String(issueContext.payload.comment?.body ?? ""));
+    const routingContext = getCreatedCommentRoutingContext(issueContext);
+    if (shouldSkipBotInvocationDispatch(issueContext.payload.comment?.body, issueContext.payload.comment?.user?.type)) {
+      context.logger.debug(
+        { author: issueContext.payload.comment?.user?.login },
+        "Skipping global dispatch for bot-authored invocation or command-response comment"
+      );
+      return;
+    }
+    const commandName = routingContext.slashInvocation?.name.toLowerCase() ?? null;
     if (commandName) {
       const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName, deps);
       resolvedPlugins.length = 0;
@@ -695,7 +704,15 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
   if (context.key === "pull_request_review_comment.created") {
     const reviewContext = context as GitHubContext<"pull_request_review_comment.created">;
-    const commandName = extractSlashCommandNameFromCommentBody(String(reviewContext.payload.comment?.body ?? ""));
+    const routingContext = getCreatedCommentRoutingContext(reviewContext);
+    if (shouldSkipBotInvocationDispatch(reviewContext.payload.comment?.body, reviewContext.payload.comment?.user?.type)) {
+      context.logger.debug(
+        { author: reviewContext.payload.comment?.user?.login },
+        "Skipping global dispatch for bot-authored invocation or command-response review comment"
+      );
+      return;
+    }
+    const commandName = routingContext.slashInvocation?.name.toLowerCase() ?? null;
     if (commandName) {
       const filtered = await filterPluginsForSlashCommandEvent(context, resolvedPlugins, commandName, deps);
       resolvedPlugins.length = 0;
@@ -721,11 +738,20 @@ async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceTyp
 
     // We wrap the dispatch so a failing plugin doesn't break the whole execution
     try {
-      const dispatchTarget = await deps.resolvePluginDispatchTarget({ context, plugin });
+      const dispatchTarget = await deps.resolvePluginDispatchTarget({
+        context,
+        plugin,
+      });
       ref = dispatchTarget.ref;
       const inputs = new PluginInput(context.eventHandler, stateId, context.key, event.payload, settings?.with, token, ref, null);
 
-      context.logger.debug({ plugin: pluginEntry.key, worker: dispatchTarget.kind === "worker" }, DISPATCH_EVENT_LOG);
+      context.logger.debug(
+        {
+          plugin: pluginEntry.key,
+          worker: dispatchTarget.kind === "worker",
+        },
+        DISPATCH_EVENT_LOG
+      );
       const result = await deps.dispatchPluginTarget({
         context,
         plugin,

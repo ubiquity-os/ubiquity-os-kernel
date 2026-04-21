@@ -1,9 +1,11 @@
+import process from "node:process";
 import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
 import pretty from "pino-pretty";
 import { recordRequestLog } from "./request-log-store.ts";
 
 const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "info" : "debug");
 type CustomLogLevels = "github" | "local";
+const textDecoder = new TextDecoder();
 
 const redact = {
   paths: ["token", "authorization", "*.privateKey", "*.private_key", "*.app_private_key", "*.APP_PRIVATE_KEY", "*._privateKey"],
@@ -103,6 +105,37 @@ function formatLogLine(level: string, args: unknown[], bindings: Record<string, 
   return `${base} | ${extras.join(" ")}`;
 }
 
+function normalizeChunk(chunk: string | Uint8Array): string {
+  if (typeof chunk === "string") return chunk;
+  return textDecoder.decode(chunk);
+}
+
+function selectConsoleMethod(level: unknown) {
+  if (typeof level === "number") {
+    if (level >= 50) return console.error;
+    if (level >= 40) return console.warn;
+    if (level >= 30) return console.info;
+  }
+  return console.log;
+}
+
+function createConsoleSyncStream(): DestinationStream {
+  return {
+    write(chunk) {
+      const line = normalizeChunk(chunk).replace(/[\r\n]+$/u, "");
+      if (!line) return true;
+      try {
+        const parsed = JSON.parse(line) as { level?: unknown };
+        selectConsoleMethod(parsed.level).call(console, JSON.stringify(parsed, null, 2));
+      } catch {
+        // Fall back to the raw line for non-JSON or partially written chunks.
+        console.log(line);
+      }
+      return true;
+    },
+  } as DestinationStream;
+}
+
 const stream =
   process.env.NODE_ENV !== "production"
     ? pretty({
@@ -117,7 +150,7 @@ const stream =
           return msg;
         },
       })
-    : undefined;
+    : createConsoleSyncStream();
 
 const createLogger = pino as unknown as (options: LoggerOptions<CustomLogLevels>, stream?: DestinationStream) => Logger<CustomLogLevels>;
 

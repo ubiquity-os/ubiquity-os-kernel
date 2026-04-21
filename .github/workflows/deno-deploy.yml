@@ -54,9 +54,9 @@ jobs:
           # SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || '' }}
           NODE_ENV: "production"
           GIT_REVISION: ${{ github.sha }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
         with:
           token: ${{ secrets.DENO_DEPLOY_TOKEN }}
-          action: ${{ github.event_name == 'delete' && 'delete' || 'deploy' }}
-          organization: ${{ secrets.DENO_ORG_NAME }}
+          action: ${{ github.event_name == 'delete' && 'delete' || 'provision' }}
           entrypoint: src/kernel.ts
-          project_name: ${{ secrets.DENO_PROJECT_NAME }}
+          buildManifest: false

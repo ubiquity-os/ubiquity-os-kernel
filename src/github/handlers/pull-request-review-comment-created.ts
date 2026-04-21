@@ -1,21 +1,15 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { GithubPlugin, PluginSettings, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { GithubPlugin, parsePluginIdentifier, PluginSettings } from "../types/plugin-configuration.ts";
 import { getAgentMemorySnippet } from "../utils/agent-memory.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
+import { getCreatedCommentRouteContext } from "../utils/comment-routing.ts";
 import { getConfig } from "../utils/config.ts";
 import { getManifestResolution } from "../utils/plugins.ts";
 import { withKernelContextSettingsIfNeeded } from "../utils/plugin-dispatch-settings.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
-import {
-  describeCommands,
-  extractAfterUbiquityosMention,
-  extractSlashCommandInvocation,
-  getIssueLabelNames,
-  parseSlashCommandParameters,
-  truncateForRouter,
-} from "./issue-comment-created.ts";
+import { describeCommands, getIssueLabelNames, parseSlashCommandParameters, truncateForRouter } from "./issue-comment-created.ts";
 import { updateRequestCommentRunUrl } from "../utils/request-comment-run-url.ts";
 import { resolveConversationKeyForContext } from "../utils/conversation-graph.ts";
 import { buildConversationContext } from "../utils/conversation-context.ts";
@@ -139,7 +133,12 @@ type ReviewCommandMatch = {
 };
 
 function resolveReviewCommandMatch(
-  pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest; manifestRef?: string }[],
+  pluginsWithManifest: {
+    target: string | GithubPlugin;
+    settings: PluginSettings;
+    manifest: Manifest;
+    manifestRef?: string;
+  }[],
   commandName: string
 ): ReviewCommandMatch | null {
   const requested = commandName.toLowerCase();
@@ -174,7 +173,13 @@ async function dispatchReviewCommand(
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   if (isBotAuthor && match.settings?.skipBotEvents) {
-    context.logger.debug({ plugin: match.target, command: match.resolvedCommandName }, "Skipping review command dispatch from bot author");
+    context.logger.debug(
+      {
+        plugin: match.target,
+        command: match.resolvedCommandName,
+      },
+      "Skipping review command dispatch from bot author"
+    );
     return;
   }
 
@@ -191,7 +196,14 @@ async function dispatchReviewCommand(
   });
   const inputs = new PluginInput(context.eventHandler, stateId, context.key, context.payload, settings, token, dispatchTarget.ref, command);
 
-  context.logger.info({ plugin, worker: dispatchTarget.kind === "worker", command }, "Will dispatch command plugin from review thread.");
+  context.logger.info(
+    {
+      plugin,
+      worker: dispatchTarget.kind === "worker",
+      command,
+    },
+    "Will dispatch command plugin from review thread."
+  );
   try {
     const { target, runUrl } = await dispatchPluginTarget({
       context,
@@ -211,14 +223,15 @@ async function dispatchReviewCommand(
 }
 
 export default async function pullRequestReviewCommentCreated(context: GitHubContext<"pull_request_review_comment.created">) {
-  const body = context.payload.comment.body?.trim() ?? "";
-  const afterMention = extractAfterUbiquityosMention(body);
-  const slashInvocation = afterMention ? extractSlashCommandInvocation(afterMention) : extractSlashCommandInvocation(body);
-
-  const isHuman = context.payload.comment.user?.type === "User";
+  const routeContext = getCreatedCommentRouteContext(context.payload.comment.body, context.payload.comment.user?.type);
+  const body = routeContext.trimmedBody;
+  const { afterMention, slashInvocation, isHumanAuthor: isHuman } = routeContext;
   if (!isHuman) {
     context.logger.debug(
-      { author: context.payload.comment.user?.login, type: context.payload.comment.user?.type },
+      {
+        author: context.payload.comment.user?.login,
+        type: context.payload.comment.user?.type,
+      },
       "Ignoring review comment from non-human author"
     );
     return;
@@ -242,7 +255,9 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   const agentPrefixMatch = afterMention ? /^agent\b/i.exec(afterMention) : null;
   if (agentPrefixMatch && afterMention) {
     const task = afterMention.replace(/^agent\b/i, "").trim() || body;
-    await dispatchInternalAgent(context, task, { postReply: (reply) => postReplyInReviewThread(context, reply) });
+    await dispatchInternalAgent(context, task, {
+      postReply: (reply) => postReplyInReviewThread(context, reply),
+    });
     return;
   }
 
@@ -254,7 +269,12 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     return;
   }
 
-  const pluginsWithManifest: { target: string | GithubPlugin; settings: PluginSettings; manifest: Manifest; manifestRef?: string }[] = [];
+  const pluginsWithManifest: {
+    target: string | GithubPlugin;
+    settings: PluginSettings;
+    manifest: Manifest;
+    manifestRef?: string;
+  }[] = [];
   const manifests: Manifest[] = [];
   for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
     let target: string | GithubPlugin;
@@ -266,7 +286,12 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
     }
     const { manifest, ref: manifestRef } = await getManifestResolution(context, target);
     if (!manifest?.commands) continue;
-    pluginsWithManifest.push({ target, settings: pluginSettings, manifest, manifestRef });
+    pluginsWithManifest.push({
+      target,
+      settings: pluginSettings,
+      manifest,
+      manifestRef,
+    });
     manifests.push(manifest);
   }
 
@@ -298,7 +323,14 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
   const labels = getIssueLabelNames(hasLabels(context.payload.pull_request) ? context.payload.pull_request.labels : undefined);
   const issueBody = truncateForRouter(context.payload.pull_request.body);
   const conversation = await resolveConversationKeyForContext(context, context.logger);
-  const conversationContext = conversation ? await buildConversationContext({ context, conversation, maxItems: 5, maxChars: 1600 }) : "";
+  const conversationContext = conversation
+    ? await buildConversationContext({
+        context,
+        conversation,
+        maxItems: 5,
+        maxChars: 1600,
+      })
+    : "";
   const agentMemory = await getAgentMemorySnippet({
     owner: context.payload.repository.owner.login,
     repo: context.payload.repository.name,
@@ -363,5 +395,7 @@ export default async function pullRequestReviewCommentCreated(context: GitHubCon
 
   if (decision.action !== "agent") return;
   const task = String(decision.task ?? "").trim() || afterMention || body;
-  await dispatchInternalAgent(context, task, { postReply: (reply) => postReplyInReviewThread(context, reply) });
+  await dispatchInternalAgent(context, task, {
+    postReply: (reply) => postReplyInReviewThread(context, reply),
+  });
 }
