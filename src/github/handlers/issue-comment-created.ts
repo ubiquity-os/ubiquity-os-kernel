@@ -137,6 +137,12 @@ export default async function issueCommentCreated(context: GitHubContext<"issue_
 
   if (afterMention === null && slashInvocation?.name.toLowerCase() === "help") {
     await postHelpCommand(context);
+    // Reject non-human authors after command handling to prevent downstream agent invocation
+    // which would emit "agent rejected" noise for bot-authored comments
+    if (!isHuman) {
+      context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Rejecting non-human author after /help command");
+      return;
+    }
     return;
   }
 
@@ -451,6 +457,12 @@ async function getRecentCommentsForRouter(
 }
 
 async function commandRouter(context: GitHubContext<"issue_comment.created">) {
+  // Reject bot authors before any routing to prevent "Only human users can invoke the agent" noise
+  if (context.payload.comment.user?.type !== "User") {
+    context.logger.debug({ author: context.payload.comment.user?.login, type: context.payload.comment.user?.type }, "Rejecting non-human author in commandRouter");
+    return;
+  }
+
   if (!("installation" in context.payload) || context.payload.installation?.id === undefined) {
     context.logger.warn(`No installation found, cannot route command`);
     return;
