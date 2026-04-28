@@ -102,6 +102,7 @@ export async function postHelpCommand(context: GitHubContext<"issue_comment.crea
   );
 
   commandRows.set("help", "| `/help` | List all available commands. | `/help` |");
+  commandRows.set("version", "| `/version` | Show kernel version and commit hash. | `/version` |");
 
   for (const [pluginKey] of Object.entries(configuration?.plugins || {})) {
     let plugin: string | GithubPlugin;
