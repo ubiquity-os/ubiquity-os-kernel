@@ -461,6 +461,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     context.logger.debug("No configuration was found");
     return;
   }
+  if (!config.plugins || typeof config.plugins !== "object") {
+    context.logger.debug("No plugins found in configuration");
+    return;
+  }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: {
     target: string | GithubPlugin;
