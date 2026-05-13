@@ -1,7 +1,7 @@
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { GitHubContext } from "../github-context.ts";
 import { PluginInput } from "../types/plugin.ts";
-import { GithubPlugin, parsePluginIdentifier } from "../types/plugin-configuration.ts";
+import { GithubPlugin, parsePluginIdentifier, type PluginSettings } from "../types/plugin-configuration.ts";
 import { getAgentMemorySnippet, listAgentMemoryEntries, upsertAgentRunMemory } from "../utils/agent-memory.ts";
 import { extractAfterUbiquityosMention, getCreatedCommentRouteContext, type SlashCommandInvocation } from "../utils/comment-routing.ts";
 import { shouldSkipDuplicateCommentEvent } from "../utils/comment-dedupe.ts";
@@ -236,14 +236,15 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
   }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
+  const pluginEntries = Object.entries(config.plugins ?? {}) as [string, PluginSettings][];
   const pluginsWithManifest: {
     target: string | GithubPlugin;
-    settings: (typeof config.plugins)[string];
+    settings: PluginSettings;
     manifest: Manifest;
     manifestRef?: string;
   }[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of pluginEntries) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
@@ -462,15 +463,16 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
+  const pluginEntries = Object.entries(config.plugins ?? {}) as [string, PluginSettings][];
   const pluginsWithManifest: {
     target: string | GithubPlugin;
-    settings: (typeof config.plugins)[string];
+    settings: PluginSettings;
     manifest: Manifest;
     manifestRef?: string;
   }[] = [];
   const manifests: Manifest[] = [];
 
-  for (const [pluginKey, pluginSettings] of Object.entries(config.plugins)) {
+  for (const [pluginKey, pluginSettings] of pluginEntries) {
     let target: string | GithubPlugin;
     try {
       target = parsePluginIdentifier(pluginKey);
