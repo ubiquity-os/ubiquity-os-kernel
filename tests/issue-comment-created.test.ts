@@ -265,6 +265,99 @@ Deno.test("issueCommentCreated: ignores bot-authored /help comments", async () =
   assertEquals(createCommentCalls.length, 0);
 });
 
+Deno.test("issueCommentCreated: ignores slash commands when config plugins is empty", async () => {
+  const workflowDispatchCalls: unknown[] = [];
+  const context = createBaseContext("/foo bar", "User", {
+    octokit: {
+      rest: {
+        issues: {
+          createComment: async () => ({}),
+          updateComment: async () => ({}),
+          get: async () => ({ data: { body: "", body_html: "" } }),
+          listComments: async () => ({ data: [] }),
+        },
+        repos: {
+          getCollaboratorPermissionLevel: async () => ({
+            data: { role_name: "admin" },
+          }),
+          getContent: async ({ path }: { path: string }) => {
+            if (path === CONFIG_FULL_PATH) {
+              return { data: "plugins:" };
+            }
+            return { data: null };
+          },
+        },
+      },
+    },
+    eventHandler: {
+      getAuthenticatedOctokit: () => createAuthenticatedOctokit(workflowDispatchCalls),
+    },
+  });
+
+  await issueCommentCreated(context);
+
+  assertEquals(workflowDispatchCalls.length, 0);
+});
+
+Deno.test("issueCommentCreated: routes mentions when config plugins is empty", async () => {
+  const fetchStub = stubFetch({
+    "https://router.test/v1/chat/completions": new Response(
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ action: "ignore" }) } }],
+      }),
+      { headers: { "content-type": "application/json" } }
+    ),
+  });
+
+  const createCommentCalls: unknown[] = [];
+  const reactionCalls: unknown[] = [];
+  const context = createBaseContext("@ubiquityos should I use a command?", "User", {
+    octokit: {
+      rest: {
+        reactions: {
+          createForIssueComment: async (args: unknown) => {
+            reactionCalls.push(args);
+            return {};
+          },
+        },
+        issues: {
+          createComment: async (args: unknown) => {
+            createCommentCalls.push(args);
+            return {};
+          },
+          updateComment: async () => ({}),
+          get: async () => ({ data: { body: "", body_html: "" } }),
+          listComments: async () => ({ data: [] }),
+        },
+        repos: {
+          getCollaboratorPermissionLevel: async () => ({
+            data: { role_name: "admin" },
+          }),
+          getContent: async ({ path }: { path: string }) => {
+            if (path === CONFIG_FULL_PATH) {
+              return { data: "plugins:" };
+            }
+            return { data: null };
+          },
+        },
+      },
+    },
+    eventHandler: {
+      aiBaseUrl: "https://router.test",
+      llm: "test-model",
+    },
+  });
+
+  try {
+    await issueCommentCreated(context);
+  } finally {
+    fetchStub.restore();
+  }
+
+  assertEquals(reactionCalls.length, 1);
+  assertEquals(createCommentCalls.length, 0);
+});
+
 Deno.test("issueCommentCreated: dispatches internal agent for explicit human mention", async () => {
   const workflowDispatchCalls: unknown[] = [];
   const reactionCalls: unknown[] = [];
