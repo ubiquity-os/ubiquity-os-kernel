@@ -234,6 +234,10 @@ async function dispatchSlashCommand(context: GitHubContext<"issue_comment.create
     context.logger.debug("No configuration was found");
     return;
   }
+  if (!config.plugins || typeof config.plugins !== "object") {
+    context.logger.debug("No plugins found in configuration");
+    return;
+  }
 
   const isBotAuthor = context.payload.comment.user?.type !== "User";
   const pluginsWithManifest: {
@@ -459,6 +463,10 @@ async function commandRouter(context: GitHubContext<"issue_comment.created">) {
   const config = await getConfig(context);
   if (!config) {
     context.logger.debug("No configuration was found");
+    return;
+  }
+  if (!config.plugins || typeof config.plugins !== "object") {
+    context.logger.debug("No plugins found in configuration");
     return;
   }
   const isBotAuthor = context.payload.comment.user?.type !== "User";
