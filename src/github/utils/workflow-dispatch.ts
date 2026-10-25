@@ -1,5 +1,6 @@
 import { customOctokit } from "../github-client.ts";
 import { GitHubContext } from "../github-context.ts";
+import { getRuntimeEnvValue } from "./env.ts";
 
 interface WorkflowDispatchOptions {
   owner: string;
@@ -12,6 +13,27 @@ interface WorkflowDispatchOptions {
 interface WorkflowRunLookupOptions {
   pollIntervalMs?: number;
   maxWaitMs?: number;
+}
+
+const WORKER_SERVICE_BINDINGS: Record<string, string> = {
+  "ubiquity-os-command-start-stop-main.ubiquity.workers.dev": "COMMAND_START_STOP",
+  "ubiquity-os-command-start-stop-development.ubiquity.workers.dev": "COMMAND_START_STOP_DEVELOPMENT",
+};
+
+function getWorkerServiceBinding(targetUrl: string): { fetch: typeof fetch } | null {
+  let hostname: string;
+  try {
+    hostname = new URL(targetUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  const bindingName = WORKER_SERVICE_BINDINGS[hostname];
+  if (!bindingName) return null;
+  const binding = getRuntimeEnvValue(bindingName);
+  if (!binding || typeof binding !== "object" || !("fetch" in binding) || typeof binding.fetch !== "function") {
+    return null;
+  }
+  return binding as { fetch: typeof fetch };
 }
 
 function getHttpStatus(error: unknown): number | null {
@@ -223,11 +245,13 @@ export async function dispatchWorker(targetUrl: string, payload?: Record<string,
     headers["X-Hub-Signature-256"] = signatureValue.startsWith("sha256=") ? signatureValue : `sha256=${signatureValue}`;
   }
 
-  const result = await fetch(targetUrl, {
+  const request = new Request(targetUrl, {
     body: JSON.stringify(payload),
     method: "POST",
     headers,
   });
+  const serviceBinding = getWorkerServiceBinding(targetUrl);
+  const result = serviceBinding ? await serviceBinding.fetch(request) : await fetch(request);
 
   if (!result.ok) {
     const errText = await result.text();

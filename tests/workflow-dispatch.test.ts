@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert";
 
-import { dispatchWorkflow } from "../src/github/utils/workflow-dispatch.ts";
+import { setRuntimeEnv } from "../src/github/utils/env.ts";
+import { dispatchWorker, dispatchWorkflow } from "../src/github/utils/workflow-dispatch.ts";
 
 const COMMAND_HELLO = "command-hello";
 const MARKETPLACE = "ubiquity-os-marketplace";
@@ -65,4 +66,26 @@ Deno.test("dispatchWorkflow: dispatches provided workflow id", async () => {
     ref: "fix/action-entry",
     inputs: { foo: "bar" },
   });
+});
+
+Deno.test("dispatchWorker: routes command-start-stop through the Cloudflare service binding", async () => {
+  const requests: Request[] = [];
+  const targetUrl = "https://ubiquity-os-command-start-stop-main.ubiquity.workers.dev";
+  const serviceBinding = {
+    fetch: async (request: Request) => {
+      requests.push(request);
+      return Response.json({ ok: true });
+    },
+  };
+
+  setRuntimeEnv({ COMMAND_START_STOP: serviceBinding });
+  try {
+    const response = await dispatchWorker(targetUrl, { signature: "test-signature", stateId: "state-1" });
+    assertEquals(response, { ok: true });
+    assertEquals(requests.length, 1);
+    assertEquals(requests[0].url, `${targetUrl}/`);
+    assertEquals(requests[0].headers.get("x-hub-signature-256"), "sha256=test-signature");
+  } finally {
+    setRuntimeEnv({});
+  }
 });
