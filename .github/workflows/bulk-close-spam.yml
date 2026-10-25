@@ -1,0 +1,72 @@
+name: Bulk close spam PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Inspect without closing"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create official App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ubiquity
+          repositories: "ai.ubq.fi,uusd.ubq.fi,pay.ubq.fi,permit2-rpc-manager,ts-template,stake.ubq.fi,ubq.fi-router,.github,permit3,ubiquity-dollar,arbitrage-bot,work.ubq.fi,checkout.ubq.fi"
+
+      - name: Verify bot identity
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          actor=$(gh api user --jq .login)
+          echo "Authenticated actor: $actor"
+          test "$actor" = "ubiquity-os[bot]"
+
+      - name: Close reviewed spam PRs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -uo pipefail
+          failures=0
+          while IFS=$'\t' read -r repo number author; do
+            [ -n "$repo" ] || continue
+            pr_state=$(gh api "repos/$repo/pulls/$number" --jq '.state + "\t" + .user.login' 2>/dev/null || true)
+            state=${pr_state%%$'\t'*}
+            pr_author=${pr_state#*$'\t'}
+            if [ "$state" != "open" ]; then
+              echo "SKIP $repo#$number state=$state author=$pr_author"
+              continue
+            fi
+            if [ "$pr_author" != "$author" ]; then
+              echo "SKIP $repo#$number author changed: expected=$author actual=$pr_author"
+              continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "DRY-RUN $repo#$number author=$pr_author"
+              continue
+            fi
+            if gh pr close "$number" --repo "$repo"; then
+              echo "CLOSED $repo#$number author=$pr_author"
+            else
+              echo "FAILED $repo#$number author=$pr_author"
+              failures=$((failures + 1))
+            fi
+          done < cleanup/spam-prs.tsv
+          echo "failures=$failures"
+          exit "$failures"
