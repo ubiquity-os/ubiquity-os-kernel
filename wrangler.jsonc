@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ubiquity-os-kernel",
+  "main": "src/kernel.ts",
+  "compatibility_date": "2026-10-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "NODE_ENV": "production",
+    "LOG_LEVEL": "info",
+    "UOS_AI_BASE_URL": "https://ai.ubq.fi",
+    "UOS_AGENT_OWNER": "ubiquity-os",
+    "UOS_AGENT_REPO": "ubiquity-os-kernel",
+    "UOS_AGENT_WORKFLOW": "agent.yml",
+    "UOS_KERNEL_BASE_URL": "https://ubiquity-os-kernel-gate.ubiquity.workers.dev",
+  },
+  "env": {
+    "development": {
+      "name": "ubiquity-os-kernel-development",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "ENVIRONMENT": "development",
+        "NODE_ENV": "production",
+        "LOG_LEVEL": "debug",
+        "UOS_AI_BASE_URL": "https://ai.ubq.fi",
+        "UOS_AGENT_OWNER": "ubiquity-os",
+        "UOS_AGENT_REPO": "ubiquity-os-kernel",
+        "UOS_AGENT_WORKFLOW": "agent.yml",
+        "UOS_KERNEL_BASE_URL": "https://ubiquity-os-kernel-gate-development.ubiquity.workers.dev",
+      },
+    },
+  },
+}

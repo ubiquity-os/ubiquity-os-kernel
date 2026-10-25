@@ -1,0 +1,54 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ubiquity-os-kernel-gate",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-24",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "KERNEL_URL": "https://ubiquity-os-kernel.ubiquity.workers.dev",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG_STATUS",
+      "id": "16ff6b6d2f88434b9f177c4c3d7b3229",
+    },
+  ],
+  "services": [
+    {
+      "binding": "KERNEL",
+      "service": "ubiquity-os-kernel",
+    },
+  ],
+  "env": {
+    "development": {
+      "name": "ubiquity-os-kernel-gate-development",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "ENVIRONMENT": "development",
+        "KERNEL_URL": "https://ubiquity-os-kernel-development.ubiquity.workers.dev",
+      },
+      "kv_namespaces": [
+        {
+          "binding": "CONFIG_STATUS",
+          "id": "5821067db8f74d768b51d46f7fff1da1",
+        },
+      ],
+      "services": [
+        {
+          "binding": "KERNEL",
+          "service": "ubiquity-os-kernel-development",
+        },
+      ],
+    },
+  },
+}

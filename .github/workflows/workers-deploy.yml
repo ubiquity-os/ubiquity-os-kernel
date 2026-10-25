@@ -1,0 +1,132 @@
+name: Cloudflare Workers
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - development
+
+concurrency:
+  group: workers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ github.ref_name == 'main' && 'main' || 'development' }}
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
+      UOS_AI_TOKEN: ${{ secrets.UOS_AI_TOKEN }}
+      UOS_DIAGNOSTICS_TOKEN: ${{ secrets.UOS_DIAGNOSTICS_TOKEN }}
+      UOS_AGENT_MEMORY_URL: ${{ secrets.UOS_AGENT_MEMORY_URL }}
+      UOS_AGENT_MEMORY_KEY: ${{ secrets.UOS_AGENT_MEMORY_KEY }}
+      UOS_KERNEL_REFRESH_INTERVAL_SECONDS: ${{ secrets.UOS_KERNEL_REFRESH_INTERVAL_SECONDS }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.3"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate required secrets
+        run: |
+          set -euo pipefail
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID APP_ID APP_PRIVATE_KEY APP_WEBHOOK_SECRET; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing required secret: $key" >&2
+              exit 1
+            fi
+          done
+
+      - name: Compile Workers
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            bun run deploy:dry-run
+            bun run deploy:gate:dry-run
+          else
+            bunx wrangler deploy --env development --dry-run
+            bunx wrangler deploy --config gate/wrangler.jsonc --env development --dry-run
+          fi
+
+      - name: Deploy kernel
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            bunx wrangler deploy --env="" --var GIT_REVISION:"${GITHUB_SHA}"
+          else
+            bunx wrangler deploy --env development --var GIT_REVISION:"${GITHUB_SHA}"
+          fi
+
+      - name: Deploy gate
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            bunx wrangler deploy --config gate/wrangler.jsonc --env=""
+          else
+            bunx wrangler deploy --config gate/wrangler.jsonc --env development
+          fi
+
+      - name: Sync Worker secrets
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg APP_ID "$APP_ID" \
+            --arg APP_PRIVATE_KEY "$APP_PRIVATE_KEY" \
+            --arg APP_WEBHOOK_SECRET "$APP_WEBHOOK_SECRET" \
+            --arg UOS_AI_TOKEN "$UOS_AI_TOKEN" \
+            --arg UOS_DIAGNOSTICS_TOKEN "$UOS_DIAGNOSTICS_TOKEN" \
+            --arg UOS_AGENT_MEMORY_URL "$UOS_AGENT_MEMORY_URL" \
+            --arg UOS_AGENT_MEMORY_KEY "$UOS_AGENT_MEMORY_KEY" \
+            --arg UOS_KERNEL_REFRESH_INTERVAL_SECONDS "$UOS_KERNEL_REFRESH_INTERVAL_SECONDS" \
+            --arg SUPABASE_URL "$SUPABASE_URL" \
+            --arg SUPABASE_ANON_KEY "$SUPABASE_ANON_KEY" \
+            '{
+              APP_ID: $APP_ID,
+              APP_PRIVATE_KEY: $APP_PRIVATE_KEY,
+              APP_WEBHOOK_SECRET: $APP_WEBHOOK_SECRET,
+              UOS_AI_TOKEN: $UOS_AI_TOKEN,
+              UOS_DIAGNOSTICS_TOKEN: $UOS_DIAGNOSTICS_TOKEN,
+              UOS_AGENT_MEMORY_URL: $UOS_AGENT_MEMORY_URL,
+              UOS_AGENT_MEMORY_KEY: $UOS_AGENT_MEMORY_KEY,
+              UOS_KERNEL_REFRESH_INTERVAL_SECONDS: $UOS_KERNEL_REFRESH_INTERVAL_SECONDS,
+              SUPABASE_URL: $SUPABASE_URL,
+              SUPABASE_ANON_KEY: $SUPABASE_ANON_KEY
+            } | with_entries(select(.value != ""))' > "$RUNNER_TEMP/kernel-secrets.json"
+          jq -n --arg APP_WEBHOOK_SECRET "$APP_WEBHOOK_SECRET" \
+            '{APP_WEBHOOK_SECRET: $APP_WEBHOOK_SECRET}' > "$RUNNER_TEMP/gate-secrets.json"
+
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            bunx wrangler secret bulk "$RUNNER_TEMP/kernel-secrets.json" --name ubiquity-os-kernel
+            bunx wrangler secret bulk "$RUNNER_TEMP/gate-secrets.json" --config gate/wrangler.jsonc --name ubiquity-os-kernel-gate
+          else
+            bunx wrangler secret bulk "$RUNNER_TEMP/kernel-secrets.json" --name ubiquity-os-kernel-development
+            bunx wrangler secret bulk "$RUNNER_TEMP/gate-secrets.json" --config gate/wrangler.jsonc --name ubiquity-os-kernel-gate-development
+          fi
+
+      - name: Verify live endpoint
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            url="https://ubiquity-os-kernel-gate.ubiquity.workers.dev/"
+          else
+            url="https://ubiquity-os-kernel-gate-development.ubiquity.workers.dev/"
+          fi
+          body=$(curl -fsS --retry 5 --retry-delay 2 --max-time 20 "$url")
+          echo "$body"
+          printf '%s' "$body" | grep -q "Welcome to UbiquityOS kernel"

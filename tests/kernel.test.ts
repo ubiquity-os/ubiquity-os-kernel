@@ -5,6 +5,7 @@ import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
 import { bindHandlers, type HandlerDeps } from "../src/github/handlers/index.ts";
 import { logger } from "../src/logger/logger.ts";
 import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
+import { markRepositoryUnconfigured, resetRepositoryConfigCache } from "../src/github/utils/repository-config-cache.ts";
 
 const TEST_ENVIRONMENT = "development";
 const TEST_ORG = "0x4007";
@@ -54,6 +55,7 @@ function createFakeIssueCommentCreatedEvent({ org, repo, commentBody }: { org: s
 }
 
 Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", async () => {
+  resetRepositoryConfigCache();
   const eventHandler = new GitHubEventHandler({
     environment: TEST_ENVIRONMENT,
     webhookSecret: TEST_WEBHOOK_SECRET,
@@ -109,4 +111,52 @@ Deno.test("Kernel: dispatches configured worker plugins via onAny pipeline", asy
 
   assertEquals(dispatched.length, 1);
   assertEquals(dispatched[0].targetUrl, TEST_WORKER_URL);
+});
+
+Deno.test("Kernel: skips known unconfigured repository without loading config or dispatching", async () => {
+  resetRepositoryConfigCache();
+  markRepositoryUnconfigured(TEST_ENVIRONMENT, `${TEST_ORG}/${TEST_REPO}`);
+
+  const eventHandler = new GitHubEventHandler({
+    environment: TEST_ENVIRONMENT,
+    webhookSecret: TEST_WEBHOOK_SECRET,
+    appId: TEST_APP_ID,
+    privateKey: TEST_PRIVATE_KEY,
+    llm: TEST_MODEL,
+    createWebhooks: (options) => new FakeWebhooks(options) as unknown as never,
+  });
+
+  eventHandler.transformEvent = () =>
+    ({
+      id: "test-context-id",
+      key: ISSUE_COMMENT_CREATED,
+      name: "issue_comment",
+      octokit: {},
+      eventHandler,
+      payload: createFakeIssueCommentCreatedEvent({ org: TEST_ORG, repo: TEST_REPO, commentBody: "hello" }).payload,
+      logger,
+    }) as never;
+
+  let configCalls = 0;
+  let dispatchCalls = 0;
+  bindHandlers(eventHandler, {
+    getConfig: async () => {
+      configCalls += 1;
+      return { plugins: {} } as never;
+    },
+    dispatchPluginTarget: async () => {
+      dispatchCalls += 1;
+      return {} as never;
+    },
+  });
+
+  try {
+    await (eventHandler.webhooks as unknown as FakeWebhooks<unknown>).receive(
+      createFakeIssueCommentCreatedEvent({ org: TEST_ORG, repo: TEST_REPO, commentBody: "hello" })
+    );
+    assertEquals(configCalls, 0);
+    assertEquals(dispatchCalls, 0);
+  } finally {
+    resetRepositoryConfigCache();
+  }
 });

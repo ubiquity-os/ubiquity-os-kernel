@@ -3,7 +3,7 @@
 The kernel is designed to:
 
 - Interface with plugins (GitHub Actions) for longer-running processes.
-- Run on Deno Deploy.
+- Run on Cloudflare Workers behind an event-driven gate.
 
 ## Environment Variables
 
@@ -31,20 +31,19 @@ For local development, expose the kernel with a public HTTPS tunnel (ngrok or a 
 ```bash
 git clone --recurse-submodules https://github.com/ubiquity-os/ubiquity-os-kernel
 cd ubiquity-os-kernel
-deno task dev
+bun install
+bun run dev
 ```
 
-`deno task dev` pulls npm dependencies into the Deno cache on first run; no `bun install` or `node_modules` are required to run the kernel locally.
-
-For local convenience, `deno task dev:easy` (or `deno task dev:serve:easy`) runs with `-A` permissions and loads `.env`. Use it only for trusted local development; `deno task dev`/`deno task dev:serve` keep explicit permissions.
+`bun run dev` starts the Worker locally through Wrangler. The Deno tasks remain available for the existing tests, typecheck, lint, and formatting checks.
 
 Marketplace plugins under `lib/plugins/` are pinned submodules. Refer to each plugin repo for its own security review and docs (for example, [`command-config`](https://github.com/ubiquity-os-marketplace/command-config)).
 
 We keep the `lib/plugins/hello-world-plugin` example in this repo to make local testing and CI smoke checks easy; production plugins should live in their own repositories.
 
-### Deno import map
+### Dependency pins
 
-The Deno import map in `deno.json` is intentional: it centralizes version pins for npm packages and keeps source imports clean (no `npm:` specifiers in code). The root `package.json` is only for tooling integrations.
+`package.json` and `bun.lock` own the Worker runtime dependencies. The Deno import map in `deno.json` remains for the existing test and tooling commands; keep both dependency sets aligned when upgrading shared packages.
 
 ## Conversation Graph and Agent Context
 
@@ -74,39 +73,35 @@ GITHUB_TOKEN=... deno run -A --sloppy-imports scripts/conversation-graph.ts <git
 
 Useful flags: `--all`, `--no-semantic`, `--context-max-comments`, `--context-max-comment-chars`.
 
-### Deploying to Deno Deploy
+### Deploying to Cloudflare Workers
 
-Deployments are handled by GitHub Actions via `.github/workflows/deno-deploy.yml`.
+Deployments are handled by `.github/workflows/workers-deploy.yml`.
 
-1. **Create a GitHub App:**
+The stack has two Workers in the `Ubiquity DAO Workers` account:
 
-   - Generate a GitHub App and configure its settings.
-   - Navigate to app settings and click `Permissions & events`.
-   - Ensure the app is subscribed to all events with the following permissions:
+- `ubiquity-os-kernel` and `ubiquity-os-kernel-development`: the kernel.
+- `ubiquity-os-kernel-gate` and `ubiquity-os-kernel-gate-development`: the public GitHub webhook gate.
 
-     Repository permissions:
+The gate verifies GitHub signatures, caches repository config state in Workers KV, and calls the kernel through a service binding. An unconfigured repository gets one probe and is then blocked with `204` until a config-changing push. There is no cron and no per-event KV write.
 
-     - Actions: Read & Write
-     - Contents: Read & Write
-     - Issues: Read & Write
-     - Pull Requests: Read & Write
+Production and development endpoints:
 
-     Organization permissions:
+- Production gate: `https://ubiquity-os-kernel-gate.ubiquity.workers.dev/`
+- Development gate: `https://ubiquity-os-kernel-gate-development.ubiquity.workers.dev/`
 
-     - Members: Read only
+Set the GitHub App webhook URL to the gate URL for the target environment.
 
-2. **Set repository secrets (required):**
+Required repository secrets:
 
-   - `DENO_DEPLOY_TOKEN`
-   - `APP_WEBHOOK_SECRET`
-   - `APP_ID`
-   - `APP_PRIVATE_KEY`
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `APP_WEBHOOK_SECRET`
+- `APP_ID`
+- `APP_PRIVATE_KEY`
 
-   Optional: `DENO_ORG_NAME`, `DENO_PROJECT_NAME`, `ENVIRONMENT`, `UOS_AGENT_*`, `UOS_AGENT_MEMORY_*`, `UOS_KERNEL_BASE_URL`, `UOS_KERNEL_TRUSTED_HOSTS`, `UOS_AI_BASE_URL`, `SUPABASE_*`.
+Optional: `UOS_AI_TOKEN`, `UOS_DIAGNOSTICS_TOKEN`, `UOS_AGENT_MEMORY_*`, `SUPABASE_*`.
 
-3. **Deploy:**
-
-   - Push to `main` (or run the workflow manually) to deploy.
+Pushing to `development` deploys both development Workers. Pushing to `main` deploys both production Workers.
 
 ### Plugin-Kernel Input/Output Interface
 
@@ -149,7 +144,7 @@ The kernel supports 2 types of plugins:
 
 How to run a "hello-world" plugin locally:
 
-1. Run `deno task dev` to spin up the kernel
+1. Run `bun run dev` to spin up the kernel
 2. Run `bun run plugin:hello-world` to spin up a local server for the "hello-world" plugin (requires Bun)
 3. Update the bot's config file in the repository where you use the bot (`OWNER/REPOSITORY/.github/.ubiquity-os.config.yml`):
    ```yml
@@ -177,7 +172,7 @@ A screencast tutorial on how to set up and run a hello world plugin is available
 
 ## Testing
 
-CI runs the Deno test workflow (`.github/workflows/testing.yml`) in place of the previous bun-based workflow, and unused file checks are handled by `deno task deps:unused` (replacing knip).
+CI runs the Deno test workflow (`.github/workflows/testing.yml`) against `tests/`. The kernel runtime itself is deployed on Cloudflare Workers.
 
 ### Jest
 
