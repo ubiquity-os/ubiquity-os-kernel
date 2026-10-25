@@ -1,9 +1,7 @@
-import process from "node:process";
 import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
-import pretty from "pino-pretty";
 import { recordRequestLog } from "./request-log-store.ts";
 
-const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "info" : "debug");
+const level = "info";
 type CustomLogLevels = "github" | "local";
 const textDecoder = new TextDecoder();
 
@@ -126,7 +124,7 @@ function createConsoleSyncStream(): DestinationStream {
       if (!line) return true;
       try {
         const parsed = JSON.parse(line) as { level?: unknown };
-        selectConsoleMethod(parsed.level).call(console, JSON.stringify(parsed, null, 2));
+        selectConsoleMethod(parsed.level).call(console, JSON.stringify(parsed));
       } catch {
         // Fall back to the raw line for non-JSON or partially written chunks.
         console.log(line);
@@ -136,21 +134,7 @@ function createConsoleSyncStream(): DestinationStream {
   } as DestinationStream;
 }
 
-const stream =
-  process.env.NODE_ENV !== "production"
-    ? pretty({
-        colorize: true,
-        singleLine: false,
-        levelFirst: true,
-        translateTime: "HH:MM:ss.l",
-        ignore: "pid,hostname,requestId",
-        messageFormat: (log, messageKey) => {
-          const msg = log[messageKey] as string;
-          if (log.requestId) return `(${log.requestId}) ${msg}`;
-          return msg;
-        },
-      })
-    : createConsoleSyncStream();
+const stream = createConsoleSyncStream();
 
 const createLogger = pino as unknown as (options: LoggerOptions<CustomLogLevels>, stream?: DestinationStream) => Logger<CustomLogLevels>;
 

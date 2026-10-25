@@ -216,31 +216,23 @@ The kernel loads and merges plugin config from:
 - Repo config: `.github/.ubiquity-os.config.yml` (production) or `.github/.ubiquity-os.config.dev.yml` (development)
 - Org repo config: `<OWNER>/.ubiquity-os` using the same paths
 
-## 📜 Deno Dashboard Logs (CLI)
+## 📜 Cloudflare Workers Logs
 
-To accelerate debugging/feedback loops, use the internal dashboard logs fetcher:
+The kernel and gate run on Cloudflare Workers. Use Wrangler tail for live structured logs:
 
 ```bash
-# Beta (develop) logs, last hour
-deno task dash-logs:beta
-deno task dash-logs --project-id=7f8de540-0885-4313-84c8-d3d6b3a40a49 --deployment-id=ktca8xhgvq5d --since=1h --format=ndjson
+# Development kernel and gate
+bunx wrangler tail ubiquity-os-kernel-development --format=json
+bunx wrangler tail ubiquity-os-kernel-gate-development --format=json --config gate/wrangler.jsonc
 
-# Production logs, last hour (deployment-id=latest works)
-deno task dash-logs --project-id=ac40defb-c3ad-4253-a39b-34bf9731217a --deployment-id=latest --since=1h --format=ndjson
-
-# AI-friendly prod logs (NDJSON) and human-friendly prod logs (table)
-deno task dash-logs:ai
-deno task dash-logs:human
+# Production kernel and gate
+bunx wrangler tail ubiquity-os-kernel --format=json
+bunx wrangler tail ubiquity-os-kernel-gate --format=json --config gate/wrangler.jsonc
 ```
 
-Auth uses the dashboard cookie token (no public API). Set `DENO_DEPLOY_TOKEN` in the shell, or pass `--token=...` explicitly.
+Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the shell. `wrangler tail` is a live stream; stop it with Ctrl-C.
 
-Findings:
-
-- The dashboard logs endpoint is internal (`dash.deno.com/_api/.../query_logs`) and has no public API docs; it is accessed via the dashboard cookie token (`token=...`).
-- The `message` field is sometimes a JSON string and sometimes plain text; keep raw NDJSON for AI parsing and avoid assuming schema.
-
-For fast beta debugging with a feedback loop, prefer `deno task dash-logs:beta` (NDJSON) and `deno task dash-logs:human` (table) when a human needs to scan logs quickly.
+The gate writes one KV status per repository after an unknown probe or config-changing push. It returns `204` for configured-absent repositories and never calls the kernel for them.
 
 ## 🚨 Troubleshooting
 

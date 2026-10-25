@@ -13,6 +13,8 @@ import { createKernelAttestationToken, verifyKernelAttestationToken } from "./gi
 import { getKernelCommit } from "./github/utils/kernel-metadata.ts";
 import { getCachedRsaPublicKeyPem, normalizeMultilineSecret } from "./github/utils/rsa.ts";
 import { listAgentMemoryEntries } from "./github/utils/agent-memory.ts";
+import { setRuntimeEnv } from "./github/utils/env.ts";
+import { extractRepositoryFullName, getRepositoryConfigStatus } from "./github/utils/repository-config-cache.ts";
 import { logger } from "./logger/logger.ts";
 import { signPayload } from "@ubiquity-os/plugin-sdk/signature";
 
@@ -21,10 +23,18 @@ const KERNEL_REFRESH_ROUTE = "/internal/agent/refresh-token";
 export const app = new Hono();
 export default app;
 
+app.use(async (c: Context, next) => {
+  setRuntimeEnv(honoEnv(c));
+  await next();
+});
 app.use(requestId());
 app.use(async (c: Context, next) => {
   const requestId = c.var.requestId;
   const childLogger = logger.child({ requestId });
+  const runtime = honoEnv(c) as Record<string, unknown>;
+  if (typeof runtime.LOG_LEVEL === "string" && runtime.LOG_LEVEL.trim()) {
+    childLogger.level = runtime.LOG_LEVEL.trim();
+  }
   c.set("logger", childLogger);
   await next();
 });
@@ -182,6 +192,12 @@ app.post("/", async (ctx: Context) => {
     bindHandlers(eventHandler);
 
     const payload = await request.text();
+    let repositoryFullName: string | null = null;
+    try {
+      repositoryFullName = extractRepositoryFullName(JSON.parse(payload));
+    } catch {
+      repositoryFullName = null;
+    }
     ctx.var.logger.debug(
       {
         eventName,
@@ -192,6 +208,11 @@ app.post("/", async (ctx: Context) => {
       "Webhook received"
     );
     await eventHandler.webhooks.verifyAndReceive({ id, name: eventName, payload, signature: signatureSha256 });
+    const configStatus = repositoryFullName ? getRepositoryConfigStatus(environment, repositoryFullName) : null;
+    ctx.var.logger.debug({ repositoryFullName, configStatus }, "Repository config status");
+    if (configStatus) {
+      ctx.header("x-uos-config", configStatus);
+    }
     return ctx.text("ok\n", 200);
   } catch (error) {
     return handleUncaughtError(ctx, error);

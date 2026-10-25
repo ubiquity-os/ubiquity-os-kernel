@@ -3,6 +3,7 @@ import { assertEquals } from "jsr:@std/assert";
 
 import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
 import { bindHandlers, type HandlerDeps } from "../src/github/handlers/index.ts";
+import { resetRepositoryConfigCache } from "../src/github/utils/repository-config-cache.ts";
 import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
 
 const TEST_APP_ID = "1";
@@ -94,6 +95,7 @@ function getEventKey(event: EmitterWebhookEvent): string {
 }
 
 function createEventHandler() {
+  resetRepositoryConfigCache();
   const eventHandler = new GitHubEventHandler({
     environment: "production",
     webhookSecret: TEST_WEBHOOK_SECRET,

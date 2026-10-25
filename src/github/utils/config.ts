@@ -10,6 +10,7 @@ import { GitHubContext } from "../github-context.ts";
 import { parsePluginIdentifier, type PluginConfiguration } from "../types/plugin-configuration.ts";
 import { getManifest as getKernelManifest } from "./plugins.ts";
 import { tryGetInstallationIdForOwner } from "./marketplace-auth.ts";
+import { markRepositoryConfigured, markRepositoryUnconfigured } from "./repository-config-cache.ts";
 
 export const CONFIG_FULL_PATH = CONFIG_PROD_FULL_PATH;
 export const DEV_CONFIG_FULL_PATH = CONFIG_DEV_FULL_PATH;
@@ -139,7 +140,7 @@ async function hydratePluginRunsOn(context: GitHubContext, configuration: Plugin
   };
 }
 
-function createConfigurationHandler(context: GitHubContext): ConfigurationHandler {
+function createConfigurationHandler(context: GitHubContext) {
   const environment = normalizeEnvironmentName(context.eventHandler.environment);
   const octokitFactory = async (location: ConfigLocation) => {
     const payloadOwner = readPayloadOwner(context);
@@ -156,14 +157,30 @@ function createConfigurationHandler(context: GitHubContext): ConfigurationHandle
     return context.eventHandler.getAuthenticatedOctokit(installationId);
   };
 
-  return new (class extends ConfigurationHandler {
+  class KernelConfigurationHandler extends ConfigurationHandler {
+    public readonly sources: ConfigSource[] = [];
+
     public override getManifest(plugin: string | GithubPluginTarget) {
       if (typeof plugin === "string") {
         return super.getManifest(plugin);
       }
       return getKernelManifest(context, plugin);
     }
-  })(context.logger, context.octokit, environment || null, { octokitFactory });
+
+    public override async getConfigurationFromRepo(owner: string, repository: string, options?: { ref?: string }) {
+      const result = await super.getConfigurationFromRepo(owner, repository, options);
+      if (result.rawData) {
+        this.sources.push({
+          owner,
+          repo: repository,
+          path: getConfigFullPathForEnvironment(environment),
+        });
+      }
+      return result;
+    }
+  }
+
+  return new KernelConfigurationHandler(context.logger, context.octokit, environment || null, { octokitFactory });
 }
 
 /**
@@ -199,8 +216,16 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   }
 
   const resolved = (await handler.getConfiguration({ owner, repo })) as PluginConfiguration & { __sources?: ConfigSource[] };
-  if (!resolved.__sources) {
-    resolved.__sources = [];
+  const repositoryFullName = `${owner}/${repo}`;
+  if (handler.sources.length > 0) {
+    markRepositoryConfigured(context.eventHandler.environment, repositoryFullName);
+  } else if (Object.keys(resolved.plugins ?? {}).length === 0) {
+    markRepositoryUnconfigured(context.eventHandler.environment, repositoryFullName);
   }
+  resolved.__sources = handler.sources;
+  context.logger.debug(
+    { repositoryFullName, sources: handler.sources.length, plugins: Object.keys(resolved.plugins ?? {}).length },
+    "Configuration presence recorded"
+  );
   return await hydratePluginRunsOn(context, resolved);
 }

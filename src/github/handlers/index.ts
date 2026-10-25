@@ -9,6 +9,7 @@ import { type ConfigSource, getConfig, getConfigFullPathForEnvironment } from ".
 import { getKernelCommit } from "../utils/kernel-metadata.ts";
 import { dispatchPluginTarget, resolvePluginDispatchTarget } from "../utils/plugin-dispatch.ts";
 import { getManifest, getPluginsForEvent, ResolvedPlugin } from "../utils/plugins.ts";
+import { shouldSkipUnconfiguredRepository } from "../utils/repository-config-cache.ts";
 import { getCreatedCommentRouteContext, shouldSkipBotInvocationDispatch } from "../utils/comment-routing.ts";
 import { handleAgentRunCommentEdited } from "./agent-run-comment.ts";
 import issueCommentCreated from "./issue-comment-created.ts";
@@ -588,27 +589,43 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
   };
 }
 
+function skipUnconfiguredRepository<TContext extends GitHubContext>(handler: (context: TContext) => unknown) {
+  return (context: TContext) => {
+    if (shouldSkipUnconfiguredRepository(context.eventHandler.environment, context.name, context.payload)) {
+      context.logger.debug("Skipping event from repository without UbiquityOS configuration");
+      return;
+    }
+    return handler(context);
+  };
+}
+
 export function bindHandlers(eventHandler: GitHubEventHandler, deps?: Partial<HandlerDeps>) {
   const resolvedDeps = resolveHandlerDeps(deps);
-  eventHandler.on("issue_comment.created", issueCommentCreated);
-  eventHandler.on("issue_comment.edited", async (context) => {
-    const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
-    if (!issueNumber) {
-      context.logger.debug("Missing issue number for issue_comment.edited; skipping agent run update");
-      return;
-    }
-    await handleAgentRunCommentEdited(context as GitHubContext<"issue_comment.edited">, issueNumber);
-  });
-  eventHandler.on("pull_request_review_comment.created", pullRequestReviewCommentCreated);
-  eventHandler.on("pull_request_review_comment.edited", async (context) => {
-    const prNumber = typeof context.payload?.pull_request?.number === "number" ? context.payload.pull_request.number : null;
-    if (!prNumber) {
-      context.logger.debug("Missing pull request number for pull_request_review_comment.edited; skipping agent run update");
-      return;
-    }
-    await handleAgentRunCommentEdited(context as GitHubContext<"pull_request_review_comment.edited">, prNumber);
-  });
-  eventHandler.on("push", handlePushEvent);
+  eventHandler.on("issue_comment.created", skipUnconfiguredRepository(issueCommentCreated));
+  eventHandler.on(
+    "issue_comment.edited",
+    skipUnconfiguredRepository(async (context: GitHubContext<"issue_comment.edited">) => {
+      const issueNumber = typeof context.payload?.issue?.number === "number" ? context.payload.issue.number : null;
+      if (!issueNumber) {
+        context.logger.debug("Missing issue number for issue_comment.edited; skipping agent run update");
+        return;
+      }
+      await handleAgentRunCommentEdited(context, issueNumber);
+    })
+  );
+  eventHandler.on("pull_request_review_comment.created", skipUnconfiguredRepository(pullRequestReviewCommentCreated));
+  eventHandler.on(
+    "pull_request_review_comment.edited",
+    skipUnconfiguredRepository(async (context: GitHubContext<"pull_request_review_comment.edited">) => {
+      const prNumber = typeof context.payload?.pull_request?.number === "number" ? context.payload.pull_request.number : null;
+      if (!prNumber) {
+        context.logger.debug("Missing pull request number for pull_request_review_comment.edited; skipping agent run update");
+        return;
+      }
+      await handleAgentRunCommentEdited(context, prNumber);
+    })
+  );
+  eventHandler.on("push", skipUnconfiguredRepository(handlePushEvent));
   eventHandler.on("installation.created", () => {}); // No-op to handle event
   eventHandler.onAny(tryCatchWrapper((event) => handleEvent(event, eventHandler, resolvedDeps), eventHandler.logger, eventHandler, resolvedDeps)); // onAny should also receive GithubContext but the types in octokit/webhooks are weird
 }
@@ -654,6 +671,11 @@ async function filterPluginsForSlashCommandEvent(
 }
 
 async function handleEvent(event: EmitterWebhookEvent, eventHandler: InstanceType<typeof GitHubEventHandler>, deps: HandlerDeps) {
+  if (shouldSkipUnconfiguredRepository(eventHandler.environment, event.name, event.payload)) {
+    eventHandler.logger.debug({ event: event.name }, "Skipping event from repository without UbiquityOS configuration");
+    return;
+  }
+
   const context = eventHandler.transformEvent(event);
 
   if (context.key === "deployment_status.created" || String(context.key) === "repository_dispatch.return-data-to-ubiquity-os-kernel") {

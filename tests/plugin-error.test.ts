@@ -3,6 +3,7 @@ import { assertEquals, assertExists } from "jsr:@std/assert";
 
 import { GitHubEventHandler } from "../src/github/github-event-handler.ts";
 import { bindHandlers, type HandlerDeps } from "../src/github/handlers/index.ts";
+import { resetRepositoryConfigCache } from "../src/github/utils/repository-config-cache.ts";
 import { logger } from "../src/logger/logger.ts";
 import { FakeWebhooks } from "./test-utils/fake-webhooks.ts";
 
@@ -41,6 +42,7 @@ function issuesOpenedEvent({ owner, repo }: { owner: string; repo: string }): Em
 }
 
 async function createEventHandlerForTest() {
+  resetRepositoryConfigCache();
   const eventHandler = new GitHubEventHandler({
     environment: "production",
     webhookSecret: TEST_WEBHOOK_SECRET,
