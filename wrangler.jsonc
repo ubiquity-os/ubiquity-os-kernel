@@ -13,6 +13,12 @@
       "invocation_logs": true,
     },
   },
+  "services": [
+    {
+      "binding": "COMMAND_START_STOP",
+      "service": "ubiquity-os-command-start-stop-main",
+    },
+  ],
   "vars": {
     "ENVIRONMENT": "production",
     "NODE_ENV": "production",
@@ -28,6 +34,12 @@
       "name": "ubiquity-os-kernel-development",
       "workers_dev": true,
       "preview_urls": false,
+      "services": [
+        {
+          "binding": "COMMAND_START_STOP_DEVELOPMENT",
+          "service": "ubiquity-os-command-start-stop-development",
+        },
+      ],
       "vars": {
         "ENVIRONMENT": "development",
         "NODE_ENV": "production",

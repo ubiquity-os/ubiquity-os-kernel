@@ -7,6 +7,10 @@ export function setRuntimeEnv(value: unknown): void {
   runtimeEnv = value && typeof value === "object" ? (value as RuntimeEnv) : {};
 }
 
+export function getRuntimeEnvValue(key: string): unknown {
+  return runtimeEnv[key];
+}
+
 function readRuntimeEnv(key: string): string | undefined {
   const value = runtimeEnv[key];
   if (value === undefined || value === null) return undefined;
