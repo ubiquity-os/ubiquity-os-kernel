@@ -28,14 +28,17 @@ jobs:
           owner: ubiquity
           repositories: "ai.ubq.fi,uusd.ubq.fi,pay.ubq.fi,permit2-rpc-manager,ts-template,stake.ubq.fi,ubq.fi-router,.github,permit3,ubiquity-dollar,arbitrage-bot,work.ubq.fi,checkout.ubq.fi"
 
-      - name: Verify bot identity
+      - name: Verify official App token
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_ID: ${{ secrets.APP_ID }}
         run: |
           set -euo pipefail
-          actor=$(gh api user --jq .login)
-          echo "Authenticated actor: $actor"
-          test "$actor" = "ubiquity-os[bot]"
+          echo "App ID: $APP_ID"
+          test "$APP_ID" = "975031"
+          repositories=$(gh api /installation/repositories --jq '.total_count')
+          echo "Installation repository count: $repositories"
+          test "$repositories" -gt 0
 
       - name: Close reviewed spam PRs
         env:
