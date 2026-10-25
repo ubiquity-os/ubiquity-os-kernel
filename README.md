@@ -94,7 +94,6 @@ Set the GitHub App webhook URL to the gate URL for the target environment.
 Required repository secrets:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
 - `APP_WEBHOOK_SECRET`
 - `APP_ID`
 - `APP_PRIVATE_KEY`
