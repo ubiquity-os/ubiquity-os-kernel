@@ -4,6 +4,9 @@ const REPOSITORY = "owner/project";
 const CONFIG_PATH = ".github/.ubiquity-os.config.yml";
 const ORGANIZATION_REPOSITORY = "owner/.ubiquity-os";
 const THROTTLE_CONTROL_KEY = "throttle-control";
+const FIRST_RECOVERY_REPOSITORY = "owner/first";
+const SECOND_RECOVERY_REPOSITORY = "owner/second";
+const ABSENT_REPOSITORY = "owner/absent";
 
 type StoredStatus = { value: string; expiresAt: number };
 type StatusWrite = { key: string; value: string; expirationTtl?: number };
@@ -330,18 +333,19 @@ Deno.test("gate abuse: short probe cooldown counts the first 30 requests and fir
   });
 });
 
-Deno.test("gate abuse: ordinary configured traffic has no owner or limiter operations", async () => {
+Deno.test("gate abuse: configured traffic has one cold generation read and no progression or limiter operations", async () => {
   await withHarness(async (harness) => {
     harness.seed(harness.repoKey(), "present");
     harness.seedOwner({ probeStage: 4, probeUntil: 9_000_000, burstStage: 4, burstUntil: 9_000_000 });
     for (let i = 0; i < 35; i++) assertEquals((await harness.send()).status, 200);
     assertEquals(
-      harness.reads.filter((key) => key.startsWith(`owner:${harness.env.ENVIRONMENT}:`)),
+      harness.reads.filter((key) => key.startsWith(`owner:${harness.env.ENVIRONMENT}:`) && key !== harness.generationKey()),
       []
     );
     assertEquals(harness.writes, []);
     assertEquals(harness.deletes, []);
     assertEquals(harness.limited, []);
+    assertEquals(harness.reads.filter((key) => key === harness.generationKey()).length, 1);
   });
 });
 
@@ -369,8 +373,8 @@ Deno.test("gate abuse: limiter outage retries unknown and absent without creatin
       assertEquals((await harness.send()).status, 503);
       assertEquals(harness.writes, []);
       assertEquals(harness.forwarded, []);
-      harness.seed(harness.repoKey("owner/absent"), "absent");
-      assertEquals((await harness.send("owner/absent")).status, 503);
+      harness.seed(harness.repoKey(ABSENT_REPOSITORY), "absent");
+      assertEquals((await harness.send(ABSENT_REPOSITORY)).status, 503);
       assertEquals(harness.writes, []);
       harness.seed(harness.repoKey("owner/present"), "present");
       assertEquals((await harness.send("owner/present")).status, 200);
@@ -393,7 +397,7 @@ Deno.test("gate abuse: expired probe permits new repositories and a present prob
     await harness.send();
     assertEquals(harness.ownerState()?.probeUntil, harness.clock() + 30_000);
     harness.advance(30_000);
-    await harness.send("owner/second");
+    await harness.send(SECOND_RECOVERY_REPOSITORY);
     assertEquals(harness.ownerState()?.probeUntil, harness.clock() + 60_000);
     assertEquals(harness.ownerState()?.burstStage, 0);
     harness.advance(60_001);
@@ -699,5 +703,245 @@ Deno.test("gate abuse: actual per-key throttle rejects a second generation reset
     harness.advance(1_000);
     assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
     assertEquals(harness.ownerGeneration() === generation, false);
+  });
+});
+
+Deno.test("gate recovery: overlapping recoveries for distinct repositories both reconcile status", async () => {
+  await withHarness(async (h) => {
+    h.enableWriteThrottle();
+    h.seed(h.repoKey(FIRST_RECOVERY_REPOSITORY), "absent");
+    h.seed(h.repoKey(SECOND_RECOVERY_REPOSITORY), "absent");
+    const started = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<Response>();
+    const normalFetch = h.env.KERNEL.fetch;
+    let isFirst = true;
+    h.env.KERNEL.fetch = (request) => {
+      if (!isFirst) return normalFetch(request);
+      isFirst = false;
+      started.resolve();
+      return pending.promise;
+    };
+    const first = h.send(FIRST_RECOVERY_REPOSITORY, [CONFIG_PATH]);
+    await started.promise;
+    h.advance(1_001);
+    assertEquals((await h.send(SECOND_RECOVERY_REPOSITORY, [CONFIG_PATH])).status, 200);
+    const currentGeneration = h.ownerGeneration();
+    pending.resolve(new Response("present", { headers: { "x-uos-config": "present" } }));
+    assertEquals((await first).status, 200);
+    console.log("overlapping recoveries", {
+      firstStatus: h.stored.get(h.repoKey(FIRST_RECOVERY_REPOSITORY))?.value,
+      nextStatus: (await h.send(FIRST_RECOVERY_REPOSITORY)).status,
+      rejectedWrites: h.rejectedWrites,
+    });
+    assertEquals(h.stored.get(h.repoKey(FIRST_RECOVERY_REPOSITORY))?.value, "present");
+    assertEquals(h.ownerGeneration(), currentGeneration);
+    assertEquals(h.writes.filter(({ key }) => key === h.generationKey()).length, 2);
+  });
+});
+
+Deno.test("gate recovery: a present probe clears penalties established while the kernel was pending", async () => {
+  await withHarness(async (h) => {
+    const started = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<Response>();
+    const normalFetch = h.env.KERNEL.fetch;
+    let isFirst = true;
+    h.env.KERNEL.fetch = (request) => {
+      if (!isFirst) return normalFetch(request);
+      isFirst = false;
+      started.resolve();
+      return pending.promise;
+    };
+    const first = h.send();
+    await started.promise;
+    h.seed(h.repoKey(ABSENT_REPOSITORY), "absent");
+    for (let i = 0; i < 30; i++) await h.send(ABSENT_REPOSITORY);
+    assertEquals(h.ownerState()?.burstStage, 1);
+    pending.resolve(new Response("present", { headers: { "x-uos-config": "present" } }));
+    assertEquals((await first).status, 200);
+    console.log("present during burst", { ownerState: h.ownerState(), nextStatus: (await h.send("owner/other-configured")).status });
+    assertEquals(h.ownerState(), null);
+  });
+});
+
+Deno.test("gate recovery: an in-flight limiter denial does not slide an established cooldown", async () => {
+  await withHarness(async (h) => {
+    h.enableWriteThrottle();
+    h.seed(h.repoKey(), "absent");
+    const started = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<{ success: boolean }>();
+    let isFirst = true;
+    h.env.ABUSE_RATE_LIMITER = {
+      limit: () => {
+        if (!isFirst) return Promise.resolve({ success: false });
+        isFirst = false;
+        started.resolve();
+        return pending.promise;
+      },
+    };
+    const delayed = h.send();
+    await started.promise;
+    assertEquals((await h.send()).status, 204);
+    const originalUntil = h.ownerState()?.burstUntil;
+    const originalWrites = h.writes.length;
+    h.advance(1_001);
+    pending.resolve({ success: false });
+    assertEquals((await delayed).status, 204);
+    console.log("delayed limiter", {
+      originalUntil,
+      currentUntil: h.ownerState()?.burstUntil,
+      additionalWrites: h.writes.length - originalWrites,
+      rejectedWrites: h.rejectedWrites,
+    });
+    assertEquals(h.ownerState()?.burstUntil, originalUntil);
+  });
+});
+
+Deno.test("gate recovery: pre-recovery configured request cannot penalize the new generation", async () => {
+  await withHarness(async (h) => {
+    h.seed(h.repoKey(), "present");
+    const started = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<Response>();
+    const normalFetch = h.env.KERNEL.fetch;
+    let isFirst = true;
+    h.env.KERNEL.fetch = (request) => {
+      if (!isFirst) return normalFetch(request);
+      isFirst = false;
+      started.resolve();
+      return pending.promise;
+    };
+    const stale = h.send();
+    await started.promise;
+    assertEquals((await h.send(REPOSITORY, [CONFIG_PATH])).status, 200);
+    assertEquals(h.ownerState(), null);
+    pending.resolve(new Response("absent", { headers: { "x-uos-config": "absent" } }));
+    await stale;
+    console.log("configured stale request", {
+      generation: h.ownerGeneration(),
+      ownerState: h.ownerState(),
+      nextStatus: (await h.send("owner/other-configured")).status,
+    });
+    assertEquals(h.ownerState(), null);
+  });
+});
+
+Deno.test("gate cache fill: completed old read before recovery preserves the new native key", async () => {
+  await withHarness(async (harness) => {
+    harness.setStatus("unknown");
+    assertEquals((await harness.send("owner/before-recovery")).status, 200);
+    harness.setStatus("present");
+    assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
+    const durableGeneration = harness.ownerGeneration();
+    assertEquals(durableGeneration === "initial", false);
+    harness.setStatus("unknown");
+    assertEquals((await harness.send("owner/after-recovery")).status, 200);
+    assertEquals(harness.limited.at(-1), `owner:0:${durableGeneration}`);
+    console.log(JSON.stringify({ scenario: "control: old read completed before reset", durableGeneration, nativeKeys: harness.limited }));
+  });
+});
+
+Deno.test("gate cache fill: captured old GET released after recovery must not replace the new generation", async () => {
+  await withHarness(async (harness) => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const normalGet = harness.env.CONFIG_STATUS.get;
+    let shouldHoldGenerationRead = true;
+    let capturedGeneration: string | null | undefined;
+    harness.env.CONFIG_STATUS.get = async (key) => {
+      const captured = await normalGet(key);
+      if (key === harness.generationKey() && shouldHoldGenerationRead) {
+        shouldHoldGenerationRead = false;
+        capturedGeneration = captured;
+        started.resolve();
+        await release.promise;
+      }
+      return captured;
+    };
+    harness.setStatus("unknown");
+    const delayed = harness.send("owner/delayed-read");
+    await started.promise;
+    assertEquals(capturedGeneration, null);
+    harness.setStatus("present");
+    assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
+    const durableGeneration = harness.ownerGeneration();
+    assertEquals(durableGeneration === "initial", false);
+    assertEquals(harness.forwarded.length, 1);
+    assertEquals(harness.limited, []);
+    harness.setStatus("unknown");
+    release.resolve();
+    assertEquals((await delayed).status, 200);
+    assertEquals((await harness.send("owner/eligible-later")).status, 200);
+    const cached = await harness.cache.match(new Request(`https://gate-cache.internal/${harness.env.ENVIRONMENT}/owner-generation/owner`));
+    console.log(
+      JSON.stringify({
+        scenario: "captured old GET completed after durable recovery",
+        capturedGeneration,
+        durableGeneration: harness.ownerGeneration(),
+        generationCache: await cached?.json(),
+        nativeKeys: harness.limited,
+      })
+    );
+    assertEquals(harness.ownerGeneration(), durableGeneration);
+    assertEquals(harness.limited.at(-1), `owner:0:${durableGeneration}`, "Later eligible traffic must use the durably persisted recovery generation");
+  });
+});
+
+Deno.test("gate cache fill: a delayed burst KV read cannot replace a newer burst transition", async () => {
+  await withHarness(async (harness) => {
+    harness.seed(harness.repoKey(), "absent");
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const normalGet = harness.env.CONFIG_STATUS.get;
+    let shouldHold = true;
+    harness.env.CONFIG_STATUS.get = async (key) => {
+      const captured = await normalGet(key);
+      if (key === harness.ownerKey("burst") && shouldHold) {
+        shouldHold = false;
+        started.resolve();
+        await release.promise;
+      }
+      return captured;
+    };
+    harness.env.ABUSE_RATE_LIMITER = { limit: () => Promise.resolve({ success: false }) };
+    const delayed = harness.send();
+    await started.promise;
+    assertEquals((await harness.send()).status, 204);
+    const burstUntil = harness.ownerState()?.burstUntil;
+    const writes = harness.writes.length;
+    release.resolve();
+    assertEquals((await delayed).status, 204);
+    assertEquals((await harness.send("owner/later")).status, 204);
+    assertEquals(harness.ownerState()?.burstUntil, burstUntil);
+    assertEquals(harness.writes.length, writes);
+  });
+});
+
+Deno.test("gate cache fill: a delayed Cache API generation response preserves published recovery", async () => {
+  await withHarness(async (harness) => {
+    harness.setStatus("unknown");
+    await harness.send("owner/warm");
+    harness.advance(30_001);
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const normalMatch = harness.cache.match;
+    let shouldHold = true;
+    harness.cache.match = async (request) => {
+      const captured = await normalMatch(request);
+      if (request.url.endsWith("/owner-generation/owner") && shouldHold) {
+        shouldHold = false;
+        started.resolve();
+        await release.promise;
+      }
+      return captured;
+    };
+    const delayed = harness.send("owner/cold-cache");
+    await started.promise;
+    harness.setStatus("present");
+    assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
+    const generation = harness.ownerGeneration();
+    harness.setStatus("unknown");
+    release.resolve();
+    await delayed;
+    await harness.send("owner/later-cache");
+    assertEquals(harness.limited.at(-1), `owner:0:${generation}`);
   });
 });
