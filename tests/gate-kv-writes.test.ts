@@ -189,6 +189,52 @@ async function withHarness(run: (harness: ReturnType<typeof createHarness>) => P
   }
 }
 
+Deno.test("gate migration: legacy absence in KV and Cache API is rechecked once", async () => {
+  await withHarness(async (harness) => {
+    harness.seed(harness.repoKey(), "absent");
+    await harness.cache.put(
+      new Request(`https://gate-cache.internal/${harness.env.ENVIRONMENT}/repo-status/${encodeURIComponent(harness.repoKey())}`),
+      Response.json({ value: "absent", expiresAt: harness.clock() + 300_000 })
+    );
+
+    assertEquals((await harness.send()).status, 200);
+    assertEquals((await harness.send()).status, 200);
+    assertEquals(harness.forwarded.length, 2);
+    assertEquals(harness.stored.get(harness.repoKey())?.value, "present");
+    assertEquals(harness.writes, [{ key: harness.repoKey(), value: "present", expirationTtl: 86_400 }]);
+  });
+});
+
+Deno.test("gate migration: legacy present bypasses owner cooldown despite stale legacy cache", async () => {
+  await withHarness(async (harness) => {
+    harness.seed(harness.repoKey(), "present");
+    harness.seedOwner({ probeStage: 2, probeUntil: harness.clock() + 60_000, burstStage: 1, burstUntil: harness.clock() + 900_000 });
+    const ownerState = harness.ownerState();
+    await harness.cache.put(
+      new Request(`https://gate-cache.internal/${harness.env.ENVIRONMENT}/repo-status/${encodeURIComponent(harness.repoKey())}`),
+      Response.json({ value: "absent", expiresAt: harness.clock() + 300_000 })
+    );
+
+    assertEquals((await harness.send()).status, 200);
+    assertEquals(harness.forwarded.length, 1);
+    assertEquals(harness.limited.length, 0);
+    assertEquals(harness.writes.length, 0);
+    assertEquals(harness.deletes.length, 0);
+    assertEquals(harness.ownerState(), ownerState);
+  });
+});
+
+Deno.test("gate migration: confirmed absence remains blocked without rewriting durable status", async () => {
+  await withHarness(async (harness) => {
+    harness.seed(harness.repoKey(), "absent:v2");
+    assertEquals((await harness.send()).status, 204);
+    assertEquals((await harness.send()).status, 204);
+    assertEquals(harness.forwarded.length, 0);
+    assertEquals(harness.writes.length, 0);
+    assertEquals(harness.stored.get(harness.repoKey())?.value, "absent:v2");
+  });
+});
+
 Deno.test("gate KV writes: repeated configured events forward but persist status once", async () => {
   await withHarness(async (harness) => {
     for (let i = 0; i < 3; i++) {
@@ -216,7 +262,7 @@ Deno.test("gate KV writes: config push repairs durable absence despite stale pre
     assertEquals(harness.writes.length, 0);
 
     // Another isolate persists config removal while this isolate still caches present.
-    harness.seed(harness.repoKey(), "absent");
+    harness.seed(harness.repoKey(), "absent:v2");
     assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
     assertEquals(harness.reads.filter((key) => key === harness.repoKey()).length, 1);
     assertEquals(harness.stored.get(harness.repoKey())?.value, "present");
@@ -247,7 +293,7 @@ Deno.test("gate KV writes: absent status blocks until a config push changes it",
     assertEquals(harness.forwarded.length, 2);
     assertEquals(
       harness.writes.filter(({ key }) => key === harness.repoKey()).map(({ value }) => value),
-      ["absent", "present"]
+      ["absent:v2", "present"]
     );
   });
 });
@@ -259,7 +305,7 @@ Deno.test("gate KV writes: removing config persists the transition to absent", a
     assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
     assertEquals(
       harness.writes.filter(({ key }) => key === harness.repoKey()),
-      [{ key: harness.repoKey(), value: "absent", expirationTtl: 86_400 }]
+      [{ key: harness.repoKey(), value: "absent:v2", expirationTtl: 86_400 }]
     );
     assertEquals((await harness.send()).status, 204);
   });
@@ -267,7 +313,7 @@ Deno.test("gate KV writes: removing config persists the transition to absent", a
 
 Deno.test("gate KV writes: org config pushes invalidate repository status keys", async () => {
   await withHarness(async (harness) => {
-    harness.seed(harness.repoKey(), "absent");
+    harness.seed(harness.repoKey(), "absent:v2");
     assertEquals((await harness.send()).status, 204);
     assertEquals((await harness.send(ORGANIZATION_REPOSITORY, [CONFIG_PATH])).status, 200);
     assertEquals((await harness.send()).status, 200);
@@ -373,7 +419,7 @@ Deno.test("gate abuse: limiter outage retries unknown and absent without creatin
       assertEquals((await harness.send()).status, 503);
       assertEquals(harness.writes, []);
       assertEquals(harness.forwarded, []);
-      harness.seed(harness.repoKey(ABSENT_REPOSITORY), "absent");
+      harness.seed(harness.repoKey(ABSENT_REPOSITORY), "absent:v2");
       assertEquals((await harness.send(ABSENT_REPOSITORY)).status, 503);
       assertEquals(harness.writes, []);
       harness.seed(harness.repoKey("owner/present"), "present");
@@ -449,7 +495,7 @@ Deno.test("gate abuse: kernel errors without config status never persist absence
 
 Deno.test("gate abuse: config push recovers even when the limiter is unavailable", async () => {
   await withHarness(async (harness) => {
-    harness.seed(harness.repoKey(), "absent");
+    harness.seed(harness.repoKey(), "absent:v2");
     harness.seedOwner({ probeStage: 9, probeUntil: 9_000_000, burstStage: 9, burstUntil: 9_000_000 });
     delete harness.env.ABUSE_RATE_LIMITER;
     assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
@@ -546,7 +592,7 @@ Deno.test("gate abuse: delayed kernel absence cannot overwrite a concurrent burs
     const firstDelivery = harness.send();
     await started.promise;
     harness.advance(1_000);
-    harness.seed(harness.repoKey("owner/known-absent"), "absent");
+    harness.seed(harness.repoKey("owner/known-absent"), "absent:v2");
     for (let i = 0; i < 30; i++) await harness.send("owner/known-absent");
     const burstUntil = harness.ownerState()?.burstUntil;
     assertEquals(burstUntil, harness.clock() + 900_000);
@@ -602,7 +648,7 @@ Deno.test("gate abuse: deferred probe KV completion cannot overwrite the burst c
     const firstDelivery = harness.send();
     await started.promise;
     harness.advance(1_000);
-    harness.seed(harness.repoKey("owner/blocker"), "absent");
+    harness.seed(harness.repoKey("owner/blocker"), "absent:v2");
     for (let i = 0; i < 30; i++) await harness.send("owner/blocker");
     const burstUntil = harness.ownerState()?.burstUntil;
     assertEquals(burstUntil, harness.clock() + 900_000);
@@ -653,7 +699,7 @@ Deno.test("gate abuse: durable generation fences a probe PUT committed after sam
 Deno.test("gate abuse: failed generation persistence returns503 before config reset or forwarding", async () => {
   await withHarness(async (harness) => {
     harness.seedOwner({ probeStage: 4, probeUntil: 9_000_000, burstStage: 4, burstUntil: 9_000_000 });
-    harness.seed(harness.repoKey(), "absent");
+    harness.seed(harness.repoKey(), "absent:v2");
     const before = harness.ownerState();
     const normalPut = harness.env.CONFIG_STATUS.put;
     harness.env.CONFIG_STATUS.put = (key, value, options) =>
@@ -665,7 +711,7 @@ Deno.test("gate abuse: failed generation persistence returns503 before config re
     assertEquals(harness.ownerState(), before);
     assertEquals(harness.deletes, []);
     assertEquals(harness.forwarded, []);
-    assertEquals(harness.stored.get(harness.repoKey())?.value, "absent");
+    assertEquals(harness.stored.get(harness.repoKey())?.value, "absent:v2");
     harness.env.CONFIG_STATUS.put = normalPut;
     assertEquals((await harness.send(REPOSITORY, [CONFIG_PATH])).status, 200);
     assertEquals(harness.ownerGeneration() === "initial", false);
@@ -709,8 +755,8 @@ Deno.test("gate abuse: actual per-key throttle rejects a second generation reset
 Deno.test("gate recovery: overlapping recoveries for distinct repositories both reconcile status", async () => {
   await withHarness(async (h) => {
     h.enableWriteThrottle();
-    h.seed(h.repoKey(FIRST_RECOVERY_REPOSITORY), "absent");
-    h.seed(h.repoKey(SECOND_RECOVERY_REPOSITORY), "absent");
+    h.seed(h.repoKey(FIRST_RECOVERY_REPOSITORY), "absent:v2");
+    h.seed(h.repoKey(SECOND_RECOVERY_REPOSITORY), "absent:v2");
     const started = Promise.withResolvers<void>();
     const pending = Promise.withResolvers<Response>();
     const normalFetch = h.env.KERNEL.fetch;
@@ -753,7 +799,7 @@ Deno.test("gate recovery: a present probe clears penalties established while the
     };
     const first = h.send();
     await started.promise;
-    h.seed(h.repoKey(ABSENT_REPOSITORY), "absent");
+    h.seed(h.repoKey(ABSENT_REPOSITORY), "absent:v2");
     for (let i = 0; i < 30; i++) await h.send(ABSENT_REPOSITORY);
     assertEquals(h.ownerState()?.burstStage, 1);
     pending.resolve(new Response("present", { headers: { "x-uos-config": "present" } }));
@@ -766,7 +812,7 @@ Deno.test("gate recovery: a present probe clears penalties established while the
 Deno.test("gate recovery: an in-flight limiter denial does not slide an established cooldown", async () => {
   await withHarness(async (h) => {
     h.enableWriteThrottle();
-    h.seed(h.repoKey(), "absent");
+    h.seed(h.repoKey(), "absent:v2");
     const started = Promise.withResolvers<void>();
     const pending = Promise.withResolvers<{ success: boolean }>();
     let isFirst = true;
@@ -887,7 +933,7 @@ Deno.test("gate cache fill: captured old GET released after recovery must not re
 
 Deno.test("gate cache fill: a delayed burst KV read cannot replace a newer burst transition", async () => {
   await withHarness(async (harness) => {
-    harness.seed(harness.repoKey(), "absent");
+    harness.seed(harness.repoKey(), "absent:v2");
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const normalGet = harness.env.CONFIG_STATUS.get;

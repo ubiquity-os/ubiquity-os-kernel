@@ -6,7 +6,8 @@ const MEMORY_CACHE_TTL_MS = 30_000;
 const ORG_VERSION_CACHE_TTL_MS = 60_000;
 const REPO_STATUS_CACHE_TTL_MS = 5 * 60_000;
 const ORG_VERSION_CACHE_KIND = "org-version";
-const REPO_STATUS_CACHE_KIND = "repo-status";
+const REPO_STATUS_CACHE_KIND = "repo-status-v2";
+const CONFIRMED_ABSENT_STATUS = "absent:v2";
 const OWNER_BACKOFF_CACHE_KIND = "owner-backoff";
 const OWNER_GENERATION_CACHE_KIND = "owner-generation";
 const INITIAL_OWNER_GENERATION = "initial";
@@ -81,7 +82,9 @@ export default {
     let repoStatus = await readCache<"present" | "absent" | "unknown">(env, REPO_STATUS_CACHE_KIND, repoKey);
     if (repoStatus !== "present" && repoStatus !== "absent" && repoStatus !== "unknown") {
       const storedStatus = await env.CONFIG_STATUS.get(repoKey);
-      repoStatus = storedStatus === "present" || storedStatus === "absent" ? storedStatus : "unknown";
+      repoStatus = "unknown";
+      if (storedStatus === "present") repoStatus = "present";
+      if (storedStatus === CONFIRMED_ABSENT_STATUS) repoStatus = "absent";
       // A bounded lookup miss avoids repeated KV reads without declaring config absence or suppressing kernel probes.
       await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, repoStatus, repoStatus === "unknown" ? MEMORY_CACHE_TTL_MS : REPO_STATUS_CACHE_TTL_MS);
     }
@@ -148,7 +151,8 @@ export default {
     if ((configStatus === "present" || configStatus === "absent") && (isConfigChange || configStatus !== repoStatus)) {
       if (configStatus === "absent" && (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration) return response;
       try {
-        await env.CONFIG_STATUS.put(repoKey, configStatus, { expirationTtl: 86_400 });
+        const storedStatus = configStatus === "absent" ? CONFIRMED_ABSENT_STATUS : configStatus;
+        await env.CONFIG_STATUS.put(repoKey, storedStatus, { expirationTtl: 86_400 });
         await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, configStatus, REPO_STATUS_CACHE_TTL_MS);
       } catch (error) {
         console.error("Failed to cache repository config status", { repo: repository.fullName, error });
