@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-10-28: Log safe event and error metadata
+
+Error logs retain event name, delivery ID, repository, and allowlisted error details. Never serialize transformed GitHubContext objects, runtime configuration, or webhook-secret fragments. Verify actual logger output with synthetic credential sentinels while asserting useful diagnostic metadata remains available.
+
+## 2026-10-28: Discard legacy unconfirmed configuration absence
+
+Keep existing repository KV keys and trust their `present` values. Store confirmed configuration absence as `absent:v2`; treat legacy plain `absent` values as unknown because older kernels could write them after transient GitHub failures. Use the `repo-status-v2` repository cache kind so cached legacy absence cannot suppress the next eligible event. Preserve the kernel's `x-uos-config: absent` response header, five-minute known-repository cache, 24-hour KV TTL, transition-only writes, and forced config-push reconciliation. Leave owner generation, probe, burst, and limiter keys unchanged; trusted existing positive records continue to bypass owner cooldowns. Recheck legacy negatives through the existing event-driven admission path without a global wipe, background reconciliation, or extra writes for unchanged status.
+
 ## 2026-10-27: Persist repository config status on changes and config pushes
 
 The webhook gate writes a repository's reported config status to Workers KV when it differs from the previously read status, including missing or expired entries, or after a config-changing push. Config-changing pushes always reconcile durable status even when a cached value matches the kernel response. Configured events continue to reach the kernel; ordinary unchanged responses consume no status PUT and do not refresh the response cache.

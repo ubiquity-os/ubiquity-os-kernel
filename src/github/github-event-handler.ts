@@ -89,7 +89,7 @@ export class GitHubEventHandler {
       this.logger.github({ event: event.name, id: event.id }, "Event received");
     });
     this.onError((error) => {
-      this.logger.github({ err: error, secret: this._webhookSecret.substring(0, 10) + "..." }, "Webhook error - check secret match");
+      this.logger.github({ err: error }, "Webhook error - check secret match");
     });
   }
 
