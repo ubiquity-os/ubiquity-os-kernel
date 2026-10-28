@@ -18,6 +18,8 @@ const LOG_ALLOWLIST_KEYS = new Set([
   "workflowId",
   "ref",
   "event",
+  "deliveryId",
+  "repository",
   "command",
   "status",
   "issue",
@@ -27,6 +29,21 @@ const LOG_ALLOWLIST_KEYS = new Set([
   "comment_id",
   "targetRepo",
 ]);
+
+function summarizeError(error: unknown) {
+  if (!error || typeof error !== "object") return { type: typeof error, message: String(error) };
+  const detail = error as { name?: unknown; message?: unknown; stack?: unknown };
+  return {
+    type: typeof detail.name === "string" ? detail.name : "Error",
+    message: typeof detail.message === "string" ? detail.message : "Unknown error",
+    ...(typeof detail.stack === "string" ? { stack: detail.stack } : {}),
+  };
+}
+
+function serializeError(error: unknown) {
+  const detail = summarizeError(error);
+  return error instanceof AggregateError ? { ...detail, errors: error.errors.slice(0, 5).map(summarizeError) } : detail;
+}
 
 function safeToLogValue(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -142,6 +159,7 @@ export const logger = createLogger(
   {
     level,
     redact,
+    serializers: { err: serializeError },
     hooks: {
       logMethod(args, method, level) {
         try {
