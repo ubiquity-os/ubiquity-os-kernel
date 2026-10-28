@@ -86,17 +86,16 @@ export default {
       await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, repoStatus, repoStatus === "unknown" ? MEMORY_CACHE_TTL_MS : REPO_STATUS_CACHE_TTL_MS);
     }
     let ownerState: OwnerBackoff | null = null;
-    let ownerGeneration: string | null = null;
+    let ownerGeneration = await readOwnerGeneration(env, repository.owner);
     if (isConfigChange) {
       try {
-        ownerGeneration = await resetOwnerBackoff(env, repository.owner);
+        ownerGeneration = await resetOwnerBackoff(env, repository.owner, ownerGeneration);
       } catch (error) {
         console.error("Failed to reset owner generation", { owner: repository.owner, error });
         return retryResponse();
       }
       ownerState = emptyOwnerBackoff();
     } else if (repoStatus !== "present") {
-      ownerGeneration = await readOwnerGeneration(env, repository.owner);
       ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
       if (ownerState.burstUntil > Date.now()) return blockedResponse();
       let isWithinLimit: boolean;
@@ -108,7 +107,9 @@ export default {
         return retryResponse();
       }
       if (!isWithinLimit) {
-        await writeOwnerBackoff(env, repository.owner, advanceOwnerBackoff(ownerState, "burst", Date.now()), "burst", ownerGeneration);
+        ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
+        const nextState = advanceOwnerBackoff(ownerState, "burst", Date.now());
+        if (nextState !== ownerState) await writeOwnerBackoff(env, repository.owner, nextState, "burst", ownerGeneration);
         return blockedResponse();
       }
       if (ownerState.probeUntil > Date.now() || repoStatus === "absent") return blockedResponse();
@@ -121,16 +122,10 @@ export default {
     });
     const response = await env.KERNEL.fetch(kernelRequest);
     const configStatus = response.headers.get("x-uos-config");
-    // Recovery invalidates pre-reset results, including stale repository absence.
-    if (
-      (configStatus === "present" || configStatus === "absent") &&
-      ownerGeneration !== null &&
-      (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration
-    )
-      return response;
+    // Negative results belong to the admission generation; positive confirmations still reconcile their own repository.
+    if (configStatus === "absent" && (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration) return response;
     if (configStatus === "absent") {
       // The kernel awaited another service; reconcile progressions advanced or reset by concurrent deliveries.
-      ownerGeneration ??= await readOwnerGeneration(env, repository.owner);
       ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
       const nextState = advanceOwnerBackoff(ownerState, "probe", Date.now());
       if (nextState !== ownerState) await writeOwnerBackoff(env, repository.owner, nextState, "probe", ownerGeneration);
@@ -138,18 +133,20 @@ export default {
       configStatus === "present" &&
       repoStatus !== "present" &&
       !isConfigChange &&
-      ownerState &&
-      (ownerState.probeStage > 0 || ownerState.burstStage > 0)
+      (await readOwnerGeneration(env, repository.owner)) === ownerGeneration
     ) {
-      try {
-        ownerGeneration = await resetOwnerBackoff(env, repository.owner, ownerGeneration ?? undefined);
-      } catch (error) {
-        console.error("Failed to reset owner generation", { owner: repository.owner, error });
-        return retryResponse();
+      ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
+      if (ownerState.probeStage > 0 || ownerState.burstStage > 0) {
+        try {
+          ownerGeneration = await resetOwnerBackoff(env, repository.owner, ownerGeneration);
+        } catch (error) {
+          console.error("Failed to reset owner generation", { owner: repository.owner, error });
+          return retryResponse();
+        }
       }
     }
     if ((configStatus === "present" || configStatus === "absent") && (isConfigChange || configStatus !== repoStatus)) {
-      if (ownerGeneration !== null && (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration) return response;
+      if (configStatus === "absent" && (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration) return response;
       try {
         await env.CONFIG_STATUS.put(repoKey, configStatus, { expirationTtl: 86_400 });
         await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, configStatus, REPO_STATUS_CACHE_TTL_MS);
@@ -174,11 +171,32 @@ function ownerGenerationKey(env: Env, owner: string): string {
 }
 
 async function readOwnerGeneration(env: Env, owner: string): Promise<string> {
-  const cached = await readCache<string>(env, OWNER_GENERATION_CACHE_KIND, owner);
-  if (typeof cached === "string" && cached) return cached;
-  const generation = (await env.CONFIG_STATUS.get(ownerGenerationKey(env, owner))) || INITIAL_OWNER_GENERATION;
-  await writeCache(env, OWNER_GENERATION_CACHE_KIND, owner, generation, ORG_VERSION_CACHE_TTL_MS);
-  return generation;
+  return readOwnerCachedValue(
+    env,
+    OWNER_GENERATION_CACHE_KIND,
+    owner,
+    parseOwnerGeneration,
+    async () => (await env.CONFIG_STATUS.get(ownerGenerationKey(env, owner))) || INITIAL_OWNER_GENERATION
+  );
+}
+
+function parseOwnerGeneration(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+async function readOwnerCachedValue<T>(env: Env, kind: string, id: string, parse: (value: unknown) => T | null, load: () => Promise<T>): Promise<T> {
+  const cached = parse(await readCache(env, kind, id));
+  if (cached !== null) return cached;
+  const key = cacheKey(env, kind, id);
+  const observed = memoryCache.get(key);
+  const published = observed && observed.expiresAt > Date.now() ? parse(observed.value) : null;
+  if (published !== null) return published;
+  const value = await load();
+  const current = memoryCache.get(key);
+  // This guard is synchronous with publication, and only protects this optimization from an older async fill.
+  if (current !== observed) return parse(current?.value) ?? value;
+  await writeCache(env, kind, id, value, ORG_VERSION_CACHE_TTL_MS);
+  return value;
 }
 
 function ownerBackoffKey(env: Env, owner: string, kind: "probe" | "burst", generation: string): string {
@@ -192,11 +210,13 @@ async function readOwnerBackoff(env: Env, owner: string, generation: string): Pr
 
 async function readOwnerProgression(env: Env, owner: string, kind: "probe" | "burst", generation: string): Promise<BackoffProgression> {
   const id = `${owner}:${generation}:${kind}`;
-  const cached = parseBackoffProgression(await readCache(env, OWNER_BACKOFF_CACHE_KIND, id));
-  if (cached) return cached;
-  const state = parseBackoffProgression(await env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, kind, generation))) ?? { stage: 0, until: 0 };
-  await writeCache(env, OWNER_BACKOFF_CACHE_KIND, id, state, ORG_VERSION_CACHE_TTL_MS);
-  return state;
+  return readOwnerCachedValue(
+    env,
+    OWNER_BACKOFF_CACHE_KIND,
+    id,
+    parseBackoffProgression,
+    async () => parseBackoffProgression(await env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, kind, generation))) ?? { stage: 0, until: 0 }
+  );
 }
 
 async function writeOwnerBackoff(env: Env, owner: string, state: OwnerBackoff, kind: "probe" | "burst", generation: string): Promise<void> {
@@ -266,18 +286,18 @@ async function readCache<T>(env: Env, kind: string, id: string): Promise<T | nul
   const now = Date.now();
   const local = memoryCache.get(key);
   if (local && local.expiresAt > now) return local.value as T;
-  if (local) memoryCache.delete(key);
-
+  let entry: CacheEntry | null = null;
   try {
     const response = await caches.default.match(new Request(key));
-    if (!response) return null;
-    const entry = (await response.json()) as CacheEntry;
-    if (!entry || typeof entry.expiresAt !== "number" || entry.expiresAt <= now) return null;
-    memoryCache.set(key, entry);
-    return entry.value as T;
+    if (response) entry = (await response.json()) as CacheEntry;
   } catch {
-    return null;
+    // Cache API failures fall through; a concurrent publication still takes precedence over this read.
   }
+  const current = memoryCache.get(key);
+  if (current !== local) return current && current.expiresAt > Date.now() ? (current.value as T) : null;
+  if (!entry || typeof entry.expiresAt !== "number" || entry.expiresAt <= Date.now()) return null;
+  memoryCache.set(key, entry);
+  return entry.value as T;
 }
 
 async function writeCache<T>(env: Env, kind: string, id: string, value: T, ttlMs: number): Promise<void> {
