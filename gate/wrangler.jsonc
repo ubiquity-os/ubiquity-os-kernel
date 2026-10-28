@@ -28,6 +28,7 @@
       "service": "ubiquity-os-kernel",
     },
   ],
+  "ratelimits": [{ "name": "ABUSE_RATE_LIMITER", "namespace_id": "2201", "simple": { "limit": 30, "period": 60 } }],
   "env": {
     "development": {
       "name": "ubiquity-os-kernel-gate-development",
@@ -49,6 +50,7 @@
           "service": "ubiquity-os-kernel-development",
         },
       ],
+      "ratelimits": [{ "name": "ABUSE_RATE_LIMITER", "namespace_id": "2202", "simple": { "limit": 30, "period": 60 } }],
     },
   },
 }

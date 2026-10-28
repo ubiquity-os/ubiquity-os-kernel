@@ -1,3 +1,5 @@
+import { advanceOwnerBackoff, emptyOwnerBackoff, parseBackoffProgression, parseOwnerBackoff, type OwnerBackoff } from "./owner-backoff.ts";
+
 const CONFIG_PATH_RE = /^\.github\/\.ubiquity-os\.config(?:\.[a-z0-9_-]+)?\.ya?ml$/i;
 const CACHE_ORIGIN = "https://gate-cache.internal";
 const MEMORY_CACHE_TTL_MS = 30_000;
@@ -5,6 +7,7 @@ const ORG_VERSION_CACHE_TTL_MS = 60_000;
 const REPO_STATUS_CACHE_TTL_MS = 5 * 60_000;
 const ORG_VERSION_CACHE_KIND = "org-version";
 const REPO_STATUS_CACHE_KIND = "repo-status";
+const OWNER_BACKOFF_CACHE_KIND = "owner-backoff";
 const encoder = new TextEncoder();
 
 type CacheEntry = {
@@ -15,6 +18,7 @@ type CacheEntry = {
 const memoryCache = new Map<string, CacheEntry>();
 
 interface Env {
+  ABUSE_RATE_LIMITER: { limit(options: { key: string }): Promise<{ success: boolean }> };
   APP_WEBHOOK_SECRET: string;
   CONFIG_STATUS: KVNamespace;
   ENVIRONMENT: string;
@@ -65,25 +69,40 @@ export default {
 
     const eventName = request.headers.get("x-github-event") ?? "";
     let orgVersion = await readOrgVersion(env, repository.owner);
-    const isConfigChange = pushTouchesKernelConfig(payload);
+    const isConfigChange = eventName === "push" && pushTouchesKernelConfig(payload);
     if (eventName === "push" && repository.repo === ".ubiquity-os" && isConfigChange) {
       orgVersion += 1;
       await writeOrgVersion(env, repository.owner, orgVersion);
     }
 
     const repoKey = repoStatusKey(env, repository.fullName, orgVersion);
-    let repoStatus = await readCache<"present" | "absent">(env, REPO_STATUS_CACHE_KIND, repoKey);
-    if (repoStatus !== "present" && repoStatus !== "absent") {
-      repoStatus = (await env.CONFIG_STATUS.get(repoKey)) as "present" | "absent" | null;
-      if (repoStatus === "present" || repoStatus === "absent") {
-        await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, repoStatus, REPO_STATUS_CACHE_TTL_MS);
-      }
+    let repoStatus = await readCache<"present" | "absent" | "unknown">(env, REPO_STATUS_CACHE_KIND, repoKey);
+    if (repoStatus !== "present" && repoStatus !== "absent" && repoStatus !== "unknown") {
+      const storedStatus = await env.CONFIG_STATUS.get(repoKey);
+      repoStatus = storedStatus === "present" || storedStatus === "absent" ? storedStatus : "unknown";
+      // A bounded lookup miss avoids repeated KV reads without declaring config absence or suppressing kernel probes.
+      await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, repoStatus, repoStatus === "unknown" ? MEMORY_CACHE_TTL_MS : REPO_STATUS_CACHE_TTL_MS);
     }
-    if (repoStatus === "absent" && !isConfigChange) {
-      return new Response(null, {
-        status: 204,
-        headers: { "x-uos-gate": "blocked" },
-      });
+    let ownerState: OwnerBackoff | null = null;
+    if (isConfigChange) {
+      await resetOwnerBackoff(env, repository.owner);
+      ownerState = emptyOwnerBackoff();
+    } else if (repoStatus !== "present") {
+      ownerState = await readOwnerBackoff(env, repository.owner);
+      if (ownerState.burstUntil > Date.now()) return blockedResponse();
+      let isWithinLimit: boolean;
+      try {
+        const result = await env.ABUSE_RATE_LIMITER.limit({ key: `${repository.owner}:${orgVersion}` });
+        isWithinLimit = result.success;
+      } catch (error) {
+        console.error("Owner rate limiter unavailable", { owner: repository.owner, error });
+        return new Response("Rate limiter unavailable", { status: 503, headers: { "retry-after": "60" } });
+      }
+      if (!isWithinLimit) {
+        await writeOwnerBackoff(env, repository.owner, advanceOwnerBackoff(ownerState, "burst", Date.now()), "burst");
+        return blockedResponse();
+      }
+      if (ownerState.probeUntil > Date.now() || repoStatus === "absent") return blockedResponse();
     }
 
     const kernelRequest = new Request(`${env.KERNEL_URL.replace(/\/+$/, "")}/`, {
@@ -106,9 +125,63 @@ export default {
         });
       }
     }
+    if (configStatus === "absent") {
+      ownerState ??= await readOwnerBackoff(env, repository.owner);
+      const nextState = advanceOwnerBackoff(ownerState, "probe", Date.now());
+      if (nextState !== ownerState) await writeOwnerBackoff(env, repository.owner, nextState, "probe");
+    } else if (
+      configStatus === "present" &&
+      repoStatus !== "present" &&
+      !isConfigChange &&
+      ownerState &&
+      (ownerState.probeStage > 0 || ownerState.burstStage > 0)
+    ) {
+      await resetOwnerBackoff(env, repository.owner);
+    }
     return response;
   },
 };
+
+function blockedResponse(): Response {
+  return new Response(null, { status: 204, headers: { "x-uos-gate": "blocked" } });
+}
+
+function ownerBackoffKey(env: Env, owner: string, kind: "probe" | "burst"): string {
+  return `owner:${env.ENVIRONMENT}:${owner}:${kind}`;
+}
+
+async function readOwnerBackoff(env: Env, owner: string): Promise<OwnerBackoff> {
+  const cached = parseOwnerBackoff(await readCache(env, OWNER_BACKOFF_CACHE_KIND, owner));
+  if (cached) return cached;
+  const [probeRaw, burstRaw] = await Promise.all([
+    env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, "probe")),
+    env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, "burst")),
+  ]);
+  const probe = parseBackoffProgression(probeRaw);
+  const burst = parseBackoffProgression(burstRaw);
+  const state = { probeStage: probe?.stage ?? 0, probeUntil: probe?.until ?? 0, burstStage: burst?.stage ?? 0, burstUntil: burst?.until ?? 0 };
+  await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, state, ORG_VERSION_CACHE_TTL_MS);
+  return state;
+}
+
+async function writeOwnerBackoff(env: Env, owner: string, state: OwnerBackoff, kind: "probe" | "burst"): Promise<void> {
+  try {
+    const progression = kind === "probe" ? { stage: state.probeStage, until: state.probeUntil } : { stage: state.burstStage, until: state.burstUntil };
+    await env.CONFIG_STATUS.put(ownerBackoffKey(env, owner, kind), JSON.stringify(progression));
+    await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, state, ORG_VERSION_CACHE_TTL_MS);
+  } catch (error) {
+    console.error("Failed to persist owner backoff", { owner, error });
+  }
+}
+
+async function resetOwnerBackoff(env: Env, owner: string): Promise<void> {
+  try {
+    await Promise.all([env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "probe")), env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "burst"))]);
+    await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, emptyOwnerBackoff(), ORG_VERSION_CACHE_TTL_MS);
+  } catch (error) {
+    console.error("Failed to reset owner backoff", { owner, error });
+  }
+}
 
 async function forwardRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);

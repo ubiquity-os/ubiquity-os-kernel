@@ -87,3 +87,64 @@ Deno.test("repository config cache: getConfig marks a repo with no configuration
   assertEquals(isRepositoryKnownUnconfigured(ENVIRONMENT, REPO), true);
   resetRepositoryConfigCache();
 });
+
+function configurationContext(environment: string, lookup: (repo: string, path: string) => string) {
+  return {
+    payload: { repository: { owner: { login: "tadanobutubutu" }, name: "screeps", full_name: REPO } },
+    octokit: { rest: { repos: { getContent: ({ repo, path }: { repo: string; path: string }) => ({ data: lookup(repo, path), headers: {} }) } } },
+    eventHandler: { environment },
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+  } as never;
+}
+
+function githubFailure(status?: number): never {
+  throw Object.assign(new Error("GitHub lookup failed"), status === undefined ? {} : { status });
+}
+
+Deno.test("repository config cache: non-404 and mixed-scope failures never establish absence", async () => {
+  for (const status of [403, 429, 503, undefined]) {
+    for (const failureScope of ["both", ".ubiquity-os", "screeps"]) {
+      resetRepositoryConfigCache();
+      await getConfig(configurationContext(ENVIRONMENT, (repo) => githubFailure(failureScope === "both" || repo === failureScope ? status : 404)));
+      assertEquals(getRepositoryConfigStatus(ENVIRONMENT, REPO), null);
+    }
+  }
+  resetRepositoryConfigCache();
+});
+
+Deno.test("repository config cache: existing empty and invalid files are never absent", async () => {
+  for (const contents of ["", "[", "plugins: {}"]) {
+    resetRepositoryConfigCache();
+    await getConfig(configurationContext(ENVIRONMENT, () => contents));
+    assertEquals(isRepositoryKnownUnconfigured(ENVIRONMENT, REPO), false);
+  }
+  resetRepositoryConfigCache();
+});
+
+Deno.test("repository config cache: development confirms all fallback paths before absence", async () => {
+  resetRepositoryConfigCache();
+  const paths: string[] = [];
+  await getConfig(
+    configurationContext("development", (repo, path) => {
+      paths.push(`${repo}:${path}`);
+      return githubFailure(404);
+    })
+  );
+  assertEquals(getRepositoryConfigStatus("development", REPO), "absent");
+  for (const repo of [".ubiquity-os", "screeps"]) {
+    for (const path of [".github/.ubiquity-os.config.dev.yml", ".github/.ubiquity-os.config.yml"]) {
+      assertEquals(paths.filter((value) => value === `${repo}:${path}`).length, path.endsWith(".dev.yml") ? 2 : 1);
+    }
+  }
+  resetRepositoryConfigCache();
+  await getConfig(configurationContext("development", (repo, path) => (path.endsWith(".dev.yml") ? githubFailure(404) : "plugins: {}")));
+  assertEquals(isRepositoryKnownUnconfigured("development", REPO), false);
+  resetRepositoryConfigCache();
+});
+
+Deno.test("repository config cache: development transient primary and missing fallback remain unknown", async () => {
+  resetRepositoryConfigCache();
+  await getConfig(configurationContext("development", (repo, path) => githubFailure(path.endsWith(".dev.yml") ? 503 : 404)));
+  assertEquals(getRepositoryConfigStatus("development", REPO), null);
+  resetRepositoryConfigCache();
+});
