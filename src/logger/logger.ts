@@ -45,6 +45,18 @@ function serializeError(error: unknown) {
   return error instanceof AggregateError ? { ...detail, errors: error.errors.slice(0, 5).map(summarizeError) } : detail;
 }
 
+function serializeBrowserLog(record: Record<string, unknown>) {
+  // Pino's browser serializer copies custom fields from bare Errors before formatting.
+  if (typeof record.type !== "string") return record;
+  const safe: Record<string, unknown> = {};
+  const keys = ["time", "level", "msg", "type", "stack", "requestId", "name", "instigator", ...LOG_ALLOWLIST_KEYS];
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") safe[key] = value;
+  }
+  return safe;
+}
+
 function safeToLogValue(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value.trim() ? value : null;
@@ -160,6 +172,13 @@ export const logger = createLogger(
     level,
     redact,
     serializers: { err: serializeError },
+    browser: {
+      serialize: true,
+      write(record) {
+        const safe = serializeBrowserLog(record as Record<string, unknown>);
+        selectConsoleMethod(safe.level).call(console, JSON.stringify(safe));
+      },
+    },
     hooks: {
       logMethod(args, method, level) {
         try {

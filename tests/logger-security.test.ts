@@ -65,6 +65,7 @@ Deno.test("logger keeps useful error fields without serializing attached runtime
     logger.error(error, "Uncaught error");
     logger.error({ err: error, event: "issues", deliveryId: DELIVERY_ID, repository: REPOSITORY }, "Handler failed");
     logger.error(new AggregateError([error], "Webhook handlers failed"), "Uncaught aggregate error");
+    logger.child({ requestId: DELIVERY_ID }).error({ err: error }, "Child handler failed");
   });
   assertNoCredentials(logs);
   const detail = logs[0].err as Record<string, unknown>;
@@ -74,6 +75,8 @@ Deno.test("logger keeps useful error fields without serializing attached runtime
   assertEquals(logs[1].deliveryId, DELIVERY_ID);
   const aggregate = logs[2].err as { errors?: Array<{ message?: string }> };
   assertEquals(aggregate.errors?.[0].message, ERROR_MESSAGE);
+  assertEquals(logs[3].requestId, DELIVERY_ID);
+  assertEquals((logs[3].err as { message?: string }).message, ERROR_MESSAGE);
 });
 
 Deno.test("handler failure logs identify the transformed event without its runtime context", async () => {
