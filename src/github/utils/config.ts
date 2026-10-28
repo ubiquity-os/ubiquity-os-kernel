@@ -197,6 +197,27 @@ export async function getConfigurationFromRepo(context: GitHubContext, repositor
   };
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "status" in error && error.status === 404);
+}
+
+async function configFileExists(context: GitHubContext, owner: string, repo: string): Promise<boolean | null> {
+  for (const path of getConfigPathCandidatesForEnvironment(context.eventHandler.environment)) {
+    try {
+      await context.octokit.rest.repos.getContent({ owner, repo, path, mediaType: { format: "raw" } });
+      return true;
+    } catch (error) {
+      if (!isNotFoundError(error)) return null;
+    }
+  }
+  return false;
+}
+
+async function hasConfirmedAbsentConfiguration(context: GitHubContext, owner: string, repo: string): Promise<boolean> {
+  const results = await Promise.all([configFileExists(context, owner, CONFIG_ORG_REPO), configFileExists(context, owner, repo)]);
+  return results.every((hasConfig) => hasConfig === false);
+}
+
 /**
  * Loads and merges org/repo configuration for the event context.
  */
@@ -219,7 +240,7 @@ export async function getConfig(context: GitHubContext): Promise<PluginConfigura
   const repositoryFullName = `${owner}/${repo}`;
   if (handler.sources.length > 0) {
     markRepositoryConfigured(context.eventHandler.environment, repositoryFullName);
-  } else if (Object.keys(resolved.plugins ?? {}).length === 0) {
+  } else if (Object.keys(resolved.plugins ?? {}).length === 0 && (await hasConfirmedAbsentConfiguration(context, owner, repo))) {
     markRepositoryUnconfigured(context.eventHandler.environment, repositoryFullName);
   }
   resolved.__sources = handler.sources;
