@@ -1,4 +1,4 @@
-import { advanceOwnerBackoff, emptyOwnerBackoff, parseBackoffProgression, parseOwnerBackoff, type OwnerBackoff } from "./owner-backoff.ts";
+import { advanceOwnerBackoff, emptyOwnerBackoff, parseBackoffProgression, type BackoffProgression, type OwnerBackoff } from "./owner-backoff.ts";
 
 const CONFIG_PATH_RE = /^\.github\/\.ubiquity-os\.config(?:\.[a-z0-9_-]+)?\.ya?ml$/i;
 const CACHE_ORIGIN = "https://gate-cache.internal";
@@ -8,6 +8,8 @@ const REPO_STATUS_CACHE_TTL_MS = 5 * 60_000;
 const ORG_VERSION_CACHE_KIND = "org-version";
 const REPO_STATUS_CACHE_KIND = "repo-status";
 const OWNER_BACKOFF_CACHE_KIND = "owner-backoff";
+const OWNER_GENERATION_CACHE_KIND = "owner-generation";
+const INITIAL_OWNER_GENERATION = "initial";
 const encoder = new TextEncoder();
 
 type CacheEntry = {
@@ -84,22 +86,29 @@ export default {
       await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, repoStatus, repoStatus === "unknown" ? MEMORY_CACHE_TTL_MS : REPO_STATUS_CACHE_TTL_MS);
     }
     let ownerState: OwnerBackoff | null = null;
+    let ownerGeneration: string | null = null;
     if (isConfigChange) {
-      await resetOwnerBackoff(env, repository.owner);
+      try {
+        ownerGeneration = await resetOwnerBackoff(env, repository.owner);
+      } catch (error) {
+        console.error("Failed to reset owner generation", { owner: repository.owner, error });
+        return retryResponse();
+      }
       ownerState = emptyOwnerBackoff();
     } else if (repoStatus !== "present") {
-      ownerState = await readOwnerBackoff(env, repository.owner);
+      ownerGeneration = await readOwnerGeneration(env, repository.owner);
+      ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
       if (ownerState.burstUntil > Date.now()) return blockedResponse();
       let isWithinLimit: boolean;
       try {
-        const result = await env.ABUSE_RATE_LIMITER.limit({ key: `${repository.owner}:${orgVersion}` });
+        const result = await env.ABUSE_RATE_LIMITER.limit({ key: `${repository.owner}:${orgVersion}:${ownerGeneration}` });
         isWithinLimit = result.success;
       } catch (error) {
         console.error("Owner rate limiter unavailable", { owner: repository.owner, error });
-        return new Response("Rate limiter unavailable", { status: 503, headers: { "retry-after": "60" } });
+        return retryResponse();
       }
       if (!isWithinLimit) {
-        await writeOwnerBackoff(env, repository.owner, advanceOwnerBackoff(ownerState, "burst", Date.now()), "burst");
+        await writeOwnerBackoff(env, repository.owner, advanceOwnerBackoff(ownerState, "burst", Date.now()), "burst", ownerGeneration);
         return blockedResponse();
       }
       if (ownerState.probeUntil > Date.now() || repoStatus === "absent") return blockedResponse();
@@ -112,23 +121,19 @@ export default {
     });
     const response = await env.KERNEL.fetch(kernelRequest);
     const configStatus = response.headers.get("x-uos-config");
-    if ((configStatus === "present" || configStatus === "absent") && (isConfigChange || configStatus !== repoStatus)) {
-      try {
-        await env.CONFIG_STATUS.put(repoKey, configStatus, {
-          expirationTtl: 86_400,
-        });
-        await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, configStatus, REPO_STATUS_CACHE_TTL_MS);
-      } catch (error) {
-        console.error("Failed to cache repository config status", {
-          repo: repository.fullName,
-          error,
-        });
-      }
-    }
+    // Recovery invalidates pre-reset results, including stale repository absence.
+    if (
+      (configStatus === "present" || configStatus === "absent") &&
+      ownerGeneration !== null &&
+      (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration
+    )
+      return response;
     if (configStatus === "absent") {
-      ownerState ??= await readOwnerBackoff(env, repository.owner);
+      // The kernel awaited another service; reconcile progressions advanced or reset by concurrent deliveries.
+      ownerGeneration ??= await readOwnerGeneration(env, repository.owner);
+      ownerState = await readOwnerBackoff(env, repository.owner, ownerGeneration);
       const nextState = advanceOwnerBackoff(ownerState, "probe", Date.now());
-      if (nextState !== ownerState) await writeOwnerBackoff(env, repository.owner, nextState, "probe");
+      if (nextState !== ownerState) await writeOwnerBackoff(env, repository.owner, nextState, "probe", ownerGeneration);
     } else if (
       configStatus === "present" &&
       repoStatus !== "present" &&
@@ -136,7 +141,21 @@ export default {
       ownerState &&
       (ownerState.probeStage > 0 || ownerState.burstStage > 0)
     ) {
-      await resetOwnerBackoff(env, repository.owner);
+      try {
+        ownerGeneration = await resetOwnerBackoff(env, repository.owner, ownerGeneration ?? undefined);
+      } catch (error) {
+        console.error("Failed to reset owner generation", { owner: repository.owner, error });
+        return retryResponse();
+      }
+    }
+    if ((configStatus === "present" || configStatus === "absent") && (isConfigChange || configStatus !== repoStatus)) {
+      if (ownerGeneration !== null && (await readOwnerGeneration(env, repository.owner)) !== ownerGeneration) return response;
+      try {
+        await env.CONFIG_STATUS.put(repoKey, configStatus, { expirationTtl: 86_400 });
+        await writeCache(env, REPO_STATUS_CACHE_KIND, repoKey, configStatus, REPO_STATUS_CACHE_TTL_MS);
+      } catch (error) {
+        console.error("Failed to cache repository config status", { repo: repository.fullName, error });
+      }
     }
     return response;
   },
@@ -146,41 +165,74 @@ function blockedResponse(): Response {
   return new Response(null, { status: 204, headers: { "x-uos-gate": "blocked" } });
 }
 
-function ownerBackoffKey(env: Env, owner: string, kind: "probe" | "burst"): string {
-  return `owner:${env.ENVIRONMENT}:${owner}:${kind}`;
+function retryResponse(): Response {
+  return new Response("Gate state unavailable", { status: 503, headers: { "retry-after": "60" } });
 }
 
-async function readOwnerBackoff(env: Env, owner: string): Promise<OwnerBackoff> {
-  const cached = parseOwnerBackoff(await readCache(env, OWNER_BACKOFF_CACHE_KIND, owner));
+function ownerGenerationKey(env: Env, owner: string): string {
+  return `owner:${env.ENVIRONMENT}:${owner}:generation`;
+}
+
+async function readOwnerGeneration(env: Env, owner: string): Promise<string> {
+  const cached = await readCache<string>(env, OWNER_GENERATION_CACHE_KIND, owner);
+  if (typeof cached === "string" && cached) return cached;
+  const generation = (await env.CONFIG_STATUS.get(ownerGenerationKey(env, owner))) || INITIAL_OWNER_GENERATION;
+  await writeCache(env, OWNER_GENERATION_CACHE_KIND, owner, generation, ORG_VERSION_CACHE_TTL_MS);
+  return generation;
+}
+
+function ownerBackoffKey(env: Env, owner: string, kind: "probe" | "burst", generation: string): string {
+  return `owner:${env.ENVIRONMENT}:${owner}:${generation}:${kind}`;
+}
+
+async function readOwnerBackoff(env: Env, owner: string, generation: string): Promise<OwnerBackoff> {
+  const [probe, burst] = await Promise.all([readOwnerProgression(env, owner, "probe", generation), readOwnerProgression(env, owner, "burst", generation)]);
+  return { probeStage: probe.stage, probeUntil: probe.until, burstStage: burst.stage, burstUntil: burst.until };
+}
+
+async function readOwnerProgression(env: Env, owner: string, kind: "probe" | "burst", generation: string): Promise<BackoffProgression> {
+  const id = `${owner}:${generation}:${kind}`;
+  const cached = parseBackoffProgression(await readCache(env, OWNER_BACKOFF_CACHE_KIND, id));
   if (cached) return cached;
-  const [probeRaw, burstRaw] = await Promise.all([
-    env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, "probe")),
-    env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, "burst")),
-  ]);
-  const probe = parseBackoffProgression(probeRaw);
-  const burst = parseBackoffProgression(burstRaw);
-  const state = { probeStage: probe?.stage ?? 0, probeUntil: probe?.until ?? 0, burstStage: burst?.stage ?? 0, burstUntil: burst?.until ?? 0 };
-  await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, state, ORG_VERSION_CACHE_TTL_MS);
+  const state = parseBackoffProgression(await env.CONFIG_STATUS.get(ownerBackoffKey(env, owner, kind, generation))) ?? { stage: 0, until: 0 };
+  await writeCache(env, OWNER_BACKOFF_CACHE_KIND, id, state, ORG_VERSION_CACHE_TTL_MS);
   return state;
 }
 
-async function writeOwnerBackoff(env: Env, owner: string, state: OwnerBackoff, kind: "probe" | "burst"): Promise<void> {
+async function writeOwnerBackoff(env: Env, owner: string, state: OwnerBackoff, kind: "probe" | "burst", generation: string): Promise<void> {
   try {
+    if ((await readOwnerGeneration(env, owner)) !== generation) return;
     const progression = kind === "probe" ? { stage: state.probeStage, until: state.probeUntil } : { stage: state.burstStage, until: state.burstUntil };
-    await env.CONFIG_STATUS.put(ownerBackoffKey(env, owner, kind), JSON.stringify(progression));
-    await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, state, ORG_VERSION_CACHE_TTL_MS);
+    const key = ownerBackoffKey(env, owner, kind, generation);
+    await env.CONFIG_STATUS.put(key, JSON.stringify(progression));
+    if ((await readOwnerGeneration(env, owner)) !== generation) {
+      await env.CONFIG_STATUS.delete(key);
+      return;
+    }
+    await writeCache(env, OWNER_BACKOFF_CACHE_KIND, `${owner}:${generation}:${kind}`, progression, ORG_VERSION_CACHE_TTL_MS);
   } catch (error) {
     console.error("Failed to persist owner backoff", { owner, error });
   }
 }
 
-async function resetOwnerBackoff(env: Env, owner: string): Promise<void> {
+async function resetOwnerBackoff(env: Env, owner: string, previousGeneration?: string): Promise<string> {
+  const previous = previousGeneration ?? (await readOwnerGeneration(env, owner));
+  const generation = crypto.randomUUID();
+  await env.CONFIG_STATUS.put(ownerGenerationKey(env, owner), generation);
+  await writeCache(env, OWNER_GENERATION_CACHE_KIND, owner, generation, ORG_VERSION_CACHE_TTL_MS);
+  await Promise.all([
+    writeCache(env, OWNER_BACKOFF_CACHE_KIND, `${owner}:${generation}:probe`, { stage: 0, until: 0 }, ORG_VERSION_CACHE_TTL_MS),
+    writeCache(env, OWNER_BACKOFF_CACHE_KIND, `${owner}:${generation}:burst`, { stage: 0, until: 0 }, ORG_VERSION_CACHE_TTL_MS),
+  ]);
   try {
-    await Promise.all([env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "probe")), env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "burst"))]);
-    await writeCache(env, OWNER_BACKOFF_CACHE_KIND, owner, emptyOwnerBackoff(), ORG_VERSION_CACHE_TTL_MS);
+    await Promise.all([
+      env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "probe", previous)),
+      env.CONFIG_STATUS.delete(ownerBackoffKey(env, owner, "burst", previous)),
+    ]);
   } catch (error) {
-    console.error("Failed to reset owner backoff", { owner, error });
+    console.error("Failed to clean up old owner backoff", { owner, error });
   }
+  return generation;
 }
 
 async function forwardRequest(request: Request, env: Env): Promise<Response> {
