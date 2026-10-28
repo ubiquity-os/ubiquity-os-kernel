@@ -579,7 +579,7 @@ function tryCatchWrapper(fn: (event: EmitterWebhookEvent) => unknown, logger: ty
     try {
       await fn(event);
     } catch (error) {
-      logger.error({ err: error, event }, "Error in event handler");
+      logger.error({ err: error, event: event.name, deliveryId: event.id, repository: extractRepositoryFullName(event.payload) }, "Error in event handler");
       try {
         await emitKernelErrorEvent({ eventHandler, event, error, deps });
       } catch (emitError) {
