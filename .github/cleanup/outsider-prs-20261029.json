@@ -1,0 +1,462 @@
+{
+  "appId": 975031,
+  "appSlug": "ubiquity-os",
+  "targets": [
+    {
+      "repo": "ubiquity-os-marketplace/command-start-stop",
+      "number": 221,
+      "author": "D2758695161",
+      "head": "5af7d34a9d684df3f662aceee191ec1d95928fce"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/daemon-disqualifier",
+      "number": 138,
+      "author": "tarai-dl",
+      "head": "cb2bb8b93efd564b05423fe726f2a395a9b950c4"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/daemon-disqualifier",
+      "number": 139,
+      "author": "haoyousun60-create",
+      "head": "a1aaf2d0f2c3f24e1949b51fb60d8f68365384e5"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/daemon-disqualifier",
+      "number": 140,
+      "author": "manja316",
+      "head": "a0c41b01b4a69ea12ade240990c1c44e11e6bd5a"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/daemon-pricing",
+      "number": 169,
+      "author": "zhaog100",
+      "head": "1d4c3bb6ea051382e40c9cd3138cdb08f929c29a"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/daemon-pricing",
+      "number": 170,
+      "author": "zhaog100",
+      "head": "95d9f314abcb3d528b8db3f0b7dbe89af37d4e10"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 508,
+      "author": "zhaog100",
+      "head": "18e55d3fc098095479b02750a1ebf2f24ea64e34"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 509,
+      "author": "zhaog100",
+      "head": "4a8e03ce6f803ae541d4688aa094541250537d1e"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 510,
+      "author": "zhaog100",
+      "head": "3674d280baa869b4d7649e63a1cb67749e56dc4c"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 511,
+      "author": "renshichu",
+      "head": "56973486dc2405ed17ec397a6aebcb5d86fad7f4"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 512,
+      "author": "zhaog100",
+      "head": "e8fb05d74a68883b546b2188096d142f92a20e08"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 513,
+      "author": "zhaog100",
+      "head": "8a7d1a2e5c24e3b6469e68f789a098c9dd291028"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 601,
+      "author": "MikeGarciaAGM",
+      "head": "21416b80a0a0452173286eeffb2a8ae67fc83ec6"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 603,
+      "author": "MikeGarciaAGM",
+      "head": "21416b80a0a0452173286eeffb2a8ae67fc83ec6"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 674,
+      "author": "namanharshwal",
+      "head": "e48b00f7a8f7ad105eb286cc3527f4a3e0dbc0cc"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 675,
+      "author": "namanharshwal",
+      "head": "06cf5e6444b6701ceb9dda978e2234f64952f95e"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-conversation-rewards",
+      "number": 676,
+      "author": "VDCHLDINGS",
+      "head": "208e6ff7c643ee3a3b86862969117cc7676fc5a5"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 146,
+      "author": "lustsazeus-lab",
+      "head": "15e7648aaffd233258b4d8cbad4fef73499f76b3"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 147,
+      "author": "lustsazeus-lab",
+      "head": "6ff583b66ce690a6c2b493225031885cb803c7ae"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 148,
+      "author": "lustsazeus-lab",
+      "head": "b56ffa0b2affc14d58d9e5d3b75fcf4219c11a4c"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 149,
+      "author": "lustsazeus-lab",
+      "head": "7879ddc0fa1548526dba044c4a306df127a12e0d"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 150,
+      "author": "lustsazeus-lab",
+      "head": "36d9004c34fc257efe91787cfed6e013d1e1beed"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 155,
+      "author": "sungdark",
+      "head": "5ca309caff1d5266022303a4cbcc0b37d101d584"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 159,
+      "author": "renshichu",
+      "head": "4d1ace88db2f3b48a4fcba61fe481ccd6c86eb85"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 219,
+      "author": "wcj007",
+      "head": "ad3ed20197638696862814d1511e3329785f64a7"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 294,
+      "author": "namanharshwal",
+      "head": "116bd3a91cb055544394134ad5799b38bad0d3ca"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 295,
+      "author": "namanharshwal",
+      "head": "fa9dcd7925f3cce3086aefb8992be1fd486c8147"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 297,
+      "author": "namanharshwal",
+      "head": "a9c3426044eddaf68dd017ed52591806e3e571d7"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 298,
+      "author": "namanharshwal",
+      "head": "28a966434214eced74e492fe11c842dce84dd9a5"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 299,
+      "author": "namanharshwal",
+      "head": "0432284fda81024c52ae4499db9abf981b7a12d1"
+    },
+    {
+      "repo": "ubiquity-os-marketplace/text-vector-embeddings",
+      "number": 300,
+      "author": "namanharshwal",
+      "head": "c67109681025fdb5b0fce4bd32c05a9ba045ee00"
+    },
+    {
+      "repo": "ubiquity-os/.github",
+      "number": 16,
+      "author": "lustsazeus-lab",
+      "head": "c8a01b89f67c5a4c4e90fddbc2550c35130968f2"
+    },
+    {
+      "repo": "ubiquity-os/.github",
+      "number": 17,
+      "author": "lustsazeus-lab",
+      "head": "47deba1f4b6cbb8221d268255b02d5e3332a3742"
+    },
+    {
+      "repo": "ubiquity-os/.github",
+      "number": 28,
+      "author": "y4motion",
+      "head": "589d2a807f3a8ce474017cb8b632dcd845d47ae8"
+    },
+    {
+      "repo": "ubiquity-os/.github",
+      "number": 31,
+      "author": "zhaog100",
+      "head": "863a59a67f6dc137531dbf33fad9bd81f6583cc7"
+    },
+    {
+      "repo": "ubiquity-os/.github",
+      "number": 38,
+      "author": "MikeGarciaAGM",
+      "head": "66f1c9cd2fac1dbf930a1507ba516ebf41daf822"
+    },
+    {
+      "repo": "ubiquity-os/command-demo",
+      "number": 28,
+      "author": "zhaog100",
+      "head": "e46c66adeeecd00c854cc276c5aef999a99bea01"
+    },
+    {
+      "repo": "ubiquity-os/command-demo",
+      "number": 29,
+      "author": "zhaog100",
+      "head": "377079de3d6a34311ca04566105e42dd357adfb8"
+    },
+    {
+      "repo": "ubiquity-os/permit-generation",
+      "number": 124,
+      "author": "zhaog100",
+      "head": "3aa987de6ace1c1c849b8349d21261d12a359e9b"
+    },
+    {
+      "repo": "ubiquity-os/plugin-template",
+      "number": 66,
+      "author": "zhaog100",
+      "head": "920bd5f8bfa470093b6a971d16eb845775facacb"
+    },
+    {
+      "repo": "ubiquity-os/plugin-template",
+      "number": 67,
+      "author": "deepdadou",
+      "head": "0085fc2e66174d918f60d0a0d2d0b56ea22046dd"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 82,
+      "author": "sungdark",
+      "head": "29fdc1d3bb32dcfbc240f8fe03c77ee481e6e676"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 84,
+      "author": "zhaog100",
+      "head": "c5b108cd8cd0d1545d312906faddd40c42310795"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 85,
+      "author": "zhaog100",
+      "head": "e5ad21414937a962f2ffd967e8fb6b8c0d276a1d"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 86,
+      "author": "zhaog100",
+      "head": "be3aea75e8748d2f5aba12bb4fb736a21f2892c3"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 88,
+      "author": "zhaog100",
+      "head": "994f31f16478c943127257e8660736392b6401dd"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 89,
+      "author": "zhaog100",
+      "head": "61313d6cfe2dfa7f48e24b0d2165844ff3352280"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 90,
+      "author": "zhaog100",
+      "head": "adac3f7f25d4bc2ff5a6c44bb1167179c43fd548"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 91,
+      "author": "zhaog100",
+      "head": "76bc1dee3983159c42561fc17593cf8de5958a7e"
+    },
+    {
+      "repo": "ubiquity-os/plugins-wishlist",
+      "number": 92,
+      "author": "zhaog100",
+      "head": "1e4a74d2e84f856f11af2dd9ddf113746258b6cf"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 336,
+      "author": "sungdark",
+      "head": "9efa05b3bad5f172660bec330b2743fad8da2109"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 337,
+      "author": "sungdark",
+      "head": "502a65d340c2b2157cf209fe127f4007716190fd"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 338,
+      "author": "sungdark",
+      "head": "aab837d16d11e00013f235c44cd0d8fe79c5849b"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 339,
+      "author": "sungdark",
+      "head": "2381c7f7ce3d75a5f30ea8f52b043f15ff08a02a"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 340,
+      "author": "zhaog100",
+      "head": "2873c30d9be25d5feb98cc1fbdac15eda0ef13d2"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 357,
+      "author": "Wheezily",
+      "head": "e1faa1bf238182841833a5dbdcf1f28f612ae00d"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-kernel",
+      "number": 359,
+      "author": "zhaog100",
+      "head": "6cf3ed9f2b0d8ce0710a045ed32f31acef6c06de"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 46,
+      "author": "JarvisInvestInsight",
+      "head": "9751dfba700664cfe6b38f43f4b3fedbf248312b"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 47,
+      "author": "MrLawrenceKwan",
+      "head": "8a402eb9cdf9295abbd5d38666e03efc477234c2"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 48,
+      "author": "lustsazeus-lab",
+      "head": "bbcc2a270fe0decf6f0bb406147ce016d50d9525"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 49,
+      "author": "lustsazeus-lab",
+      "head": "ccd3ee3c61e3d5c4e0741b3a16a3e4f44cc6b67d"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 50,
+      "author": "lustsazeus-lab",
+      "head": "bbcc2a270fe0decf6f0bb406147ce016d50d9525"
+    },
+    {
+      "repo": "ubiquity-os/ubiquity-os-plugin-installer",
+      "number": 51,
+      "author": "zhaog100",
+      "head": "f51aa304aa82913dbe1d9bdb8733e17dba1792d5"
+    },
+    {
+      "repo": "ubiquity/ai.ubq.fi",
+      "number": 1317,
+      "author": "harmweber787-png",
+      "head": "4e12ea224ff051998562de68e99976afbd68626c"
+    },
+    {
+      "repo": "ubiquity/ai.ubq.fi",
+      "number": 1318,
+      "author": "harmweber787-png",
+      "head": "0c24ee7d249af620d7df742bc252c008415539da"
+    },
+    {
+      "repo": "ubiquity/ai.ubq.fi",
+      "number": 1319,
+      "author": "djjrip",
+      "head": "d7fcc2f076e28f5963e6b16c626a000aed2cd59c"
+    },
+    {
+      "repo": "ubiquity/arbitrage-bot",
+      "number": 18,
+      "author": "VDCHLDINGS",
+      "head": "b261e01d287f8d18e5efdebe9bbe7966097caf3b"
+    },
+    {
+      "repo": "ubiquity/pay.ubq.fi",
+      "number": 507,
+      "author": "namanharshwal",
+      "head": "5f9e258b3dfbdbedd4d710420fb2fa2fca5af270"
+    },
+    {
+      "repo": "ubiquity/permit2-rpc-manager",
+      "number": 33,
+      "author": "ubelai",
+      "head": "1fdeca9eec90f25552bd4788cb112638846d733d"
+    },
+    {
+      "repo": "ubiquity/permit2-rpc-manager",
+      "number": 36,
+      "author": "namanharshwal",
+      "head": "36af56080d6fbdbab6174fc49d4fb236a695409b"
+    },
+    {
+      "repo": "ubiquity/stake.ubq.fi",
+      "number": 19,
+      "author": "haoyousun60-create",
+      "head": "6e52ea50f033264e949a9f57d7420ed1148d98a1"
+    },
+    {
+      "repo": "ubiquity/stake.ubq.fi",
+      "number": 52,
+      "author": "wasim-builds",
+      "head": "e768311721caed89eb98ad79b27e67a7cc2fa1a2"
+    },
+    {
+      "repo": "ubiquity/stake.ubq.fi",
+      "number": 53,
+      "author": "wasim-builds",
+      "head": "5c6e4b3c89847e04539235a967ef27cfb49a7b61"
+    },
+    {
+      "repo": "ubiquity/stake.ubq.fi",
+      "number": 54,
+      "author": "ubelai",
+      "head": "11477e43c76f0260eb36439b67ba076caeb61d52"
+    },
+    {
+      "repo": "ubiquity/ts-template",
+      "number": 111,
+      "author": "Ialyahya96",
+      "head": "b4cccb1bc2853349bc2a8e15c374fbf66994dfd9"
+    },
+    {
+      "repo": "ubiquity/uusd.ubq.fi",
+      "number": 101,
+      "author": "VDCHLDINGS",
+      "head": "b14be5f2f45131f0faef7c24bbf2f49ca7f6bdca"
+    }
+  ]
+}
