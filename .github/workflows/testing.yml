@@ -1,48 +1,21 @@
-name: Reviewed outsider PR cleanup
-
+name: Run Testing Suite
 on:
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Inspect the frozen targets without closing
-        type: boolean
-        default: true
-        required: true
-      manifest_sha256:
-        description: Exact parent-approved manifest digest
-        type: string
-        required: true
-        default: 6b5f8a70d5b2a20402971e46662db2c9417f1163aadaa8c3c7ec62608569c384
-
-permissions:
-  contents: read
-
-concurrency:
-  group: outsider-pr-cleanup-20261029
-  cancel-in-progress: false
+  pull_request:
 
 jobs:
-  close:
-    if: github.ref_name == 'codex/2026-10-29-outsider-pr-cleanup-g7c74559729'
+  testing:
+    permissions: write-all
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: denoland/setup-deno@v2
+          fetch-depth: 0
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Preflight or close the exact reviewed targets
-        env:
-          APP_ID: ${{ secrets.APP_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-          UOS_DRY_RUN: ${{ inputs.dry_run }}
-          UOS_MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
-        run: >-
-          deno run --frozen
-          --allow-read=.github/cleanup
-          --allow-env=GITHUB_ACTIONS,GITHUB_EVENT_NAME,GITHUB_REF_NAME,GITHUB_SHA,APP_ID,APP_PRIVATE_KEY,UOS_DRY_RUN,UOS_MANIFEST_SHA
-          --allow-net=api.github.com
-          scripts/operations/close-outsider-prs.ts
+
+      - name: Deno Test
+        run: deno test --allow-all tests
