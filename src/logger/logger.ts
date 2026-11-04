@@ -109,7 +109,7 @@ function formatLogLine(level: string, args: unknown[], bindings: Record<string, 
         if (value) extras.push(`${key}=${value}`);
       }
     }
-    const metaErr = meta.err;
+    const metaErr = meta.err ?? meta.error;
     if (metaErr instanceof Error) {
       const errMessage = safeToLogValue(metaErr.message);
       if (errMessage) extras.push(`err="${errMessage}"`);
@@ -171,7 +171,7 @@ export const logger = createLogger(
   {
     level,
     redact,
-    serializers: { err: serializeError },
+    serializers: { err: serializeError, error: serializeError },
     browser: {
       serialize: true,
       write(record) {
