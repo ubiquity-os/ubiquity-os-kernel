@@ -30,22 +30,56 @@ const LOG_ALLOWLIST_KEYS = new Set([
   "targetRepo",
 ]);
 
+// Bounded retention of AggregateError inner diagnostics. The count bound matches
+// serializeError; the per-stack cap keeps a pathological aggregation from
+// inflating a Workers log line.
+const BROWSER_INNER_ERROR_LIMIT = 5;
+const INNER_STACK_LIMIT = 2048;
+
 function summarizeError(error: unknown) {
   if (!error || typeof error !== "object") return { type: typeof error, message: String(error) };
-  const detail = error as { name?: unknown; message?: unknown; stack?: unknown };
+  const detail = error as { name?: unknown; type?: unknown; message?: unknown; stack?: unknown };
+  const typeName = typeof detail.name === "string" ? detail.name : typeof detail.type === "string" ? detail.type : "Error";
   return {
-    type: typeof detail.name === "string" ? detail.name : "Error",
+    type: typeName,
     message: typeof detail.message === "string" ? detail.message : "Unknown error",
-    ...(typeof detail.stack === "string" ? { stack: detail.stack } : {}),
+    ...(typeof detail.stack === "string" ? { stack: detail.stack.slice(0, INNER_STACK_LIMIT) } : {}),
   };
 }
 
 function serializeError(error: unknown) {
   const detail = summarizeError(error);
-  return error instanceof AggregateError ? { ...detail, errors: error.errors.slice(0, 5).map(summarizeError) } : detail;
+  return error instanceof AggregateError ? { ...detail, errors: error.errors.slice(0, BROWSER_INNER_ERROR_LIMIT).map(summarizeError) } : detail;
 }
 
-function serializeBrowserLog(record: Record<string, unknown>) {
+// Pino's browser build serializes a BARE Error with its built-in `stdSerializers.err`,
+// which copies extra fields with `for...in`. `AggregateError.prototype.errors` is an own
+// but NON-ENUMERABLE property, so `for...in` never visits it and the originating inner
+// stacks are discarded before any logger-level serializer runs. Measured on pino 9.0.0
+// browser.js: Object.getOwnPropertyNames -> ["stack","message","errors"], for...in -> [].
+// Routing the bare path through the same bounded summariser keeps the outer diagnostic
+// and the inner messages/stacks, and drops everything else exactly as before.
+//
+// The published type for `stdSerializers.err` describes the NODE serializer, which also
+// attaches `raw: Error`. The browser implementation returns only {type,msg,stack}. We
+// deliberately do NOT satisfy `raw`: attaching the raw error object is precisely what the
+// credential-redaction work removed, so the cast records the type mismatch instead.
+//
+// Exported so the browser-path regression test wires the SAME function into the browser
+// build that the Workers bundle resolves `pino` to, instead of re-implementing it.
+export function installBoundedErrorSerializer(target: typeof pino) {
+  target.stdSerializers.err = serializeError as unknown as typeof pino.stdSerializers.err;
+}
+
+installBoundedErrorSerializer(pino);
+
+function boundedInnerErrors(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const bounded = value.slice(0, BROWSER_INNER_ERROR_LIMIT).map(summarizeError);
+  return bounded.length ? bounded : null;
+}
+
+export function serializeBrowserLog(record: Record<string, unknown>) {
   // Pino's browser serializer copies custom fields from bare Errors before formatting.
   if (typeof record.type !== "string") return record;
   const safe: Record<string, unknown> = {};
@@ -54,6 +88,11 @@ function serializeBrowserLog(record: Record<string, unknown>) {
     const value = record[key];
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") safe[key] = value;
   }
+  // Only the bounded, already-summarised inner diagnostics are allowed through: plain
+  // {type,message,stack} primitives, never arbitrary objects, transformed GitHubContext
+  // values, runtime configuration or secret fragments.
+  const inner = boundedInnerErrors(record.errors);
+  if (inner) safe.errors = inner;
   return safe;
 }
 
